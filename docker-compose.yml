@@ -35,7 +35,7 @@ services:
       context: ./backend
       target: build
     env_file: ./backend/.env
-    command: sh -c "npx prisma db push && npx tsx src/db/seed.ts"
+    command: sh -c "npx prisma migrate deploy && npx tsx src/db/seed.ts"
     depends_on:
       db:
         condition: service_healthy
