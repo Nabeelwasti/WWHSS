@@ -24,20 +24,23 @@ export async function generateInvoicesForClass(feeStructureId: string, dueDate: 
   const parsedDueDate = new Date(dueDate);
   if (Number.isNaN(parsedDueDate.getTime())) throw new FinanceValidationError("Invalid due date");
 
-  return Promise.all(
-    feeStructure.class.students.map((student) =>
-      prisma.feeInvoice.upsert({
-        where: { feeStructureId_studentProfileId: { feeStructureId, studentProfileId: student.id } },
-        update: { dueDate: parsedDueDate },
-        create: {
-          feeStructureId,
-          studentProfileId: student.id,
-          amountDue: feeStructure.amount,
-          dueDate: parsedDueDate,
-        },
-      })
-    )
-  );
+  return prisma.$transaction(async (tx) => {
+    const invoices = await Promise.all(
+      feeStructure.class.students.map((student) =>
+        tx.feeInvoice.upsert({
+          where: { feeStructureId_studentProfileId: { feeStructureId, studentProfileId: student.id } },
+          update: { dueDate: parsedDueDate },
+          create: {
+            feeStructureId,
+            studentProfileId: student.id,
+            amountDue: feeStructure.amount,
+            dueDate: parsedDueDate,
+          },
+        })
+      )
+    );
+    return invoices;
+  });
 }
 
 export async function recordPayment(input: { invoiceId: string; amount: number; method: string; receivedByUserId: string }) {
@@ -51,6 +54,9 @@ export async function recordPayment(input: { invoiceId: string; amount: number; 
 
     if (invoice.status === "waived") {
       throw new FinanceValidationError("Cannot record payment for a waived invoice");
+    }
+    if (invoice.status === "paid") {
+      throw new FinanceValidationError("Cannot record payment for an invoice that is already fully paid");
     }
 
     const previousPayments = await tx.payment.findMany({ where: { invoiceId: input.invoiceId } });
@@ -80,6 +86,8 @@ export async function recordPayment(input: { invoiceId: string; amount: number; 
 
     if (newTotalPaid >= roundedAmountDue - 0.001) {
       await tx.feeInvoice.update({ where: { id: input.invoiceId }, data: { status: "paid" } });
+    } else if (newTotalPaid > 0) {
+      await tx.feeInvoice.update({ where: { id: input.invoiceId }, data: { status: "partial" } });
     }
 
     await tx.auditLog.create({
@@ -94,6 +102,7 @@ export async function recordPayment(input: { invoiceId: string; amount: number; 
     return payment;
   });
 }
+
 
 export async function getStudentInvoices(studentProfileId: string) {
   const invoices = await prisma.feeInvoice.findMany({

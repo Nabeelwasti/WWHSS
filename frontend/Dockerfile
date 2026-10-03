@@ -2,9 +2,10 @@
 FROM node:20-slim AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 COPY . .
 RUN npm run build
+
 
 # ---------- Serve it (and forward /api to the backend) with nginx ----------
 FROM nginx:1.27-alpine

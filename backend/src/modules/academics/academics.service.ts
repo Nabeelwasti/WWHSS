@@ -98,7 +98,7 @@ export async function enrollStudent(input: {
     }
   }
 
-  return prisma.studentProfile.create({
+  const profile = await prisma.studentProfile.create({
     data: {
       userId: input.userId,
       admissionNo: input.admissionNo,
@@ -109,11 +109,50 @@ export async function enrollStudent(input: {
       admissionDate: input.admissionDate ? new Date(input.admissionDate) : undefined,
     },
   });
+
+  await prisma.auditLog.create({
+    data: {
+      userId: input.userId,
+      action: "academics:enroll_student",
+      resource: `student:${profile.id}`,
+      metadata: { admissionNo: input.admissionNo, classId: input.classId, sectionId: input.sectionId },
+    },
+  });
+
+  return profile;
+
 }
 
 export async function linkGuardian(input: { parentUserId: string; studentProfileId: string; relation: string }) {
-  return prisma.parentStudentLink.create({
+  const [parent, student] = await Promise.all([
+    prisma.user.findUnique({ where: { id: input.parentUserId }, select: { id: true } }),
+    prisma.studentProfile.findUnique({ where: { id: input.studentProfileId }, select: { id: true, userId: true } }),
+  ]);
+
+  if (!parent) {
+    throw new AcademicsValidationError(`Parent user ${input.parentUserId} not found`);
+  }
+  if (!student) {
+    throw new AcademicsValidationError(`Student profile ${input.studentProfileId} not found`);
+  }
+  if (student.userId === input.parentUserId) {
+    throw new AcademicsValidationError("A student cannot be linked as their own guardian");
+  }
+
+  const link = await prisma.parentStudentLink.create({
     data: { parentId: input.parentUserId, studentId: input.studentProfileId, relation: input.relation },
   });
+
+  await prisma.auditLog.create({
+    data: {
+      userId: input.parentUserId,
+      action: "academics:link_guardian",
+      resource: `student:${input.studentProfileId}:guardian:${input.parentUserId}`,
+      metadata: { relation: input.relation },
+    },
+  });
+
+  return link;
 }
+
 

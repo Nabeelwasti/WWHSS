@@ -31,7 +31,8 @@ const createSchema = z.object({
   phone: z.string().optional(),
   password: z.string().min(8).optional(),
 });
-usersRouter.post("/", async (req, res) => {
+usersRouter.post("/", authenticate, authorize("users:manage"), async (req, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -40,7 +41,7 @@ usersRouter.post("/", async (req, res) => {
 
   const { user, temporaryPassword } = await createUser(parsed.data);
   await prisma.auditLog.create({
-    data: { userId: req.userId!, action: "users:create", resource: `user:${user.id}` },
+    data: { userId: req.userId, action: "users:create", resource: `user:${user.id}` },
   });
 
   res.status(201).json({
@@ -58,7 +59,8 @@ const assignRoleSchema = z.object({
   subjectId: z.string().uuid().optional(),
   departmentId: z.string().uuid().optional(),
 });
-usersRouter.post("/:userId/roles", async (req, res) => {
+usersRouter.post("/:userId/roles", authenticate, authorize("users:manage"), async (req, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
   const parsed = assignRoleSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -66,7 +68,7 @@ usersRouter.post("/:userId/roles", async (req, res) => {
     const assignment = await assignRole({ userId: req.params.userId, ...parsed.data });
     await prisma.auditLog.create({
       data: {
-        userId: req.userId!,
+        userId: req.userId,
         action: "users:assign_role",
         resource: `user:${req.params.userId}`,
         metadata: parsed.data,
@@ -78,29 +80,32 @@ usersRouter.post("/:userId/roles", async (req, res) => {
   }
 });
 
-usersRouter.delete("/roles/:userRoleId", async (req, res) => {
+usersRouter.delete("/roles/:userRoleId", authenticate, authorize("users:manage"), async (req, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
   await removeRoleAssignment(req.params.userRoleId);
   await prisma.auditLog.create({
-    data: { userId: req.userId!, action: "users:remove_role", resource: `user_role:${req.params.userRoleId}` },
+    data: { userId: req.userId, action: "users:remove_role", resource: `user_role:${req.params.userRoleId}` },
   });
   res.status(204).send();
 });
 
-usersRouter.post("/:userId/deactivate", async (req, res) => {
+usersRouter.post("/:userId/deactivate", authenticate, authorize("users:manage"), async (req, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
   const user = await deactivateUser(req.params.userId);
   await prisma.auditLog.create({
-    data: { userId: req.userId!, action: "users:deactivate", resource: `user:${user.id}` },
+    data: { userId: req.userId, action: "users:deactivate", resource: `user:${user.id}` },
   });
   res.json({ user: { id: user.id, isActive: user.isActive } });
 });
 
-usersRouter.post("/:userId/reset-password", async (req, res) => {
+usersRouter.post("/:userId/reset-password", authenticate, authorize("users:manage"), async (req, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
   const target = await prisma.user.findUnique({ where: { id: req.params.userId }, select: { id: true } });
   if (!target) return res.status(404).json({ error: "User not found" });
 
   const { temporaryPassword } = await resetPassword(target.id);
   await prisma.auditLog.create({
-    data: { userId: req.userId!, action: "users:reset_password", resource: `user:${target.id}` },
+    data: { userId: req.userId, action: "users:reset_password", resource: `user:${target.id}` },
   });
 
   // Shown once. The admin relays it directly; it is never stored in plain

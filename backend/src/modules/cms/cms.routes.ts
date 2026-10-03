@@ -75,18 +75,22 @@ cmsRouter.get("/gallery", async (req, res) => {
 
 const pageSchema = z.object({ slug: z.string().min(1), title: z.string().min(1), content: z.string() });
 cmsRouter.post("/pages", authenticate, authorize("cms:manage"), async (req, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
   const parsed = pageSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  res.status(201).json(await upsertPage({ ...parsed.data, updatedByUserId: req.userId! }));
+  res.status(201).json(await upsertPage({ ...parsed.data, updatedByUserId: req.userId }));
 });
 
 cmsRouter.post("/pages/:slug/publish", authenticate, authorize("cms:manage"), async (req, res) => {
-  res.json(await setPagePublished(req.params.slug, true));
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
+  res.json(await setPagePublished(req.params.slug, true, req.userId));
 });
 
 cmsRouter.post("/pages/:slug/unpublish", authenticate, authorize("cms:manage"), async (req, res) => {
-  res.json(await setPagePublished(req.params.slug, false));
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
+  res.json(await setPagePublished(req.params.slug, false, req.userId));
 });
+
 
 cmsRouter.get("/admin/pages", authenticate, authorize("cms:manage"), async (_req, res) => {
   res.json({ pages: await listAllPages() });
@@ -98,10 +102,12 @@ const noticeSchema = z.object({
   audience: z.enum(["public", "students", "teachers", "parents", "staff"]),
 });
 cmsRouter.post("/notices", authenticate, authorize("announcements:publish"), async (req, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
   const parsed = noticeSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  res.status(201).json(await createNotice({ ...parsed.data, publishedByUserId: req.userId! }));
+  res.status(201).json(await createNotice({ ...parsed.data, publishedByUserId: req.userId }));
 });
+
 
 const eventSchema = z.object({
   title: z.string().min(1),

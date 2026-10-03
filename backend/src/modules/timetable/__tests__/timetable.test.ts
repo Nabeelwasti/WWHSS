@@ -1,21 +1,39 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Real test of the conflict-detection logic against a mocked Prisma client
-// — checks actual overlap math, not just that the function runs.
+const { mockTimetableFindMany, mockTimetableCreate } = vi.hoisted(() => ({
+  mockTimetableFindMany: vi.fn(),
+  mockTimetableCreate: vi.fn(),
+}));
+
 vi.mock("../../../db/client.js", () => ({
+
   prisma: {
-    timetableSlot: { findMany: vi.fn(), create: vi.fn() },
+    $transaction: vi.fn(async (cb: (tx: unknown) => unknown) =>
+      cb({
+        timetableSlot: {
+          findMany: mockTimetableFindMany,
+          create: mockTimetableCreate,
+        },
+      })
+    ),
+    timetableSlot: { findMany: mockTimetableFindMany, create: mockTimetableCreate },
     userRole: { findMany: vi.fn() },
     studentProfile: { findFirst: vi.fn() },
     parentStudentLink: { findFirst: vi.fn() },
+    section: { findUnique: vi.fn() },
+    subject: { findUnique: vi.fn() },
+    user: { findUnique: vi.fn() },
+    room: { findUnique: vi.fn() },
   },
 }));
 
 import { prisma } from "../../../db/client.js";
 import { createTimetableSlot, canViewClassTimetable, ConflictError } from "../timetable.service.js";
 
-const mockedFindMany = prisma.timetableSlot.findMany as unknown as ReturnType<typeof vi.fn>;
-const mockedCreate = prisma.timetableSlot.create as unknown as ReturnType<typeof vi.fn>;
+const mockSectionFind = prisma.section.findUnique as unknown as ReturnType<typeof vi.fn>;
+const mockSubjectFind = prisma.subject.findUnique as unknown as ReturnType<typeof vi.fn>;
+const mockUserFind = prisma.user.findUnique as unknown as ReturnType<typeof vi.fn>;
+const mockRoomFind = prisma.room.findUnique as unknown as ReturnType<typeof vi.fn>;
 
 const baseInput = {
   classId: "grade-10",
@@ -29,47 +47,58 @@ const baseInput = {
 
 describe("createTimetableSlot", () => {
   beforeEach(() => {
-    mockedFindMany.mockReset();
-    mockedCreate.mockReset();
+    mockTimetableFindMany.mockReset();
+    mockTimetableCreate.mockReset();
+    mockSectionFind.mockReset();
+    mockSubjectFind.mockReset();
+    mockUserFind.mockReset();
+    mockRoomFind.mockReset();
+
+    mockSectionFind.mockResolvedValue({ id: "section-a", classId: "grade-10" });
+    mockSubjectFind.mockResolvedValue({ id: "physics" });
+    mockUserFind.mockResolvedValue({ id: "teacher-1", isActive: true });
+    mockRoomFind.mockResolvedValue({ id: "room-1" });
   });
 
+
   it("creates the slot when there is no real overlap", async () => {
-    mockedFindMany.mockResolvedValue([]); // no existing slots at all
-    mockedCreate.mockResolvedValue({ id: "slot-1", ...baseInput });
+    mockTimetableFindMany.mockResolvedValue([]); // no existing slots at all
+    mockTimetableCreate.mockResolvedValue({ id: "slot-1", ...baseInput });
 
     const result = await createTimetableSlot(baseInput);
     expect(result).toMatchObject({ id: "slot-1" });
-    expect(mockedCreate).toHaveBeenCalled();
+    expect(mockTimetableCreate).toHaveBeenCalled();
   });
 
   it("rejects a genuinely overlapping time for the same teacher", async () => {
-    mockedFindMany.mockResolvedValue([
+    mockTimetableFindMany.mockResolvedValue([
       { teacherId: "teacher-1", roomId: null, startTime: "09:15", endTime: "10:00" },
     ]);
 
     await expect(createTimetableSlot(baseInput)).rejects.toThrow(ConflictError);
-    expect(mockedCreate).not.toHaveBeenCalled();
+    expect(mockTimetableCreate).not.toHaveBeenCalled();
   });
 
   it("does NOT reject two slots that are merely adjacent (no real overlap)", async () => {
     // Ends exactly when the new one starts — a real school schedule needs
     // this to work, so back-to-back periods must not be flagged.
-    mockedFindMany.mockResolvedValue([
+    mockTimetableFindMany.mockResolvedValue([
       { teacherId: "teacher-1", roomId: null, startTime: "08:15", endTime: "09:00" },
     ]);
-    mockedCreate.mockResolvedValue({ id: "slot-2", ...baseInput });
+    mockTimetableCreate.mockResolvedValue({ id: "slot-2", ...baseInput });
 
     const result = await createTimetableSlot(baseInput);
     expect(result).toMatchObject({ id: "slot-2" });
   });
 
   it("rejects a room double-booking even with a different teacher", async () => {
-    mockedFindMany.mockResolvedValue([
+    mockTimetableFindMany.mockResolvedValue([
       { teacherId: "someone-else", roomId: "room-1", startTime: "09:00", endTime: "09:45" },
     ]);
 
     await expect(createTimetableSlot({ ...baseInput, roomId: "room-1" })).rejects.toThrow(ConflictError);
   });
+
 });
 
 describe("canViewClassTimetable", () => {

@@ -50,8 +50,9 @@ academicsRouter.get(
   }
 );
 
-academicsRouter.get("/my-classes", async (req, res) => {
-  const classes = await getMyScopedClasses(req.userId!);
+academicsRouter.get("/my-classes", authenticate, async (req, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
+  const classes = await getMyScopedClasses(req.userId);
   res.json({ classes, scopeIsSchoolWide: classes === null });
 });
 

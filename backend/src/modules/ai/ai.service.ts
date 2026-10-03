@@ -198,6 +198,13 @@ export async function askCampusAI(userId: string, message: string): Promise<stri
   const preferredTier = classifyTask(message);
   const ordered = orderByTier(providers, preferredTier);
 
+function sanitizeErrorMessage(msg: string): string {
+  return msg
+    .replace(/key=[A-Za-z0-9_-]+/gi, "key=[REDACTED]")
+    .replace(/x-api-key['"]?\s*:\s*['"]?[A-Za-z0-9_-]+/gi, "x-api-key: [REDACTED]")
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [REDACTED]");
+}
+
   const failures: string[] = [];
   for (const cfg of ordered) {
     try {
@@ -205,10 +212,12 @@ export async function askCampusAI(userId: string, message: string): Promise<stri
       if (reply.trim().length > 0) return reply;
       failures.push(`${cfg.type}: returned an empty reply`);
     } catch (err) {
-      failures.push(`${cfg.type}: ${err instanceof Error ? err.message : String(err)}`);
+      const rawMsg = err instanceof Error ? err.message : String(err);
+      failures.push(`${cfg.type}: ${sanitizeErrorMessage(rawMsg)}`);
     }
   }
 
   console.error("All configured AI providers failed:", failures);
   throw new Error("The AI assistant is temporarily unavailable — every configured provider failed. Please try again shortly.");
 }
+

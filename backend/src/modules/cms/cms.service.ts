@@ -10,9 +10,18 @@ export async function upsertPage(input: { slug: string; title: string; content: 
   });
 }
 
-export async function setPagePublished(slug: string, isPublished: boolean) {
-  return prisma.cmsPage.update({ where: { slug }, data: { isPublished } });
+export async function setPagePublished(slug: string, isPublished: boolean, updatedByUserId: string) {
+  const page = await prisma.cmsPage.update({ where: { slug }, data: { isPublished } });
+  await prisma.auditLog.create({
+    data: {
+      userId: updatedByUserId,
+      action: isPublished ? "cms:publish_page" : "cms:unpublish_page",
+      resource: `cms_page:${slug}`,
+    },
+  });
+  return page;
 }
+
 
 // Public read — only ever returns pages that are actually marked
 // published. A draft is genuinely invisible here, not just hidden by the
@@ -30,8 +39,18 @@ export async function listAllPages() {
 // ---------- NOTICES ----------
 
 export async function createNotice(input: { title: string; body: string; audience: string; publishedByUserId: string }) {
-  return prisma.notice.create({ data: input });
+  const notice = await prisma.notice.create({ data: input });
+  await prisma.auditLog.create({
+    data: {
+      userId: input.publishedByUserId,
+      action: "cms:create_notice",
+      resource: `notice:${notice.id}`,
+      metadata: { audience: input.audience },
+    },
+  });
+  return notice;
 }
+
 
 export async function getUserPermittedAudiences(userId: string): Promise<Set<string>> {
   const permitted = new Set<string>(["public"]);

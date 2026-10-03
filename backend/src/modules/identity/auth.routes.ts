@@ -72,11 +72,12 @@ const changePasswordSchema = z.object({
 });
 
 authRouter.post("/change-password", authenticate, async (req, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
   const parsed = changePasswordSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   try {
-    await changePassword(req.userId!, parsed.data.currentPassword, parsed.data.newPassword);
+    await changePassword(req.userId, parsed.data.currentPassword, parsed.data.newPassword);
     // All refresh tokens were revoked, so clear this browser's cookie too;
     // the person signs in again with the new password.
     res.clearCookie("refresh_token", { path: "/api/auth" });
@@ -91,6 +92,7 @@ authRouter.post("/change-password", authenticate, async (req, res) => {
 // frontend calls to know what to render. Every field comes straight from
 // the database; nothing here is placeholder or invented.
 authRouter.get("/me", authenticate, async (req, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
   const user = await prisma.user.findUnique({
     where: { id: req.userId },
     select: {
@@ -121,6 +123,7 @@ authRouter.get("/me", authenticate, async (req, res) => {
 // and turn it back off at any time. Never defaulted to on, never required.
 const consentSchema = z.object({ consent: z.boolean() });
 authRouter.post("/ai-consent", authenticate, async (req, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
   const parsed = consentSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -129,7 +132,7 @@ authRouter.post("/ai-consent", authenticate, async (req, res) => {
     data: { aiPersonalizationConsent: parsed.data.consent },
   });
   await prisma.auditLog.create({
-    data: { userId: req.userId!, action: "ai:consent_changed", metadata: { consent: parsed.data.consent } },
+    data: { userId: req.userId, action: "ai:consent_changed", metadata: { consent: parsed.data.consent } },
   });
 
   res.status(204).send();

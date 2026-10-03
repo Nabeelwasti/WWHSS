@@ -2,7 +2,7 @@
 FROM node:20-slim AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 COPY . .
 RUN npx prisma generate
 RUN npm run build
@@ -17,7 +17,8 @@ ENV NODE_ENV=production
 RUN groupadd -r wwhs && useradd -r -g wwhs wwhs
 
 COPY package*.json ./
-RUN npm install --omit=dev
+RUN npm ci --omit=dev
+
 
 # The Prisma client's generated query engine lives in node_modules/.prisma
 # and is version-matched to the schema — copied from the build stage rather

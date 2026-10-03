@@ -17,28 +17,43 @@ vi.mock("../../../config/env.js", () => ({
   },
 }));
 
+const { mockFindFirst, mockUpdateMany, mockCreate, mockUserFindUnique } = vi.hoisted(() => ({
+  mockFindFirst: vi.fn(),
+  mockUpdateMany: vi.fn(),
+  mockCreate: vi.fn(),
+  mockUserFindUnique: vi.fn(),
+}));
+
 vi.mock("../../../db/client.js", () => ({
   prisma: {
+    $transaction: vi.fn(async (cb: (tx: unknown) => unknown) =>
+      cb({
+        refreshToken: {
+          findFirst: mockFindFirst,
+          updateMany: mockUpdateMany,
+          create: mockCreate,
+        },
+        user: {
+          findUnique: mockUserFindUnique,
+        },
+      })
+    ),
     refreshToken: {
-      findFirst: vi.fn(),
-      updateMany: vi.fn(),
-      create: vi.fn(),
+      findFirst: mockFindFirst,
+      updateMany: mockUpdateMany,
+      create: mockCreate,
     },
     user: {
-      findUnique: vi.fn(),
+      findUnique: mockUserFindUnique,
     },
   },
 }));
 
-import { prisma } from "../../../db/client.js";
+
 import { refresh, AuthError } from "../auth.service.js";
 
-const mockFindFirst = prisma.refreshToken.findFirst as unknown as ReturnType<typeof vi.fn>;
-const mockUpdateMany = prisma.refreshToken.updateMany as unknown as ReturnType<typeof vi.fn>;
-const mockCreate = prisma.refreshToken.create as unknown as ReturnType<typeof vi.fn>;
-const mockUserFindUnique = prisma.user.findUnique as unknown as ReturnType<typeof vi.fn>;
-
 describe("Refresh Token Rotation Security", () => {
+
   beforeEach(() => {
     mockFindFirst.mockReset();
     mockUpdateMany.mockReset();

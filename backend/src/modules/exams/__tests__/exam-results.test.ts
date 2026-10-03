@@ -1,27 +1,42 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+const {
+  mockExamFind,
+  mockSubjectFind,
+  mockStudentFind,
+  mockUserRoleFind,
+  mockResultUpsert,
+  mockAuditCreate,
+} = vi.hoisted(() => ({
+  mockExamFind: vi.fn(),
+  mockSubjectFind: vi.fn(),
+  mockStudentFind: vi.fn(),
+  mockUserRoleFind: vi.fn(),
+  mockResultUpsert: vi.fn(),
+  mockAuditCreate: vi.fn(),
+}));
+
 vi.mock("../../../db/client.js", () => ({
   prisma: {
-    exam: { findUnique: vi.fn() },
-    subject: { findUnique: vi.fn() },
-    studentProfile: { findMany: vi.fn() },
-    userRole: { findMany: vi.fn() },
-    examResult: { upsert: vi.fn() },
-    auditLog: { create: vi.fn() },
+    $transaction: vi.fn(async (cb: (tx: unknown) => unknown) =>
+      cb({
+        examResult: { upsert: mockResultUpsert },
+        auditLog: { create: mockAuditCreate },
+      })
+    ),
+    exam: { findUnique: mockExamFind },
+    subject: { findUnique: mockSubjectFind },
+    studentProfile: { findMany: mockStudentFind },
+    userRole: { findMany: mockUserRoleFind },
+    examResult: { upsert: mockResultUpsert },
+    auditLog: { create: mockAuditCreate },
   },
 }));
 
-import { prisma } from "../../../db/client.js";
 import { recordExamResults, ExamValidationError } from "../exams.service.js";
 
-const mockExamFind = prisma.exam.findUnique as unknown as ReturnType<typeof vi.fn>;
-const mockSubjectFind = prisma.subject.findUnique as unknown as ReturnType<typeof vi.fn>;
-const mockStudentFind = prisma.studentProfile.findMany as unknown as ReturnType<typeof vi.fn>;
-const mockUserRoleFind = prisma.userRole.findMany as unknown as ReturnType<typeof vi.fn>;
-const mockResultUpsert = prisma.examResult.upsert as unknown as ReturnType<typeof vi.fn>;
-const mockAuditCreate = prisma.auditLog.create as unknown as ReturnType<typeof vi.fn>;
-
 describe("Exam Results Hardening and Validation", () => {
+
   beforeEach(() => {
     mockExamFind.mockReset();
     mockSubjectFind.mockReset();

@@ -40,8 +40,9 @@ attendanceRouter.post(
     const parsed = markSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
+    if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
     try {
-      const saved = await markAttendance({ ...parsed.data, markedByUserId: req.userId! });
+      const saved = await markAttendance({ ...parsed.data, markedByUserId: req.userId });
       res.status(201).json({ saved: saved.length });
     } catch (e) {
       if (e instanceof AttendanceValidationError) return res.status(400).json({ error: e.message });

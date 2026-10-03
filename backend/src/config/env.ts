@@ -15,4 +15,6 @@ export const env = {
   accessTokenTtlMin: Number(process.env.ACCESS_TOKEN_TTL_MIN ?? 15),
   refreshTokenTtlDays: Number(process.env.REFRESH_TOKEN_TTL_DAYS ?? 30),
   corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
+  libraryFinePerDay: Number(process.env.LIBRARY_FINE_PER_DAY ?? 5),
 };
+

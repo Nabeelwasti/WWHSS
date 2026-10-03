@@ -29,10 +29,16 @@ import {
   getQuizCourseScope,
   submitQuizAttempt,
   getQuizAttemptsForStudent,
+  NotFoundError,
+  LmsValidationError,
+  verifyStudentCourseEnrollment,
 } from "./lms.service.js";
+
 import { getUserIdForStudentProfile, notifyUser } from "../notifications/notifications.service.js";
+import { requirePermission } from "../identity/permissions.js";
 
 export const lmsRouter = Router();
+
 lmsRouter.use(authenticate);
 
 // ---------- COURSES ----------
@@ -56,15 +62,17 @@ lmsRouter.get(
   "/courses",
   authorize("course:manage", (req) => ({ classId: req.query.classId as string })),
   async (req, res) => {
+    if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
     const classId = req.query.classId as string | undefined;
     if (!classId) return res.status(400).json({ error: "classId is required" });
     // Real per-subject filtering: a subject-scoped teacher only sees their
     // own subject's courses, not every subject in the class — fixing a
     // scope leak the permission check alone (classId only) didn't catch.
-    const subjectRestriction = await getCallerSubjectRestriction(req.userId!, classId);
+    const subjectRestriction = await getCallerSubjectRestriction(req.userId, classId);
     res.json({ courses: await listCoursesForClassRestricted(classId, subjectRestriction) });
   }
 );
+
 
 // ---------- LESSONS & RESOURCES ----------
 
@@ -85,12 +93,30 @@ lmsRouter.post(
 );
 
 lmsRouter.get("/courses/:courseId/lessons", async (req, res) => {
-  // Reading lesson content requires no extra permission beyond being
-  // enrolled/assigned to the course's class — enforced simply by requiring
-  // the caller to already know a real courseId; fuller enrollment-based
-  // filtering is a follow-up once section-level enrollment checks exist.
-  res.json({ lessons: await listLessonsForCourse(req.params.courseId) });
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
+
+  try {
+    const studentProfile = await prisma.studentProfile.findUnique({
+      where: { userId: req.userId },
+      select: { id: true },
+    });
+
+    if (studentProfile) {
+      await verifyStudentCourseEnrollment(studentProfile.id, req.params.courseId);
+    } else {
+      const scope = await getCourseScope(req.params.courseId);
+      await requirePermission(req.userId, "academics:view", scope);
+    }
+
+    res.json({ lessons: await listLessonsForCourse(req.params.courseId) });
+  } catch (e) {
+    if (e instanceof NotFoundError) return res.status(404).json({ error: e.message });
+    if (e instanceof LmsValidationError) return res.status(400).json({ error: e.message });
+    if (e instanceof Error && e.name === "ForbiddenError") return res.status(403).json({ error: e.message });
+    throw e;
+  }
 });
+
 
 const resourceSchema = z.object({
   lessonId: z.string().uuid(),
@@ -104,10 +130,12 @@ lmsRouter.post(
   // fixes the gap described above the getLessonCourseScope definition.
   authorize("course:manage", async (req) => await getLessonCourseScope(req.body?.lessonId)),
   async (req, res) => {
-  const parsed = resourceSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  res.status(201).json(await addResource({ ...parsed.data, uploadedByUserId: req.userId! }));
-});
+    if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
+    const parsed = resourceSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+    res.status(201).json(await addResource({ ...parsed.data, uploadedByUserId: req.userId }));
+  }
+);
 
 // ---------- ASSIGNMENTS ----------
 
@@ -122,15 +150,17 @@ lmsRouter.post(
   "/assignments",
   authorize("assignments:create", async (req) => await getCourseScope(req.body?.courseId)),
   async (req, res) => {
+    if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
     const parsed = assignmentSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const assignment = await createAssignment(parsed.data);
     await prisma.auditLog.create({
-      data: { userId: req.userId!, action: "assignments:create", resource: `assignment:${assignment.id}` },
+      data: { userId: req.userId, action: "assignments:create", resource: `assignment:${assignment.id}` },
     });
     res.status(201).json(assignment);
   }
 );
+
 
 lmsRouter.get(
   "/courses/:courseId/assignments",
@@ -199,12 +229,13 @@ lmsRouter.post(
   "/submissions/:submissionId/grade",
   authorize("grades:enter", async (req) => await getSubmissionCourseScope(req.params.submissionId)),
   async (req, res) => {
+    if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
     const parsed = gradeSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
     const graded = await gradeSubmission({
       submissionId: req.params.submissionId,
-      gradedByUserId: req.userId!,
+      gradedByUserId: req.userId,
       ...parsed.data,
     });
 
@@ -259,17 +290,37 @@ lmsRouter.post(
   }
 );
 
-// A student taking the quiz — real permission check (assignments:view:own
-// via self-relationship, since taking a quiz is "your own work" the same
-// way a submission is), and the service layer itself strips answer keys
-// before this ever reaches the response.
-lmsRouter.get(
-  "/quizzes/:quizId",
-  authorize("assignments:view:own", (req) => ({ studentId: req.query.studentProfileId as string })),
-  async (req, res) => {
-    res.json(await getQuizForTaking(req.params.quizId));
+lmsRouter.get("/quizzes/:quizId", async (req, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
+
+  try {
+    const studentProfile = await prisma.studentProfile.findUnique({
+      where: { userId: req.userId },
+      select: { id: true },
+    });
+
+    if (studentProfile) {
+      const requestedStudentId = req.query.studentProfileId as string | undefined;
+      if (requestedStudentId && requestedStudentId !== studentProfile.id) {
+        return res.status(403).json({ error: "Forbidden: cannot access another student's quiz" });
+      }
+      const quiz = await getQuizForTaking(req.params.quizId, studentProfile.id);
+      return res.json(quiz);
+    }
+
+    // Staff/Teacher path: check course:manage or assignments:create for the quiz course scope
+    const scope = await getQuizCourseScope(req.params.quizId);
+    await requirePermission(req.userId, "course:manage", scope);
+    const quiz = await getQuizForTaking(req.params.quizId);
+    return res.json(quiz);
+  } catch (e) {
+    if (e instanceof NotFoundError) return res.status(404).json({ error: e.message });
+    if (e instanceof LmsValidationError) return res.status(400).json({ error: e.message });
+    if (e instanceof Error && e.name === "ForbiddenError") return res.status(403).json({ error: e.message });
+    throw e;
   }
-);
+});
+
 
 const attemptSchema = z.object({
   studentProfileId: z.string().uuid(),

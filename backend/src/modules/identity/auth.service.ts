@@ -35,36 +35,39 @@ export async function refresh(presentedToken: string) {
   const hash = hashRefreshToken(presentedToken);
   const now = new Date();
 
-  const record = await prisma.refreshToken.findFirst({ where: { tokenHash: hash } });
+  return prisma.$transaction(async (tx) => {
+    const record = await tx.refreshToken.findFirst({ where: { tokenHash: hash } });
 
-  if (!record || record.revoked || record.expiresAt < now) {
-    throw new AuthError("Invalid or expired refresh token");
-  }
+    if (!record || record.revoked || record.expiresAt < now) {
+      throw new AuthError("Invalid or expired refresh token");
+    }
 
-  // Atomic conditional update: exactly one concurrent request can flip revoked: false -> true
-  const claimResult = await prisma.refreshToken.updateMany({
-    where: {
-      id: record.id,
-      revoked: false,
-      expiresAt: { gt: now },
-    },
-    data: { revoked: true },
+    // Atomic conditional update: exactly one concurrent request can flip revoked: false -> true
+    const claimResult = await tx.refreshToken.updateMany({
+      where: {
+        id: record.id,
+        revoked: false,
+        expiresAt: { gt: now },
+      },
+      data: { revoked: true },
+    });
+
+    if (claimResult.count !== 1) {
+      throw new AuthError("Invalid or expired refresh token");
+    }
+
+    const user = await tx.user.findUnique({ where: { id: record.userId } });
+    if (!user || !user.isActive) throw new AuthError("Account inactive");
+
+    const accessToken = signAccessToken({ sub: user.id, email: user.email });
+    const { token: newRefresh, hash: newHash } = newRefreshTokenValue();
+    const expiresAt = new Date(Date.now() + env.refreshTokenTtlDays * 24 * 60 * 60 * 1000);
+    await tx.refreshToken.create({ data: { userId: user.id, tokenHash: newHash, expiresAt } });
+
+    return { accessToken, refreshToken: newRefresh };
   });
-
-  if (claimResult.count !== 1) {
-    throw new AuthError("Invalid or expired refresh token");
-  }
-
-  const user = await prisma.user.findUnique({ where: { id: record.userId } });
-  if (!user || !user.isActive) throw new AuthError("Account inactive");
-
-  const accessToken = signAccessToken({ sub: user.id, email: user.email });
-  const { token: newRefresh, hash: newHash } = newRefreshTokenValue();
-  const expiresAt = new Date(Date.now() + env.refreshTokenTtlDays * 24 * 60 * 60 * 1000);
-  await prisma.refreshToken.create({ data: { userId: user.id, tokenHash: newHash, expiresAt } });
-
-  return { accessToken, refreshToken: newRefresh };
 }
+
 
 export async function logout(presentedToken: string) {
   const hash = hashRefreshToken(presentedToken);

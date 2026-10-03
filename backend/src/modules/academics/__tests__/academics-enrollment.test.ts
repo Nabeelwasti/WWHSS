@@ -4,6 +4,7 @@ vi.mock("../../../db/client.js", () => ({
   prisma: {
     section: { findUnique: vi.fn() },
     studentProfile: { create: vi.fn() },
+    auditLog: { create: vi.fn() },
   },
 }));
 

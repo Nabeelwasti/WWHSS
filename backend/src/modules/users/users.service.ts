@@ -44,8 +44,29 @@ export async function assignRole(input: {
   subjectId?: string;
   departmentId?: string;
 }) {
+  const user = await prisma.user.findUnique({ where: { id: input.userId }, select: { id: true } });
+  if (!user) throw new Error(`User not found: ${input.userId}`);
+
   const role = await prisma.role.findUnique({ where: { key: input.roleKey } });
   if (!role) throw new Error(`Unknown role: ${input.roleKey}`);
+
+  if (input.classId) {
+    const cls = await prisma.class.findUnique({ where: { id: input.classId }, select: { id: true } });
+    if (!cls) throw new Error(`Class not found: ${input.classId}`);
+  }
+
+  if (input.sectionId) {
+    const sec = await prisma.section.findUnique({ where: { id: input.sectionId }, select: { id: true, classId: true } });
+    if (!sec) throw new Error(`Section not found: ${input.sectionId}`);
+    if (input.classId && sec.classId !== input.classId) {
+      throw new Error(`Section ${input.sectionId} does not belong to specified class ${input.classId}`);
+    }
+  }
+
+  if (input.subjectId) {
+    const subj = await prisma.subject.findUnique({ where: { id: input.subjectId }, select: { id: true } });
+    if (!subj) throw new Error(`Subject not found: ${input.subjectId}`);
+  }
 
   return prisma.userRole.create({
     data: {
@@ -58,6 +79,7 @@ export async function assignRole(input: {
     },
   });
 }
+
 
 export async function removeRoleAssignment(userRoleId: string) {
   return prisma.userRole.delete({ where: { id: userRoleId } });

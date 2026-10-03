@@ -32,10 +32,11 @@ const paymentSchema = z.object({
   amount: z.number().positive(),
   method: z.enum(["cash", "bank_transfer", "card", "online"]),
 });
-financeRouter.post("/payments", authorize("finance:manage"), async (req, res) => {
+financeRouter.post("/payments", authenticate, authorize("finance:manage"), async (req, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
   const parsed = paymentSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  res.status(201).json(await recordPayment({ ...parsed.data, receivedByUserId: req.userId! }));
+  res.status(201).json(await recordPayment({ ...parsed.data, receivedByUserId: req.userId }));
 });
 
 // A student's own invoices, or a linked parent's — real relationship

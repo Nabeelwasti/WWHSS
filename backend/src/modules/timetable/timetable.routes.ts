@@ -56,10 +56,11 @@ timetableRouter.post(
 // comment on canViewClassTimetable for why the generic scoped-permission
 // check has a real gap for naturally-unscoped roles like "student".
 timetableRouter.get("/class", async (req, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
   const { classId, sectionId } = req.query as { classId?: string; sectionId?: string };
   if (!classId || !sectionId) return res.status(400).json({ error: "classId and sectionId are required" });
 
-  const allowed = await canViewClassTimetable(req.userId!, classId, sectionId);
+  const allowed = await canViewClassTimetable(req.userId, classId, sectionId);
   if (!allowed) return res.status(403).json({ error: "Forbidden: you may only view your own class's timetable" });
 
   res.json({ slots: await listTimetableForClass(classId, sectionId) });
@@ -69,7 +70,8 @@ timetableRouter.get("/class", async (req, res) => {
 // authentication, since this only ever returns slots where THEY are the
 // assigned teacher (enforced by the query itself, not by trusting input).
 timetableRouter.get("/my-schedule", async (req, res) => {
-  res.json({ slots: await listTimetableForTeacher(req.userId!) });
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
+  res.json({ slots: await listTimetableForTeacher(req.userId) });
 });
 
 timetableRouter.post("/rooms", authorize("timetable:manage"), async (req, res) => {

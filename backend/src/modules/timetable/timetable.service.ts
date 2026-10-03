@@ -15,30 +15,51 @@ export async function createTimetableSlot(input: {
   startTime: string;
   endTime: string;
 }) {
-  const overlapping = await prisma.timetableSlot.findMany({
-    where: {
-      dayOfWeek: input.dayOfWeek,
-      OR: [
-        { teacherId: input.teacherId },
-        ...(input.roomId ? [{ roomId: input.roomId }] : []),
-        { classId: input.classId, sectionId: input.sectionId },
-      ],
-    },
-  });
+  const [section, subject, teacher] = await Promise.all([
+    prisma.section.findUnique({ where: { id: input.sectionId }, select: { id: true, classId: true } }),
+    prisma.subject.findUnique({ where: { id: input.subjectId }, select: { id: true } }),
+    prisma.user.findUnique({ where: { id: input.teacherId }, select: { id: true, isActive: true } }),
+  ]);
 
-  const conflict = overlapping.find((slot) => timesOverlap(slot.startTime, slot.endTime, input.startTime, input.endTime));
-  if (conflict) {
-    const reason =
-      conflict.teacherId === input.teacherId
-        ? "This teacher already has a class in this time slot."
-        : conflict.roomId && conflict.roomId === input.roomId
-        ? "This room is already booked in this time slot."
-        : "This class/section already has a period in this time slot.";
-    throw new ConflictError(reason);
+  if (!section) throw new ConflictError(`Section ${input.sectionId} not found`);
+  if (section.classId !== input.classId) {
+    throw new ConflictError(`Section ${input.sectionId} does not belong to specified class ${input.classId}`);
+  }
+  if (!subject) throw new ConflictError(`Subject ${input.subjectId} not found`);
+  if (!teacher || !teacher.isActive) throw new ConflictError(`Assigned teacher is invalid or inactive`);
+
+  if (input.roomId) {
+    const room = await prisma.room.findUnique({ where: { id: input.roomId }, select: { id: true } });
+    if (!room) throw new ConflictError(`Room ${input.roomId} not found`);
   }
 
-  return prisma.timetableSlot.create({ data: input });
+  return prisma.$transaction(async (tx) => {
+    const overlapping = await tx.timetableSlot.findMany({
+      where: {
+        dayOfWeek: input.dayOfWeek,
+        OR: [
+          { teacherId: input.teacherId },
+          ...(input.roomId ? [{ roomId: input.roomId }] : []),
+          { classId: input.classId, sectionId: input.sectionId },
+        ],
+      },
+    });
+
+    const conflict = overlapping.find((slot) => timesOverlap(slot.startTime, slot.endTime, input.startTime, input.endTime));
+    if (conflict) {
+      const reason =
+        conflict.teacherId === input.teacherId
+          ? "This teacher already has a class in this time slot."
+          : conflict.roomId && conflict.roomId === input.roomId
+          ? "This room is already booked in this time slot."
+          : "This class/section already has a period in this time slot.";
+      throw new ConflictError(reason);
+    }
+
+    return tx.timetableSlot.create({ data: input });
+  });
 }
+
 
 function timesOverlap(startA: string, endA: string, startB: string, endB: string): boolean {
   return startA < endB && startB < endA;

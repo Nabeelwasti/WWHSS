@@ -33,35 +33,36 @@ export async function markAttendance(input: {
     );
   }
 
-  // Real writes, one per student, upserted so re-marking the same day
-  // corrects the existing row instead of creating a duplicate.
-  const results = await Promise.all(
-    input.records.map((r) =>
-      prisma.attendanceRecord.upsert({
-        where: { studentProfileId_date: { studentProfileId: r.studentProfileId, date } },
-        update: { status: r.status, markedByUserId: input.markedByUserId },
-        create: {
-          studentProfileId: r.studentProfileId,
-          classId: input.classId,
-          sectionId: input.sectionId,
-          date,
-          status: r.status,
-          markedByUserId: input.markedByUserId,
-        },
-      })
-    )
-  );
+  return prisma.$transaction(async (tx) => {
+    const results = await Promise.all(
+      input.records.map((r) =>
+        tx.attendanceRecord.upsert({
+          where: { studentProfileId_date: { studentProfileId: r.studentProfileId, date } },
+          update: { status: r.status, markedByUserId: input.markedByUserId },
+          create: {
+            studentProfileId: r.studentProfileId,
+            classId: input.classId,
+            sectionId: input.sectionId,
+            date,
+            status: r.status,
+            markedByUserId: input.markedByUserId,
+          },
+        })
+      )
+    );
 
-  await prisma.auditLog.create({
-    data: {
-      userId: input.markedByUserId,
-      action: "attendance:mark",
-      resource: `class:${input.classId}:section:${input.sectionId}:date:${input.date}`,
-      metadata: { count: results.length },
-    },
+    await tx.auditLog.create({
+      data: {
+        userId: input.markedByUserId,
+        action: "attendance:mark",
+        resource: `class:${input.classId}:section:${input.sectionId}:date:${input.date}`,
+        metadata: { count: results.length },
+      },
+    });
+
+    return results;
   });
 
-  return results;
 }
 
 export async function getStudentAttendance(studentProfileId: string) {

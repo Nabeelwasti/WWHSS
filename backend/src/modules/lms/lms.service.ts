@@ -115,12 +115,19 @@ export async function listAssignmentsForCourse(courseId: string) {
 export async function listAssignmentsForStudent(studentProfileId: string) {
   const student = await prisma.studentProfile.findUnique({
     where: { id: studentProfileId },
-    select: { classId: true },
+    select: { classId: true, sectionId: true },
   });
   if (!student?.classId) return [];
 
+  const permittedSubjects = await getEnrolledSubjectIdsForStudent(student.classId, student.sectionId);
+
   return prisma.assignment.findMany({
-    where: { course: { classId: student.classId } },
+    where: {
+      course: {
+        classId: student.classId,
+        ...(permittedSubjects ? { subjectId: { in: Array.from(permittedSubjects) } } : {}),
+      },
+    },
     include: {
       course: { include: { subject: true } },
       submissions: { where: { studentProfileId } },
@@ -129,17 +136,33 @@ export async function listAssignmentsForStudent(studentProfileId: string) {
   });
 }
 
-// A student's real available quizzes, with their own attempt attached (or
-// none, if not yet taken) — same pattern as listAssignmentsForStudent.
+export async function getEnrolledSubjectIdsForStudent(classId: string, sectionId?: string | null): Promise<Set<string> | null> {
+  if (!sectionId) return null;
+  const slots = await prisma.timetableSlot.findMany({
+    where: { classId },
+    select: { subjectId: true, sectionId: true },
+  });
+  if (slots.length === 0) return null;
+
+  return new Set(slots.filter((s) => s.sectionId === sectionId).map((s) => s.subjectId));
+}
+
 export async function listQuizzesForStudent(studentProfileId: string) {
   const student = await prisma.studentProfile.findUnique({
     where: { id: studentProfileId },
-    select: { classId: true },
+    select: { classId: true, sectionId: true },
   });
   if (!student?.classId) return [];
 
+  const permittedSubjects = await getEnrolledSubjectIdsForStudent(student.classId, student.sectionId);
+
   return prisma.quiz.findMany({
-    where: { course: { classId: student.classId } },
+    where: {
+      course: {
+        classId: student.classId,
+        ...(permittedSubjects ? { subjectId: { in: Array.from(permittedSubjects) } } : {}),
+      },
+    },
     include: {
       course: { include: { subject: true } },
       attempts: { where: { studentProfileId } },
@@ -147,6 +170,7 @@ export async function listQuizzesForStudent(studentProfileId: string) {
     },
   });
 }
+
 
 export async function getAssignmentCourseScope(assignmentId: string) {
   const assignment = await prisma.assignment.findUnique({
@@ -327,12 +351,8 @@ export async function submitQuizAttempt(input: {
   studentProfileId: string;
   answers: Record<string, number>; // questionId -> chosen choice index
 }) {
-  // Verify enrollment before submitting attempt when studentProfileId & quiz exist in DB
-  const student = await prisma.studentProfile.findUnique({ where: { id: input.studentProfileId }, select: { id: true } });
-  const quiz = await prisma.quiz.findUnique({ where: { id: input.quizId }, select: { id: true } });
-  if (student && quiz) {
-    await verifyStudentQuizEnrollment(input.studentProfileId, input.quizId);
-  }
+  await verifyStudentQuizEnrollment(input.studentProfileId, input.quizId);
+
 
   const questions = await prisma.quizQuestion.findMany({ where: { quizId: input.quizId } });
   if (questions.length === 0) throw new NotFoundError(`Quiz ${input.quizId} has no questions`);

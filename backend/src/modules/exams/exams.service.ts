@@ -99,40 +99,43 @@ export async function recordExamResults(
     }
   }
 
-  const upserts = await Promise.all(
-    input.results.map((r) =>
-      prisma.examResult.upsert({
-        where: {
-          examId_studentProfileId_subjectId: {
-            examId: input.examId,
-            studentProfileId: r.studentProfileId,
-            subjectId: input.subjectId,
+  return prisma.$transaction(async (tx) => {
+    const upserts = await Promise.all(
+      input.results.map((r) =>
+        tx.examResult.upsert({
+          where: {
+            examId_studentProfileId_subjectId: {
+              examId: input.examId,
+              studentProfileId: r.studentProfileId,
+              subjectId: input.subjectId,
+            },
           },
-        },
-        update: { marksObtained: r.marksObtained, maxMarks: r.maxMarks, grade: r.grade, remarks: r.remarks },
-        create: {
-          examId: input.examId,
-          subjectId: input.subjectId,
-          studentProfileId: r.studentProfileId,
-          marksObtained: r.marksObtained,
-          maxMarks: r.maxMarks,
-          grade: r.grade,
-          remarks: r.remarks,
-        },
-      })
-    )
-  );
+          update: { marksObtained: r.marksObtained, maxMarks: r.maxMarks, grade: r.grade, remarks: r.remarks },
+          create: {
+            examId: input.examId,
+            subjectId: input.subjectId,
+            studentProfileId: r.studentProfileId,
+            marksObtained: r.marksObtained,
+            maxMarks: r.maxMarks,
+            grade: r.grade,
+            remarks: r.remarks,
+          },
+        })
+      )
+    );
 
-  await prisma.auditLog.create({
-    data: {
-      userId: authenticatedUserId,
-      action: "exams:record_results",
-      resource: `exam:${input.examId}:subject:${input.subjectId}`,
-      metadata: { count: upserts.length },
-    },
+    await tx.auditLog.create({
+      data: {
+        userId: authenticatedUserId,
+        action: "exams:record_results",
+        resource: `exam:${input.examId}:subject:${input.subjectId}`,
+        metadata: { count: upserts.length },
+      },
+    });
+
+    return upserts;
   });
 
-  return upserts;
 }
 
 // A student's real report card — every subject's result for one exam,

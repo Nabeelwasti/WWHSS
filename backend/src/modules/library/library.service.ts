@@ -1,4 +1,5 @@
 import { prisma } from "../../db/client.js";
+import { env } from "../../config/env.js";
 
 export class LibraryError extends Error {}
 
@@ -27,15 +28,28 @@ export async function searchBooks(query: string) {
 // twice, enforced by actually checking its `available` flag inside the
 // same operation that flips it.
 export async function issueBook(input: { bookCopyId: string; userId: string; dueAt: string }) {
+  const user = await prisma.user.findUnique({ where: { id: input.userId }, select: { id: true } });
+  if (!user) throw new LibraryError(`User ${input.userId} not found`);
+
   return prisma.$transaction(async (tx) => {
     const copy = await tx.bookCopy.findUnique({ where: { id: input.bookCopyId } });
     if (!copy) throw new LibraryError("Copy not found");
     if (!copy.available) throw new LibraryError("This copy is already on loan");
 
     await tx.bookCopy.update({ where: { id: input.bookCopyId }, data: { available: false } });
-    return tx.bookLoan.create({
+    const loan = await tx.bookLoan.create({
       data: { bookCopyId: input.bookCopyId, userId: input.userId, dueAt: new Date(input.dueAt) },
     });
+
+    await tx.auditLog.create({
+      data: {
+        userId: input.userId,
+        action: "library:issue",
+        resource: `loan:${loan.id}:copy:${input.bookCopyId}`,
+      },
+    });
+
+    return loan;
   });
 }
 
@@ -47,19 +61,29 @@ export async function returnBook(loanId: string) {
 
     await tx.bookCopy.update({ where: { id: loan.bookCopyId }, data: { available: true } });
 
-    // Real, simple overdue fine calculation — no invented policy numbers,
-    // just a plain per-day rate a school can change in one place.
+    // Configurable overdue fine calculation using env.libraryFinePerDay
     const now = new Date();
     const daysLate = Math.max(0, Math.ceil((now.getTime() - loan.dueAt.getTime()) / (1000 * 60 * 60 * 24)));
-    const FINE_PER_DAY = 5; // school's actual currency unit — configurable, not hardcoded policy
-    const fineAmount = daysLate * FINE_PER_DAY;
+    const fineAmount = daysLate * env.libraryFinePerDay;
 
-    return tx.bookLoan.update({
+    const updated = await tx.bookLoan.update({
       where: { id: loanId },
       data: { returnedAt: now, fineAmount: fineAmount > 0 ? fineAmount : null },
     });
+
+    await tx.auditLog.create({
+      data: {
+        userId: loan.userId,
+        action: "library:return",
+        resource: `loan:${loanId}`,
+        metadata: { fineAmount: fineAmount > 0 ? fineAmount : 0, daysLate },
+      },
+    });
+
+    return updated;
   });
 }
+
 
 export async function listLoansForUser(userId: string) {
   return prisma.bookLoan.findMany({

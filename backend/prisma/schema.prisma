@@ -382,8 +382,8 @@ model ExamResult {
   examId           String
   studentProfileId String
   subjectId        String
-  marksObtained    Float
-  maxMarks         Float
+  marksObtained    Decimal @db.Decimal(5,2)
+  maxMarks         Decimal @db.Decimal(5,2)
   grade            String?
   remarks          String?
 
@@ -457,7 +457,7 @@ model BookLoan {
   issuedAt     DateTime  @default(now())
   dueAt        DateTime
   returnedAt   DateTime?
-  fineAmount   Float?
+  fineAmount   Decimal?  @db.Decimal(10,2)
 
   bookCopy BookCopy @relation(fields: [bookCopyId], references: [id])
   user     User     @relation(fields: [userId], references: [id])
@@ -468,11 +468,11 @@ model BookLoan {
 // ---------- FINANCE / FEES ----------
 
 model FeeStructure {
-  id             String @id @default(uuid())
+  id             String  @id @default(uuid())
   classId        String
   academicYearId String
-  name           String // "Tuition Term 1"
-  amount         Float
+  name           String  // "Tuition Term 1"
+  amount         Decimal @db.Decimal(10,2)
 
   class        Class        @relation(fields: [classId], references: [id])
   academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
@@ -485,7 +485,7 @@ model FeeInvoice {
   id               String    @id @default(uuid())
   feeStructureId   String
   studentProfileId String
-  amountDue        Float
+  amountDue        Decimal   @db.Decimal(10,2)
   dueDate          DateTime
   status           String    @default("pending") // pending | paid | overdue | waived
   createdAt        DateTime  @default(now())
@@ -504,7 +504,7 @@ model FeeInvoice {
 model Payment {
   id           String   @id @default(uuid())
   invoiceId    String
-  amount       Float
+  amount       Decimal  @db.Decimal(10,2)
   method       String   // cash | bank_transfer | card | online
   paidAt       DateTime @default(now())
   receivedByUserId String?
