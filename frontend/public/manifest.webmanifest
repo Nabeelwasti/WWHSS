@@ -1,0 +1,12 @@
+{
+  "name": "WWHS Digital Campus",
+  "short_name": "WWHS",
+  "description": "Workers Welfare Higher Secondary School — one place for learning, attendance, results and school news.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#123456",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

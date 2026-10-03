@@ -1,0 +1,65 @@
+# WWHS Digital Campus — self-hosted deployment
+# `docker compose up -d` gets a school running on their own hardware or any VPS.
+#
+# Before the first run: copy backend/.env.example to backend/.env and fill
+# in real secrets (see the comments in that file).
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: wwhs
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wwhs}
+      POSTGRES_DB: wwhs_digital_campus
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    # Not published to the host by default: the database should only be
+    # reachable by the backend on the private compose network, never from
+    # the internet. Uncomment ONLY for local debugging on your own machine.
+    # ports:
+    #   - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wwhs -d wwhs_digital_campus"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot setup job: creates the database tables and the first admin
+  # account, then exits. Safe to re-run — the seed uses upserts, and
+  # `prisma db push` refuses (rather than silently proceeds) if a change
+  # would destroy existing data.
+  migrate:
+    build:
+      context: ./backend
+      target: build
+    env_file: ./backend/.env
+    command: sh -c "npx prisma db push && npx tsx src/db/seed.ts"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    # No published port: the API is only reachable through the web
+    # container below, so the internet only ever sees one front door.
+
+  # The website itself, plus a forwarder for /api. This is the address you
+  # open in a browser (http://localhost, or your domain once you have one).
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+
+volumes:
+  db_data:

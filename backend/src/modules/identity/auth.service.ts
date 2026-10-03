@@ -1,0 +1,87 @@
+import argon2 from "argon2";
+import { prisma } from "../../db/client.js";
+import { env } from "../../config/env.js";
+import { signAccessToken, newRefreshTokenValue, hashRefreshToken } from "./tokens.js";
+
+export class AuthError extends Error {}
+
+export async function login(email: string, password: string) {
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user || !user.isActive) throw new AuthError("Invalid credentials");
+
+  const valid = await argon2.verify(user.passwordHash, password);
+  if (!valid) throw new AuthError("Invalid credentials");
+
+  const accessToken = signAccessToken({ sub: user.id, email: user.email });
+  const { token: refreshToken, hash } = newRefreshTokenValue();
+
+  const expiresAt = new Date(Date.now() + env.refreshTokenTtlDays * 24 * 60 * 60 * 1000);
+  await prisma.refreshToken.create({
+    data: { userId: user.id, tokenHash: hash, expiresAt },
+  });
+
+  await prisma.auditLog.create({
+    data: { userId: user.id, action: "auth:login" },
+  });
+
+  return {
+    accessToken,
+    refreshToken,
+    user: { id: user.id, email: user.email, fullName: user.fullName },
+  };
+}
+
+export async function refresh(presentedToken: string) {
+  const hash = hashRefreshToken(presentedToken);
+  const record = await prisma.refreshToken.findFirst({ where: { tokenHash: hash } });
+
+  if (!record || record.revoked || record.expiresAt < new Date()) {
+    throw new AuthError("Invalid or expired refresh token");
+  }
+
+  // Rotate: revoke the used token, issue a new one. Prevents replay of a
+  // stolen refresh token past its single use.
+  await prisma.refreshToken.update({ where: { id: record.id }, data: { revoked: true } });
+
+  const user = await prisma.user.findUnique({ where: { id: record.userId } });
+  if (!user || !user.isActive) throw new AuthError("Account inactive");
+
+  const accessToken = signAccessToken({ sub: user.id, email: user.email });
+  const { token: newRefresh, hash: newHash } = newRefreshTokenValue();
+  const expiresAt = new Date(Date.now() + env.refreshTokenTtlDays * 24 * 60 * 60 * 1000);
+  await prisma.refreshToken.create({ data: { userId: user.id, tokenHash: newHash, expiresAt } });
+
+  return { accessToken, refreshToken: newRefresh };
+}
+
+export async function logout(presentedToken: string) {
+  const hash = hashRefreshToken(presentedToken);
+  await prisma.refreshToken.updateMany({ where: { tokenHash: hash }, data: { revoked: true } });
+}
+
+
+// Self-service password change. Requires the CURRENT password even though
+// the person is already logged in: otherwise anyone who briefly borrows an
+// unlocked phone (very common on shared family devices) could lock the real
+// owner out permanently.
+export async function changePassword(userId: string, currentPassword: string, newPassword: string) {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || !user.isActive) throw new AuthError("Account not available");
+
+  const valid = await argon2.verify(user.passwordHash, currentPassword);
+  if (!valid) throw new AuthError("Your current password is incorrect");
+
+  if (newPassword === currentPassword) {
+    throw new AuthError("Your new password must be different from the current one");
+  }
+
+  const passwordHash = await argon2.hash(newPassword);
+  await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+
+  // Sign out every other session: if the old password was known to someone
+  // else (a temporary password relayed by an admin, say), their existing
+  // logins must stop working the moment it changes.
+  await prisma.refreshToken.updateMany({ where: { userId, revoked: false }, data: { revoked: true } });
+
+  await prisma.auditLog.create({ data: { userId, action: "auth:change_password" } });
+}

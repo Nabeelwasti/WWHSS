@@ -1,0 +1,365 @@
+/* ==========================================================================
+   WWHS Digital Campus — design system
+   One real, shared set of styles so every screen looks and feels like the
+   same product, instead of each component inventing its own look. Uses
+   plain CSS (no build-step dependency) so it works everywhere Vite does.
+   ========================================================================== */
+
+:root {
+  /* Brand */
+  --navy: #123456;
+  --navy-d: #0c2540;
+  --navy-l: #1c4a73;
+  --gold: #d9a441;
+  --gold-d: #a97f2f;
+
+  /* Semantic */
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --surface-2: #f8fafb;
+  --text: #1c2530;
+  --text-muted: #5b6672;
+  --border: #e2e6ea;
+  --success: #1a7d3a;
+  --success-bg: #e3f6e9;
+  --warn: #8a641f;
+  --warn-bg: #fbeecb;
+  --danger: #a32d2d;
+  --danger-bg: #fbdcdc;
+  --info: #185fa5;
+  --info-bg: #dce9fb;
+
+  /* Scale */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 4px 16px rgba(16, 24, 40, 0.08);
+  --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.14);
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans",
+    "Noto Nastaliq Urdu", Helvetica, Arial, sans-serif;
+
+  color-scheme: light;
+}
+
+/* Respect a person's OS-level preference for less motion — genuine
+   accessibility, not decoration. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* RTL (Urdu) gets the matching system font stack applied automatically via
+   html[dir="rtl"], set by the language switcher. */
+html[dir="rtl"] body { font-family: "Noto Nastaliq Urdu", var(--font); }
+
+a { color: var(--navy-l); }
+
+/* ---------- Layout ---------- */
+
+.page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-4) var(--space-6);
+  animation: fade-in 0.25s ease-out;
+}
+
+.page-narrow { max-width: 420px; }
+.page-wide { max-width: 960px; }
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------- App shell / nav ---------- */
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--navy);
+  color: #fff;
+  padding-top: env(safe-area-inset-top, 0px);
+  box-shadow: var(--shadow-md);
+}
+
+.app-header-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.app-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  overflow-x: auto;
+  flex: 1;
+  scrollbar-width: none;
+}
+.app-nav::-webkit-scrollbar { display: none; }
+
+.nav-link {
+  flex: 0 0 auto;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.78);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: var(--space-2) var(--space-3);
+  border-radius: 20px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+}
+.nav-link:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+.nav-link.active { background: rgba(255, 255, 255, 0.16); color: #fff; }
+
+/* ---------- Cards / sections ---------- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin-top: var(--space-4);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.card:hover { box-shadow: var(--shadow-md); }
+
+.card-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0 0 var(--space-3);
+}
+
+.card-accent { border-inline-start: 3px solid var(--gold); }
+.card-positive { border-color: #cfe9d8; background: #f6fbf7; }
+
+/* ---------- Buttons ---------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  font: inherit;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+  min-height: 40px; /* real touch-target size for phones, not an afterthought */
+}
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+
+.btn-primary { background: var(--navy); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--navy-l); box-shadow: var(--shadow-sm); }
+
+.btn-secondary { background: var(--surface); color: var(--navy); border-color: var(--border); }
+.btn-secondary:hover:not(:disabled) { background: var(--surface-2); }
+
+.btn-ghost { background: transparent; color: var(--text-muted); }
+.btn-ghost:hover:not(:disabled) { background: var(--surface-2); }
+
+.btn-danger { background: var(--danger-bg); color: var(--danger); }
+.btn-danger:hover:not(:disabled) { background: #f6c8c8; }
+
+.btn-block { width: 100%; }
+.btn-sm { min-height: 32px; padding: 6px 12px; font-size: 13px; }
+
+/* ---------- Forms ---------- */
+
+.field { display: block; margin-bottom: var(--space-3); font-size: 13px; font-weight: 600; color: var(--text-muted); }
+
+.input, select.input, textarea.input {
+  display: block;
+  width: 100%;
+  font: inherit;
+  font-size: 16px; /* prevents iOS Safari auto-zoom on focus */
+  padding: 10px 12px;
+  margin-top: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  min-height: 44px;
+}
+.input:focus, select.input:focus, textarea.input:focus {
+  outline: none;
+  border-color: var(--navy-l);
+  box-shadow: 0 0 0 3px rgba(28, 74, 115, 0.15);
+}
+
+/* ---------- Badges / status ---------- */
+
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.badge-success { background: var(--success-bg); color: var(--success); }
+.badge-warn { background: var(--warn-bg); color: var(--warn); }
+.badge-danger { background: var(--danger-bg); color: var(--danger); }
+.badge-info { background: var(--info-bg); color: var(--info); }
+
+/* ---------- Alerts ---------- */
+
+.alert { padding: var(--space-3); border-radius: var(--radius-sm); font-size: 13px; margin: var(--space-3) 0; }
+.alert-danger { background: var(--danger-bg); color: var(--danger); }
+.alert-success { background: var(--success-bg); color: var(--success); }
+.alert-info { background: var(--info-bg); color: var(--info); }
+
+/* ---------- Stat grid (dashboards) ---------- */
+
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: var(--space-3); }
+.stat { text-align: start; }
+.stat-value { font-size: 26px; font-weight: 800; line-height: 1.1; color: var(--navy); }
+.stat-label { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+/* ---------- Skeleton loading (real perceived-speed improvement) ---------- */
+
+.skeleton {
+  background: linear-gradient(90deg, #eceff1 25%, #f4f6f7 37%, #eceff1 63%);
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+  border-radius: var(--radius-sm);
+}
+@keyframes skeleton-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+/* ---------- Floating assistant launcher ---------- */
+
+.ai-fab {
+  position: fixed;
+  inset-inline-end: var(--space-4);
+  bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+  z-index: 30;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--navy);
+  color: #fff;
+  border: none;
+  box-shadow: var(--shadow-lg);
+  cursor: pointer;
+  font-size: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease;
+}
+.ai-fab:hover { transform: scale(1.06); }
+.ai-fab:active { transform: scale(0.95); }
+
+/* ---------- Toast (app-update notice etc.) ---------- */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--space-5) + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  background: var(--navy-d);
+  color: #fff;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 13px;
+  z-index: 40;
+  animation: toast-in 0.25s ease-out;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* ---------- Utility ---------- */
+
+.flex { display: flex; }
+.flex-col { display: flex; flex-direction: column; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.gap-1 { gap: var(--space-1); }
+.gap-2 { gap: var(--space-2); }
+.gap-3 { gap: var(--space-3); }
+.text-muted { color: var(--text-muted); }
+.text-sm { font-size: 13px; }
+.text-xs { font-size: 11px; }
+.mt-0 { margin-top: 0; }
+.mt-2 { margin-top: var(--space-2); }
+.mt-4 { margin-top: var(--space-4); }
+.w-full { width: 100%; }
+
+/* ---------- Responsive: comfortable on a phone, roomy on a desktop ---------- */
+
+@media (min-width: 640px) {
+  .page { padding-left: var(--space-6); padding-right: var(--space-6); }
+}
+
+/* Larger, easier tap targets specifically on touch devices */
+@media (pointer: coarse) {
+  .btn, .nav-link { min-height: 44px; }
+}
+
+/* ---------- Dark mode: respects the device setting ---------- */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1720;
+    --surface: #17212c;
+    --surface-2: #1d2833;
+    --text: #e8edf2;
+    --text-muted: #9aa7b4;
+    --border: #26313d;
+    --navy: #2f5d8a;
+    --navy-d: #1c3a5c;
+    --navy-l: #3f74a6;
+    color-scheme: dark;
+  }
+  .card-positive { background: #123a24; border-color: #1d4d31; }
+  .skeleton { background: linear-gradient(90deg, #1d2833 25%, #232f3b 37%, #1d2833 63%); background-size: 400% 100%; }
+}

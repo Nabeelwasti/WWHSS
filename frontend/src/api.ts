@@ -1,0 +1,345 @@
+// Every function here calls the real backend over HTTP. There is no mock
+// mode and no fabricated fallback data: if the backend is unreachable or
+// returns an error, callers get that error and must show it honestly.
+
+let accessToken: string | null = null;
+let onSessionExpired: (() => void) | null = null;
+
+export function setAccessToken(token: string | null) {
+  accessToken = token;
+}
+
+// Lets the auth layer find out when the session can no longer be renewed,
+// so the UI can return to the sign-in screen instead of showing a wall of
+// confusing "token expired" errors.
+export function setSessionExpiredHandler(handler: (() => void) | null) {
+  onSessionExpired = handler;
+}
+
+// The login token lasts only 15 minutes by design (a stolen one is useless
+// quickly). The long-lived refresh token in an httpOnly cookie quietly
+// gets a new one. A single shared in-flight promise means several requests
+// failing at the same moment trigger ONE refresh, not a stampede — which
+// matters because each refresh rotates (replaces) the cookie.
+let refreshInFlight: Promise<boolean> | null = null;
+
+async function tryRefresh(): Promise<boolean> {
+  if (!refreshInFlight) {
+    refreshInFlight = fetch("/api/auth/refresh", { method: "POST", credentials: "include" })
+      .then(async (res) => {
+        if (!res.ok) return false;
+        const body = (await res.json()) as { accessToken: string };
+        accessToken = body.accessToken;
+        return true;
+      })
+      .catch(() => false)
+      .finally(() => {
+        refreshInFlight = null;
+      });
+  }
+  return refreshInFlight;
+}
+
+// Called once when the app opens: if a valid refresh cookie exists, the
+// person is signed straight back in instead of being sent to the login
+// page on every reload.
+export function restoreSession(): Promise<boolean> {
+  return tryRefresh();
+}
+
+// Turns whatever the server sent back into one readable sentence. The
+// backend returns either a plain string, or zod's structured field errors
+// ({ fieldErrors: { email: ["Invalid email"] } }) for bad input.
+function describeError(body: unknown, status: number): string {
+  const error = (body as { error?: unknown } | null)?.error;
+  if (typeof error === "string") return error;
+
+  const fieldErrors = (error as { fieldErrors?: Record<string, string[] | undefined> } | undefined)?.fieldErrors;
+  if (fieldErrors) {
+    for (const [field, messages] of Object.entries(fieldErrors)) {
+      if (messages && messages.length > 0) return `${field}: ${messages[0]}`;
+    }
+  }
+  return `Something went wrong (error ${status}). Please try again.`;
+}
+
+async function request<T>(path: string, options: RequestInit = {}, isRetry = false): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    ...options,
+    credentials: "include", // sends the httpOnly refresh-token cookie
+    headers: {
+      "Content-Type": "application/json",
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...(options.headers ?? {}),
+    },
+  });
+
+  // Expired login token: renew once and retry once. Never for the login /
+  // refresh calls themselves (a 401 there just means "wrong credentials").
+  const isAuthCall = path.startsWith("/auth/login") || path.startsWith("/auth/refresh");
+  if (res.status === 401 && !isRetry && !isAuthCall) {
+    if (await tryRefresh()) return request<T>(path, options, true);
+    accessToken = null;
+    onSessionExpired?.();
+  }
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, describeError(body, res.status));
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json();
+}
+
+export class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
+
+export type Me = {
+  id: string;
+  email: string;
+  fullName: string;
+  photoUrl: string | null;
+  studentProfile: { id: string; classId: string | null; sectionId: string | null } | null;
+  aiPersonalizationConsent: boolean;
+  userRoles: {
+    classId: string | null;
+    sectionId: string | null;
+    subjectId: string | null;
+    departmentId: string | null;
+    role: { key: string; name: string };
+  }[];
+};
+
+export type UserSummary = {
+  id: string;
+  email: string;
+  fullName: string;
+  isActive: boolean;
+  userRoles: { role: { key: string; name: string }; classId: string | null; sectionId: string | null }[];
+};
+
+export type RoleSummary = { id: string; key: string; name: string };
+export type ClassSummary = { id: string; name: string; sections: { id: string; name: string }[] };
+export type SubjectSummary = { id: string; name: string; code: string | null };
+export type NotificationSummary = { id: string; title: string; body: string; type: string; isRead: boolean; createdAt: string };
+export type StudentInRoster = { id: string; rollNumber: string | null; user: { fullName: string } };
+export type ExamResultSummary = {
+  id: string;
+  marksObtained: number;
+  maxMarks: number;
+  grade: string | null;
+  exam: { name: string; startDate: string };
+  subject: { name: string };
+};
+export type TimetableSlotSummary = {
+  id: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  subject: { name: string };
+  class?: { name: string };
+  section?: { name: string };
+  room: { name: string } | null;
+};
+export type BookSummary = {
+  id: string;
+  title: string;
+  author: string;
+  category: string | null;
+  copies: { id: string; barcode: string; available: boolean }[];
+};
+export type LoanSummary = {
+  id: string;
+  issuedAt: string;
+  dueAt: string;
+  returnedAt: string | null;
+  fineAmount: number | null;
+  bookCopy: { book: { title: string } };
+};
+export type EngagementSummary = {
+  currentStreak: number;
+  bestStreak: number;
+  attendedDays: number;
+  recordedDays: number;
+  attendanceRate: number | null;
+};
+export type InvoiceSummary = {
+  id: string;
+  amountDue: number;
+  dueDate: string;
+  status: string;
+  feeStructure: { name: string };
+  payments: { amount: number; method: string; paidAt: string }[];
+};
+
+export const api = {
+  login: (email: string, password: string) =>
+    request<{ accessToken: string; user: { id: string; email: string; fullName: string } }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+
+  logout: () => request<void>("/auth/logout", { method: "POST" }),
+
+  setAiConsent: (consent: boolean) =>
+    request<void>("/auth/ai-consent", { method: "POST", body: JSON.stringify({ consent }) }),
+
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<void>("/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
+
+  me: () => request<{ user: Me }>("/auth/me"),
+
+  myClasses: () =>
+    request<{ classes: unknown[] | null; scopeIsSchoolWide: boolean }>("/academics/my-classes"),
+
+  studentAttendance: (studentProfileId: string) =>
+    request<{ records: { date: string; status: string }[] }>(`/attendance/student/${studentProfileId}`),
+
+  engagementSummary: (studentProfileId: string) =>
+    request<{ summary: EngagementSummary }>(`/attendance/student/${studentProfileId}/summary`),
+
+  // ---- Admin: users & roles (requires "users:manage" on the backend —
+  // the frontend does not duplicate that check, it just surfaces whatever
+  // the server genuinely allows or denies) ----
+
+  listUsers: () => request<{ users: UserSummary[] }>("/users"),
+
+  listRoles: () => request<{ roles: RoleSummary[] }>("/users/roles"),
+
+  createUser: (input: { email: string; fullName: string; phone?: string }) =>
+    request<{ user: { id: string; email: string; fullName: string }; temporaryPassword?: string }>("/users", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
+  assignRole: (
+    userId: string,
+    input: { roleKey: string; classId?: string; sectionId?: string; subjectId?: string }
+  ) =>
+    request(`/users/${userId}/roles`, { method: "POST", body: JSON.stringify(input) }),
+
+  deactivateUser: (userId: string) => request(`/users/${userId}/deactivate`, { method: "POST" }),
+
+  resetUserPassword: (userId: string) =>
+    request<{ temporaryPassword: string }>(`/users/${userId}/reset-password`, { method: "POST" }),
+
+  // ---- Admin: academic structure (requires "academics:manage") ----
+
+  listClasses: () => request<{ classes: ClassSummary[] }>("/academics/classes"),
+
+  listSubjects: () => request<{ subjects: SubjectSummary[] }>("/academics/subjects"),
+
+  createAcademicYear: (input: { label: string; startDate: string; endDate: string }) =>
+    request("/academics/academic-years", { method: "POST", body: JSON.stringify(input) }),
+
+  createClass: (input: { name: string; academicYearId: string }) =>
+    request("/academics/classes", { method: "POST", body: JSON.stringify(input) }),
+
+  createSection: (input: { name: string; classId: string }) =>
+    request("/academics/sections", { method: "POST", body: JSON.stringify(input) }),
+
+  createSubject: (input: { name: string; code?: string }) =>
+    request("/academics/subjects", { method: "POST", body: JSON.stringify(input) }),
+
+  enrollStudent: (input: {
+    userId: string;
+    admissionNo: string;
+    classId?: string;
+    sectionId?: string;
+    rollNumber?: string;
+  }) => request("/academics/enroll", { method: "POST", body: JSON.stringify(input) }),
+
+  // ---- LMS ----
+
+  myAssignments: (studentProfileId: string) =>
+    request<{
+      assignments: {
+        id: string;
+        title: string;
+        dueAt: string;
+        maxScore: number;
+        course: { subject: { name: string } };
+        submissions: { id: string; score: number | null; submittedAt: string }[];
+      }[];
+    }>(`/lms/my-assignments/${studentProfileId}`),
+
+  submitAssignment: (input: { assignmentId: string; studentProfileId: string; textAnswer?: string }) =>
+    request("/lms/submissions", { method: "POST", body: JSON.stringify(input) }),
+
+  myQuizzes: (studentProfileId: string) =>
+    request<{
+      quizzes: {
+        id: string;
+        title: string;
+        course: { subject: { name: string } };
+        attempts: { id: string; score: number }[];
+        _count: { questions: number };
+      }[];
+    }>(`/lms/my-quizzes/${studentProfileId}`),
+
+  getQuiz: (quizId: string, studentProfileId: string) =>
+    request<{ id: string; title: string; questions: { id: string; prompt: string; choices: string[] }[] }>(
+      `/lms/quizzes/${quizId}?studentProfileId=${studentProfileId}`
+    ),
+
+  submitQuizAttempt: (quizId: string, input: { studentProfileId: string; answers: Record<string, number> }) =>
+    request<{ score: number }>(`/lms/quizzes/${quizId}/attempts`, { method: "POST", body: JSON.stringify(input) }),
+
+  // ---- Notifications ----
+
+  myNotifications: () => request<{ notifications: NotificationSummary[] }>("/notifications"),
+
+  markNotificationRead: (id: string) => request<void>(`/notifications/${id}/read`, { method: "POST" }),
+
+  // ---- Exams ----
+
+  myExamResults: (studentProfileId: string) =>
+    request<{ results: ExamResultSummary[] }>(`/exams/results/student/${studentProfileId}`),
+
+  // ---- Attendance (teacher marking) ----
+
+  studentsInSection: (sectionId: string) =>
+    request<{ students: StudentInRoster[] }>(`/academics/sections/${sectionId}/students`),
+
+  markAttendance: (input: {
+    classId: string;
+    sectionId: string;
+    date: string;
+    records: { studentProfileId: string; status: "present" | "absent" | "late" | "excused" }[];
+  }) => request("/attendance/mark", { method: "POST", body: JSON.stringify(input) }),
+
+  // ---- Timetable ----
+
+  myTeachingSchedule: () => request<{ slots: TimetableSlotSummary[] }>("/timetable/my-schedule"),
+
+  classTimetable: (classId: string, sectionId: string) =>
+    request<{ slots: TimetableSlotSummary[] }>(`/timetable/class?classId=${classId}&sectionId=${sectionId}`),
+
+  // ---- Library ----
+
+  searchLibrary: (q: string) => request<{ books: BookSummary[] }>(`/library/search?q=${encodeURIComponent(q)}`),
+
+  myLoans: () => request<{ loans: LoanSummary[] }>("/library/my-loans"),
+
+  // ---- Finance ----
+
+  myInvoices: (studentProfileId: string) =>
+    request<{ invoices: InvoiceSummary[] }>(`/finance/student/${studentProfileId}`),
+
+  // ---- AI assistant ----
+
+  askAI: (message: string) => request<{ reply: string }>("/ai/ask", { method: "POST", body: JSON.stringify({ message }) }),
+
+  // ---- Public CMS (no auth required) ----
+
+  publicNotices: () => request<{ notices: { id: string; title: string; body: string; publishedAt: string }[] }>("/cms/notices"),
+
+  publicEvents: () =>
+    request<{ events: { id: string; title: string; startAt: string; location: string | null }[] }>("/cms/events"),
+};

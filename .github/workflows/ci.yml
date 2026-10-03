@@ -1,0 +1,46 @@
+name: CI
+
+# Runs on every push and pull request. I could not execute this myself —
+# this sandbox has no network access to run `npm install` — so I can't
+# show you a passing run. It's written correctly against the real
+# package.json scripts (test, build); confirm it goes green after your
+# first push and treat that as the real verification, not this comment.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install dependencies
+        working-directory: backend
+        run: npm install
+      - name: Generate Prisma client
+        working-directory: backend
+        run: npx prisma generate
+      - name: Run unit tests
+        working-directory: backend
+        run: npm test
+      - name: Type-check and build
+        working-directory: backend
+        run: npm run build
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm install
+      - name: Type-check and build
+        working-directory: frontend
+        run: npm run build

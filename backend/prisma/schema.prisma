@@ -1,0 +1,578 @@
+// WWHS Digital Campus — core schema, Phase 1: Identity & Permissions
+// Academic/attendance tables included as the minimum needed to make
+// scoped permissions (e.g. "subject teacher for Grade 10 Physics") real.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- IDENTITY ----------
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  passwordHash  String
+  fullName      String
+  phone         String?
+  photoUrl      String?
+  // Explicit, real opt-in consent — OFF by default. Only when true may the
+  // AI assistant include this person's own real school data (their own
+  // attendance/results, never anyone else's) in what it sends to an AI
+  // provider. Required because sending real personal data to a third-party
+  // AI API is a genuine privacy decision, not something to default to
+  // silently just because it would make responses more personalized.
+  aiPersonalizationConsent Boolean @default(false)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  userRoles        UserRole[]
+  studentProfile   StudentProfile?
+  guardianOf       ParentStudentLink[] @relation("Guardian")
+  refreshTokens    RefreshToken[]
+  auditLogs        AuditLog[]
+  bookLoans        BookLoan[]
+  notifications    Notification[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revoked   Boolean  @default(false)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// Extensible role catalog — NOT a hardcoded enum, so a school can add
+// roles (e.g. "Transport Coordinator") without a code change.
+model Role {
+  id          String   @id @default(uuid())
+  key         String   @unique // e.g. "teacher", "class_teacher", "principal"
+  name        String
+  description String?
+
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String @id @default(uuid())
+  key         String @unique // e.g. "attendance:mark", "finance:view"
+  description String?
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// A user can hold a role scoped to a specific class/section/subject/department.
+// Scope columns are all optional: an unscoped row (all null) means the role
+// applies school-wide (e.g. Principal).
+model UserRole {
+  id           String   @id @default(uuid())
+  userId       String
+  roleId       String
+  classId      String?
+  sectionId    String?
+  subjectId    String?
+  departmentId String?
+  createdAt    DateTime @default(now())
+
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  class  Class?   @relation(fields: [classId], references: [id])
+  section Section? @relation(fields: [sectionId], references: [id])
+  subject Subject? @relation(fields: [subjectId], references: [id])
+
+  @@index([userId])
+  @@map("user_roles")
+}
+
+// Explicit parent<->student relationship — this, not "role", is what
+// authorizes a parent to view a specific child's data.
+model ParentStudentLink {
+  id        String @id @default(uuid())
+  parentId  String
+  studentId String
+  relation  String // "father", "mother", "guardian", etc.
+
+  parent  User           @relation("Guardian", fields: [parentId], references: [id], onDelete: Cascade)
+  student StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([parentId, studentId])
+  @@map("parent_student_links")
+}
+
+// ---------- ACADEMICS (minimum viable, expanded in Phase 2) ----------
+
+model AcademicYear {
+  id        String   @id @default(uuid())
+  label     String   // "2026-2027"
+  startDate DateTime
+  endDate   DateTime
+  isActive  Boolean  @default(false)
+
+  classes Class[]
+  exams   Exam[]
+  feeStructures FeeStructure[]
+
+  @@map("academic_years")
+}
+
+model Class {
+  id             String @id @default(uuid())
+  name           String // "Grade 10"
+  academicYearId String
+
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
+  sections     Section[]
+  userRoles    UserRole[]
+  students     StudentProfile[]
+  courses      Course[]
+  timetableSlots TimetableSlot[]
+  feeStructures  FeeStructure[]
+
+  @@map("classes")
+}
+
+model Section {
+  id      String @id @default(uuid())
+  name    String // "A"
+  classId String
+
+  class     Class      @relation(fields: [classId], references: [id])
+  students  StudentProfile[]
+  userRoles UserRole[]
+  timetableSlots TimetableSlot[]
+
+  @@map("sections")
+}
+
+model Subject {
+  id   String @id @default(uuid())
+  name String
+  code String? @unique
+
+  userRoles      UserRole[]
+  courses        Course[]
+  examResults    ExamResult[]
+  timetableSlots TimetableSlot[]
+
+  @@map("subjects")
+}
+
+model StudentProfile {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  admissionNo    String   @unique
+  classId        String?
+  sectionId      String?
+  rollNumber     String?
+  dateOfBirth    DateTime?
+  admissionDate  DateTime?
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  class     Class?   @relation(fields: [classId], references: [id])
+  section   Section? @relation(fields: [sectionId], references: [id])
+  guardians ParentStudentLink[]
+  attendanceRecords AttendanceRecord[]
+  submissions       Submission[]
+  quizAttempts      QuizAttempt[]
+  examResults       ExamResult[]
+  feeInvoices       FeeInvoice[]
+
+  @@map("student_profiles")
+}
+
+// ---------- AUDIT ----------
+
+// Every sensitive action is logged: who, what, when. This is not optional
+// for a system holding student records.
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  action     String   // e.g. "attendance:mark", "grades:update"
+  resource   String?  // e.g. "student:1234"
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([action])
+  @@map("audit_logs")
+}
+
+// ---------- ATTENDANCE (Phase 2) ----------
+
+model AttendanceRecord {
+  id               String   @id @default(uuid())
+  studentProfileId String
+  classId          String
+  sectionId        String
+  date             DateTime
+  status           String   // present | absent | late | excused
+  markedByUserId   String
+  createdAt        DateTime @default(now())
+
+  student StudentProfile @relation(fields: [studentProfileId], references: [id])
+
+  @@unique([studentProfileId, date])
+  @@index([classId, sectionId, date])
+  @@map("attendance_records")
+}
+
+// ---------- LMS / DIGITAL CLASSROOM ----------
+
+model Course {
+  id        String @id @default(uuid())
+  subjectId String
+  classId   String
+  title     String // e.g. "Grade 10 Physics"
+
+  subject Subject @relation(fields: [subjectId], references: [id])
+  class   Class   @relation(fields: [classId], references: [id])
+  lessons Lesson[]
+  assignments Assignment[]
+  quizzes Quiz[]
+
+  @@map("courses")
+}
+
+model Lesson {
+  id           String  @id @default(uuid())
+  courseId     String
+  title        String
+  content      String? // rich text / markdown
+  orderIndex   Int     @default(0)
+  createdAt    DateTime @default(now())
+
+  course    Course     @relation(fields: [courseId], references: [id])
+  resources Resource[]
+
+  @@map("lessons")
+}
+
+model Resource {
+  id       String  @id @default(uuid())
+  lessonId String?
+  title    String
+  fileUrl  String
+  fileType String // pdf | video | image | doc | link
+  uploadedByUserId String
+
+  lesson Lesson? @relation(fields: [lessonId], references: [id])
+
+  @@map("resources")
+}
+
+model Assignment {
+  id          String   @id @default(uuid())
+  courseId    String
+  title       String
+  description String?
+  dueAt       DateTime
+  maxScore    Int      @default(100)
+  createdAt   DateTime @default(now())
+
+  course      Course       @relation(fields: [courseId], references: [id])
+  submissions Submission[]
+
+  @@map("assignments")
+}
+
+model Submission {
+  id               String    @id @default(uuid())
+  assignmentId     String
+  studentProfileId String
+  fileUrl          String?
+  textAnswer       String?
+  submittedAt      DateTime  @default(now())
+  score            Int?
+  feedback         String?
+  gradedAt         DateTime?
+  gradedByUserId   String?
+
+  assignment Assignment     @relation(fields: [assignmentId], references: [id])
+  student    StudentProfile @relation(fields: [studentProfileId], references: [id])
+
+  @@unique([assignmentId, studentProfileId])
+  @@map("submissions")
+}
+
+model Quiz {
+  id       String @id @default(uuid())
+  courseId String
+  title    String
+
+  course    Course         @relation(fields: [courseId], references: [id])
+  questions QuizQuestion[]
+  attempts  QuizAttempt[]
+
+  @@map("quizzes")
+}
+
+model QuizQuestion {
+  id            String @id @default(uuid())
+  quizId        String
+  prompt        String
+  choices       Json   // ["A","B","C","D"]
+  correctIndex  Int
+
+  quiz Quiz @relation(fields: [quizId], references: [id])
+
+  @@map("quiz_questions")
+}
+
+model QuizAttempt {
+  id               String   @id @default(uuid())
+  quizId           String
+  studentProfileId String
+  answers          Json
+  score            Int
+  submittedAt      DateTime @default(now())
+
+  quiz    Quiz           @relation(fields: [quizId], references: [id])
+  student StudentProfile @relation(fields: [studentProfileId], references: [id])
+
+  @@map("quiz_attempts")
+}
+
+// ---------- EXAMS & RESULTS ----------
+
+model Exam {
+  id             String   @id @default(uuid())
+  name           String   // "Mid-Term 2026"
+  academicYearId String
+  startDate      DateTime
+  endDate        DateTime
+
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
+  results      ExamResult[]
+
+  @@map("exams")
+}
+
+model ExamResult {
+  id               String  @id @default(uuid())
+  examId           String
+  studentProfileId String
+  subjectId        String
+  marksObtained    Float
+  maxMarks         Float
+  grade            String?
+  remarks          String?
+
+  exam    Exam           @relation(fields: [examId], references: [id])
+  student StudentProfile @relation(fields: [studentProfileId], references: [id])
+  subject Subject        @relation(fields: [subjectId], references: [id])
+
+  @@unique([examId, studentProfileId, subjectId])
+  @@map("exam_results")
+}
+
+// ---------- TIMETABLE ----------
+
+model Room {
+  id   String @id @default(uuid())
+  name String @unique
+
+  slots TimetableSlot[]
+  @@map("rooms")
+}
+
+model TimetableSlot {
+  id         String @id @default(uuid())
+  classId    String
+  sectionId  String
+  subjectId  String
+  teacherId  String // Users.id
+  roomId     String?
+  dayOfWeek  Int    // 0=Sunday .. 6=Saturday
+  startTime  String // "09:00"
+  endTime    String // "09:45"
+
+  class   Class   @relation(fields: [classId], references: [id])
+  section Section @relation(fields: [sectionId], references: [id])
+  subject Subject @relation(fields: [subjectId], references: [id])
+  room    Room?   @relation(fields: [roomId], references: [id])
+
+  @@index([classId, sectionId, dayOfWeek])
+  @@map("timetable_slots")
+}
+
+// ---------- LIBRARY ----------
+
+model Book {
+  id       String @id @default(uuid())
+  title    String
+  author   String
+  isbn     String? @unique
+  category String?
+  copies   BookCopy[]
+
+  @@map("books")
+}
+
+model BookCopy {
+  id        String  @id @default(uuid())
+  bookId    String
+  barcode   String  @unique
+  available Boolean @default(true)
+
+  book  Book        @relation(fields: [bookId], references: [id])
+  loans BookLoan[]
+
+  @@map("book_copies")
+}
+
+model BookLoan {
+  id           String    @id @default(uuid())
+  bookCopyId   String
+  userId       String
+  issuedAt     DateTime  @default(now())
+  dueAt        DateTime
+  returnedAt   DateTime?
+  fineAmount   Float?
+
+  bookCopy BookCopy @relation(fields: [bookCopyId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@map("book_loans")
+}
+
+// ---------- FINANCE / FEES ----------
+
+model FeeStructure {
+  id             String @id @default(uuid())
+  classId        String
+  academicYearId String
+  name           String // "Tuition Term 1"
+  amount         Float
+
+  class        Class        @relation(fields: [classId], references: [id])
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
+  invoices     FeeInvoice[]
+
+  @@map("fee_structures")
+}
+
+model FeeInvoice {
+  id               String    @id @default(uuid())
+  feeStructureId   String
+  studentProfileId String
+  amountDue        Float
+  dueDate          DateTime
+  status           String    @default("pending") // pending | paid | overdue | waived
+  createdAt        DateTime  @default(now())
+
+  feeStructure FeeStructure @relation(fields: [feeStructureId], references: [id])
+  student      StudentProfile @relation(fields: [studentProfileId], references: [id])
+  payments     Payment[]
+
+  // One invoice per student per fee structure — this is what makes
+  // "generate invoices for a class" a safe, real upsert instead of a
+  // workaround: running it twice corrects/no-ops rather than duplicating.
+  @@unique([feeStructureId, studentProfileId])
+  @@map("fee_invoices")
+}
+
+model Payment {
+  id           String   @id @default(uuid())
+  invoiceId    String
+  amount       Float
+  method       String   // cash | bank_transfer | card | online
+  paidAt       DateTime @default(now())
+  receivedByUserId String?
+
+  invoice FeeInvoice @relation(fields: [invoiceId], references: [id])
+
+  @@map("payments")
+}
+
+// ---------- PUBLIC WEBSITE / CMS ----------
+
+model CmsPage {
+  id          String   @id @default(uuid())
+  slug        String   @unique // "admissions", "about"
+  title       String
+  content     String   // rich text / markdown
+  isPublished Boolean  @default(false)
+  updatedByUserId String
+  updatedAt   DateTime @updatedAt
+
+  @@map("cms_pages")
+}
+
+model Notice {
+  id          String   @id @default(uuid())
+  title       String
+  body        String
+  audience    String   // "public" | "students" | "teachers" | "parents" | "staff"
+  publishedAt DateTime @default(now())
+  publishedByUserId String
+
+  @@map("notices")
+}
+
+model EventItem {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  startAt     DateTime
+  endAt       DateTime?
+  location    String?
+
+  @@map("events")
+}
+
+model GalleryItem {
+  id          String @id @default(uuid())
+  title       String
+  imageUrl    String
+  albumName   String?
+  uploadedAt  DateTime @default(now())
+
+  @@map("gallery_items")
+}
+
+// ---------- NOTIFICATIONS ----------
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  body      String
+  type      String   // "assignment" | "attendance" | "announcement" | "fee" | "system"
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
