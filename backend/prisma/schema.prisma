@@ -38,6 +38,7 @@ model User {
   auditLogs        AuditLog[]
   bookLoans        BookLoan[]
   notifications    Notification[]
+  timetableSlots   TimetableSlot[]     @relation("TeacherSlots")
 
   @@map("users")
 }
@@ -180,6 +181,7 @@ model Subject {
   userRoles      UserRole[]
   courses        Course[]
   examResults    ExamResult[]
+  examSubjects   ExamSubject[]
   timetableSlots TimetableSlot[]
 
   @@map("subjects")
@@ -372,24 +374,41 @@ model Exam {
   endDate        DateTime
 
   academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
+  examSubjects ExamSubject[]
   results      ExamResult[]
 
   @@map("exams")
 }
 
+model ExamSubject {
+  id        String  @id @default(uuid())
+  examId    String
+  subjectId String
+  maxMarks  Decimal @db.Decimal(5,2)
+
+  exam    Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)
+  subject Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  results ExamResult[]
+
+  @@unique([examId, subjectId])
+  @@map("exam_subjects")
+}
+
 model ExamResult {
-  id               String  @id @default(uuid())
+  id               String       @id @default(uuid())
   examId           String
   studentProfileId String
   subjectId        String
-  marksObtained    Decimal @db.Decimal(5,2)
-  maxMarks         Decimal @db.Decimal(5,2)
+  examSubjectId    String?
+  marksObtained    Decimal      @db.Decimal(5,2)
+  maxMarks         Decimal      @db.Decimal(5,2)
   grade            String?
   remarks          String?
 
-  exam    Exam           @relation(fields: [examId], references: [id])
-  student StudentProfile @relation(fields: [studentProfileId], references: [id])
-  subject Subject        @relation(fields: [subjectId], references: [id])
+  exam        Exam         @relation(fields: [examId], references: [id])
+  student     StudentProfile @relation(fields: [studentProfileId], references: [id])
+  subject     Subject      @relation(fields: [subjectId], references: [id])
+  examSubject ExamSubject? @relation(fields: [examSubjectId], references: [id])
 
   @@unique([examId, studentProfileId, subjectId])
   @@map("exam_results")
@@ -419,9 +438,12 @@ model TimetableSlot {
   class   Class   @relation(fields: [classId], references: [id])
   section Section @relation(fields: [sectionId], references: [id])
   subject Subject @relation(fields: [subjectId], references: [id])
+  teacher User    @relation("TeacherSlots", fields: [teacherId], references: [id])
   room    Room?   @relation(fields: [roomId], references: [id])
 
   @@index([classId, sectionId, dayOfWeek])
+  @@index([teacherId, dayOfWeek])
+  @@index([roomId, dayOfWeek])
   @@map("timetable_slots")
 }
 

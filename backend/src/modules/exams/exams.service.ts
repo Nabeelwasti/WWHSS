@@ -100,6 +100,13 @@ export async function recordExamResults(
   }
 
   return prisma.$transaction(async (tx) => {
+    const maxMarksForSubject = input.results.length > 0 ? input.results[0].maxMarks : 100;
+    const examSubject = await tx.examSubject.upsert({
+      where: { examId_subjectId: { examId: input.examId, subjectId: input.subjectId } },
+      update: { maxMarks: maxMarksForSubject },
+      create: { examId: input.examId, subjectId: input.subjectId, maxMarks: maxMarksForSubject },
+    });
+
     const upserts = await Promise.all(
       input.results.map((r) =>
         tx.examResult.upsert({
@@ -110,7 +117,13 @@ export async function recordExamResults(
               subjectId: input.subjectId,
             },
           },
-          update: { marksObtained: r.marksObtained, maxMarks: r.maxMarks, grade: r.grade, remarks: r.remarks },
+          update: {
+            marksObtained: r.marksObtained,
+            maxMarks: r.maxMarks,
+            grade: r.grade,
+            remarks: r.remarks,
+            examSubjectId: examSubject.id,
+          },
           create: {
             examId: input.examId,
             subjectId: input.subjectId,
@@ -119,6 +132,7 @@ export async function recordExamResults(
             maxMarks: r.maxMarks,
             grade: r.grade,
             remarks: r.remarks,
+            examSubjectId: examSubject.id,
           },
         })
       )

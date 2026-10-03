@@ -32,11 +32,12 @@ export async function issueBook(input: { bookCopyId: string; userId: string; due
   if (!user) throw new LibraryError(`User ${input.userId} not found`);
 
   return prisma.$transaction(async (tx) => {
-    const copy = await tx.bookCopy.findUnique({ where: { id: input.bookCopyId } });
-    if (!copy) throw new LibraryError("Copy not found");
-    if (!copy.available) throw new LibraryError("This copy is already on loan");
+    const updated = await tx.bookCopy.updateMany({
+      where: { id: input.bookCopyId, available: true },
+      data: { available: false },
+    });
+    if (updated.count === 0) throw new LibraryError("This copy is already on loan or not found");
 
-    await tx.bookCopy.update({ where: { id: input.bookCopyId }, data: { available: false } });
     const loan = await tx.bookLoan.create({
       data: { bookCopyId: input.bookCopyId, userId: input.userId, dueAt: new Date(input.dueAt) },
     });

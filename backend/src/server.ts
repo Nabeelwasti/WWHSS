@@ -26,7 +26,14 @@ const app = express();
 // proxy's own address — and the login rate limiter below would treat the
 // ENTIRE school as one person, locking everyone out after 20 attempts
 // combined. "1" = trust exactly one proxy hop in front of us.
-app.set("trust proxy", Number(process.env.TRUST_PROXY ?? 1));
+app.set(
+  "trust proxy",
+  env.trustProxy === "true" || env.trustProxy === "1"
+    ? 1
+    : env.trustProxy === "false" || env.trustProxy === "0"
+    ? false
+    : env.trustProxy
+);
 
 // Real security headers — not a placeholder. Sets X-Content-Type-Options,
 // X-Frame-Options, a conservative CSP, etc. `crossOriginResourcePolicy`

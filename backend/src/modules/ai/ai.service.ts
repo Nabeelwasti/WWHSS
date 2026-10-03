@@ -88,13 +88,37 @@ export function orderByTier(providers: ProviderConfig[], preferred: Tier): Provi
   return [...matching, ...other];
 }
 
+const userDailyUsage = new Map<string, { count: number; date: string }>();
+const MAX_DAILY_AI_REQUESTS = Number(process.env.MAX_DAILY_AI_REQUESTS ?? 100);
+
+function checkAiBudget(userId: string): void {
+  const today = new Date().toISOString().slice(0, 10);
+  const usage = userDailyUsage.get(userId);
+  if (usage && usage.date === today && usage.count >= MAX_DAILY_AI_REQUESTS) {
+    throw new AiConfigError("Daily AI query quota reached for your account. Please try again tomorrow.");
+  }
+}
+
+function recordAiUsage(userId: string): void {
+  const today = new Date().toISOString().slice(0, 10);
+  const usage = userDailyUsage.get(userId);
+  if (usage && usage.date === today) {
+    usage.count += 1;
+  } else {
+    userDailyUsage.set(userId, { count: 1, date: today });
+  }
+}
+
 async function callAnthropic(cfg: Extract<ProviderConfig, { type: "anthropic" }>, systemPrompt: string, userMessage: string): Promise<string> {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-api-key": cfg.apiKey, "anthropic-version": "2023-06-01" },
     body: JSON.stringify({ model: cfg.model, max_tokens: 800, system: systemPrompt, messages: [{ role: "user", content: userMessage }] }),
   });
-  if (!response.ok) throw new Error(`Anthropic error ${response.status}: ${await response.text().catch(() => "")}`);
+  if (!response.ok) {
+    const rawBody = await response.text().catch(() => "");
+    throw new Error(`Anthropic error ${response.status}: ${rawBody.slice(0, 500)}`);
+  }
   const data = (await response.json()) as { content: { type: string; text?: string }[] };
   return data.content.filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n");
 }
@@ -109,7 +133,10 @@ async function callGemini(cfg: Extract<ProviderConfig, { type: "gemini" }>, syst
       contents: [{ role: "user", parts: [{ text: userMessage }] }],
     }),
   });
-  if (!response.ok) throw new Error(`Gemini error ${response.status}: ${await response.text().catch(() => "")}`);
+  if (!response.ok) {
+    const rawBody = await response.text().catch(() => "");
+    throw new Error(`Gemini error ${response.status}: ${rawBody.slice(0, 500)}`);
+  }
   const data = (await response.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
   return data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
 }
@@ -127,7 +154,10 @@ async function callOpenAiCompatible(cfg: Extract<ProviderConfig, { type: "openai
       ],
     }),
   });
-  if (!response.ok) throw new Error(`AI endpoint error ${response.status}: ${await response.text().catch(() => "")}`);
+  if (!response.ok) {
+    const rawBody = await response.text().catch(() => "");
+    throw new Error(`AI endpoint error ${response.status}: ${rawBody.slice(0, 500)}`);
+  }
   const data = (await response.json()) as { choices?: { message?: { content?: string } }[] };
   return data.choices?.[0]?.message?.content ?? "";
 }
@@ -171,6 +201,8 @@ async function buildPersonalContext(userId: string): Promise<string> {
 }
 
 export async function askCampusAI(userId: string, message: string): Promise<string> {
+  checkAiBudget(userId);
+
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: { userRoles: { include: { role: true } } },
@@ -209,7 +241,10 @@ function sanitizeErrorMessage(msg: string): string {
   for (const cfg of ordered) {
     try {
       const reply = await callProvider(cfg, systemPrompt, message);
-      if (reply.trim().length > 0) return reply;
+      if (reply.trim().length > 0) {
+        recordAiUsage(userId);
+        return reply;
+      }
       failures.push(`${cfg.type}: returned an empty reply`);
     } catch (err) {
       const rawMsg = err instanceof Error ? err.message : String(err);

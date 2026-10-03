@@ -20,6 +20,7 @@ vi.mock("../../../db/client.js", () => ({
   prisma: {
     $transaction: vi.fn(async (cb: (tx: unknown) => unknown) =>
       cb({
+        examSubject: { upsert: vi.fn().mockResolvedValue({ id: "es-1" }) },
         examResult: { upsert: mockResultUpsert },
         auditLog: { create: mockAuditCreate },
       })
