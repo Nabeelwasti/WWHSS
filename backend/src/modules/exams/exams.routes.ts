@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate.js";
 import { authorize } from "../../middleware/authorize.js";
-import { createExam, listExams, recordExamResults, getStudentExamResults } from "./exams.service.js";
+import { createExam, listExams, recordExamResults, getStudentExamResults, ExamValidationError } from "./exams.service.js";
 
 export const examsRouter = Router();
 examsRouter.use(authenticate);
@@ -45,10 +45,18 @@ examsRouter.post(
   "/results",
   authorize("grades:enter", (req) => ({ subjectId: req.body?.subjectId })),
   async (req, res) => {
+    if (!req.userId) {
+      return res.status(401).json({ error: "Unauthenticated" });
+    }
     const parsed = recordSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-    const saved = await recordExamResults(parsed.data);
-    res.status(201).json({ saved: saved.length });
+    try {
+      const saved = await recordExamResults(parsed.data, req.userId);
+      res.status(201).json({ saved: saved.length });
+    } catch (e) {
+      if (e instanceof ExamValidationError) return res.status(400).json({ error: e.message });
+      throw e;
+    }
   }
 );
 

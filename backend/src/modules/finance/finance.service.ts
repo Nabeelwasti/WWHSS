@@ -1,6 +1,11 @@
 import { prisma } from "../../db/client.js";
 
+export class FinanceValidationError extends Error {}
+
 export async function createFeeStructure(input: { classId: string; academicYearId: string; name: string; amount: number }) {
+  if (typeof input.amount !== "number" || input.amount <= 0) {
+    throw new FinanceValidationError("Fee structure amount must be a positive number");
+  }
   return prisma.feeStructure.create({ data: input });
 }
 
@@ -14,18 +19,21 @@ export async function generateInvoicesForClass(feeStructureId: string, dueDate: 
     where: { id: feeStructureId },
     include: { class: { include: { students: true } } },
   });
-  if (!feeStructure) throw new Error("Fee structure not found");
+  if (!feeStructure) throw new FinanceValidationError("Fee structure not found");
+
+  const parsedDueDate = new Date(dueDate);
+  if (Number.isNaN(parsedDueDate.getTime())) throw new FinanceValidationError("Invalid due date");
 
   return Promise.all(
     feeStructure.class.students.map((student) =>
       prisma.feeInvoice.upsert({
         where: { feeStructureId_studentProfileId: { feeStructureId, studentProfileId: student.id } },
-        update: { dueDate: new Date(dueDate) },
+        update: { dueDate: parsedDueDate },
         create: {
           feeStructureId,
           studentProfileId: student.id,
           amountDue: feeStructure.amount,
-          dueDate: new Date(dueDate),
+          dueDate: parsedDueDate,
         },
       })
     )
@@ -33,26 +41,74 @@ export async function generateInvoicesForClass(feeStructureId: string, dueDate: 
 }
 
 export async function recordPayment(input: { invoiceId: string; amount: number; method: string; receivedByUserId: string }) {
+  if (typeof input.amount !== "number" || input.amount <= 0) {
+    throw new FinanceValidationError("Payment amount must be greater than zero");
+  }
+
   return prisma.$transaction(async (tx) => {
-    const payment = await tx.payment.create({ data: input });
+    const invoice = await tx.feeInvoice.findUnique({ where: { id: input.invoiceId } });
+    if (!invoice) throw new FinanceValidationError("Invoice not found");
 
-    const invoice = await tx.feeInvoice.findUniqueOrThrow({ where: { id: input.invoiceId } });
-    const payments = await tx.payment.findMany({ where: { invoiceId: input.invoiceId } });
-    const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+    if (invoice.status === "waived") {
+      throw new FinanceValidationError("Cannot record payment for a waived invoice");
+    }
 
-    // Real status derived from actual payments recorded, not set manually.
-    if (totalPaid >= invoice.amountDue) {
+    const previousPayments = await tx.payment.findMany({ where: { invoiceId: input.invoiceId } });
+    const previousPaidTotal = previousPayments.reduce((sum, p) => sum + p.amount, 0);
+    const roundedPreviousTotal = Math.round(previousPaidTotal * 100) / 100;
+    const roundedAmountDue = Math.round(invoice.amountDue * 100) / 100;
+    const remainingBalance = Math.round((roundedAmountDue - roundedPreviousTotal) * 100) / 100;
+
+    const roundedInputAmount = Math.round(input.amount * 100) / 100;
+
+    if (roundedInputAmount > remainingBalance + 0.001) {
+      throw new FinanceValidationError(
+        `Payment amount (${roundedInputAmount}) exceeds remaining balance (${remainingBalance})`
+      );
+    }
+
+    const payment = await tx.payment.create({
+      data: {
+        invoiceId: input.invoiceId,
+        amount: roundedInputAmount,
+        method: input.method,
+        receivedByUserId: input.receivedByUserId,
+      },
+    });
+
+    const newTotalPaid = Math.round((roundedPreviousTotal + roundedInputAmount) * 100) / 100;
+
+    if (newTotalPaid >= roundedAmountDue - 0.001) {
       await tx.feeInvoice.update({ where: { id: input.invoiceId }, data: { status: "paid" } });
     }
+
+    await tx.auditLog.create({
+      data: {
+        userId: input.receivedByUserId,
+        action: "finance:payment",
+        resource: `invoice:${input.invoiceId}`,
+        metadata: { amount: roundedInputAmount, method: input.method },
+      },
+    });
 
     return payment;
   });
 }
 
 export async function getStudentInvoices(studentProfileId: string) {
-  return prisma.feeInvoice.findMany({
+  const invoices = await prisma.feeInvoice.findMany({
     where: { studentProfileId },
     include: { feeStructure: true, payments: true },
     orderBy: { dueDate: "desc" },
   });
+
+  const now = new Date();
+  for (const inv of invoices) {
+    if (inv.status === "pending" && inv.dueDate < now) {
+      inv.status = "overdue";
+      await prisma.feeInvoice.update({ where: { id: inv.id }, data: { status: "overdue" } });
+    }
+  }
+
+  return invoices;
 }

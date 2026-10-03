@@ -2,13 +2,15 @@ import { Router } from "express";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate.js";
 import { authorize } from "../../middleware/authorize.js";
+import { verifyAccessToken } from "../identity/tokens.js";
 import {
   upsertPage,
   setPagePublished,
   getPublishedPage,
   listAllPages,
   createNotice,
-  listNoticesForAudience,
+  getUserPermittedAudiences,
+  listNoticesForAudiences,
   createEvent,
   listUpcomingEvents,
   addGalleryItem,
@@ -26,11 +28,39 @@ cmsRouter.get("/pages/:slug", async (req, res) => {
 });
 
 cmsRouter.get("/notices", async (req, res) => {
-  // An unauthenticated visitor only ever gets "public" notices — real
-  // enforcement of that is in the service layer (defaults to "public"
-  // when no audience is recognized), not left to the caller's honesty.
-  const audience = typeof req.query.audience === "string" ? req.query.audience : "public";
-  res.json({ notices: await listNoticesForAudience(audience) });
+  // Check for authentication token if present
+  let userId: string | null = null;
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith("Bearer ")) {
+    try {
+      const payload = verifyAccessToken(authHeader.slice("Bearer ".length));
+      userId = payload.sub;
+    } catch {
+      // Invalid/expired token treats requester as unauthenticated
+      userId = null;
+    }
+  }
+
+  // Anonymous / unauthenticated visitors ALWAYS get ONLY "public" notices.
+  if (!userId) {
+    const notices = await listNoticesForAudiences(["public"]);
+    return res.json({ notices });
+  }
+
+  // Authenticated user: derive permitted audiences
+  const permittedAudiences = await getUserPermittedAudiences(userId);
+  const requestedAudience = typeof req.query.audience === "string" ? req.query.audience : undefined;
+
+  if (requestedAudience) {
+    if (!permittedAudiences.has(requestedAudience)) {
+      return res.status(403).json({ error: `Forbidden: not authorized for notice audience '${requestedAudience}'` });
+    }
+    const notices = await listNoticesForAudiences([requestedAudience, "public"]);
+    return res.json({ notices });
+  }
+
+  const notices = await listNoticesForAudiences(Array.from(permittedAudiences));
+  return res.json({ notices });
 });
 
 cmsRouter.get("/events", async (_req, res) => {

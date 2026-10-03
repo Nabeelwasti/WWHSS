@@ -33,15 +33,27 @@ export async function login(email: string, password: string) {
 
 export async function refresh(presentedToken: string) {
   const hash = hashRefreshToken(presentedToken);
+  const now = new Date();
+
   const record = await prisma.refreshToken.findFirst({ where: { tokenHash: hash } });
 
-  if (!record || record.revoked || record.expiresAt < new Date()) {
+  if (!record || record.revoked || record.expiresAt < now) {
     throw new AuthError("Invalid or expired refresh token");
   }
 
-  // Rotate: revoke the used token, issue a new one. Prevents replay of a
-  // stolen refresh token past its single use.
-  await prisma.refreshToken.update({ where: { id: record.id }, data: { revoked: true } });
+  // Atomic conditional update: exactly one concurrent request can flip revoked: false -> true
+  const claimResult = await prisma.refreshToken.updateMany({
+    where: {
+      id: record.id,
+      revoked: false,
+      expiresAt: { gt: now },
+    },
+    data: { revoked: true },
+  });
+
+  if (claimResult.count !== 1) {
+    throw new AuthError("Invalid or expired refresh token");
+  }
 
   const user = await prisma.user.findUnique({ where: { id: record.userId } });
   if (!user || !user.isActive) throw new AuthError("Account inactive");

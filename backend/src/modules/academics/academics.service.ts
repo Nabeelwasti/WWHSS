@@ -68,6 +68,8 @@ export async function createSubject(input: { name: string; code?: string }) {
   return prisma.subject.create({ data: input });
 }
 
+export class AcademicsValidationError extends Error {}
+
 // Enrolling a student means: the person already has a User account (created
 // via the admin/user-management routes), and now gets a StudentProfile
 // linking them to a class/section with a real admission number — this is
@@ -81,6 +83,21 @@ export async function enrollStudent(input: {
   dateOfBirth?: string;
   admissionDate?: string;
 }) {
+  if (input.sectionId) {
+    const section = await prisma.section.findUnique({
+      where: { id: input.sectionId },
+      select: { id: true, classId: true },
+    });
+    if (!section) {
+      throw new AcademicsValidationError(`Section ${input.sectionId} not found`);
+    }
+    if (input.classId && section.classId !== input.classId) {
+      throw new AcademicsValidationError(
+        `Section ${input.sectionId} does not belong to specified class ${input.classId}`
+      );
+    }
+  }
+
   return prisma.studentProfile.create({
     data: {
       userId: input.userId,

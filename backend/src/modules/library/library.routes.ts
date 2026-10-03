@@ -56,5 +56,7 @@ libraryRouter.post("/loans/:loanId/return", authorize("library:manage"), async (
 // Anyone can see their OWN borrowing history — no special permission,
 // since the query is scoped to the caller's own id, not client-supplied.
 libraryRouter.get("/my-loans", async (req, res) => {
-  res.json({ loans: await listLoansForUser(req.userId!) });
+  if (!req.userId) return res.status(401).json({ error: "Unauthorized" });
+  res.json({ loans: await listLoansForUser(req.userId) });
 });
+

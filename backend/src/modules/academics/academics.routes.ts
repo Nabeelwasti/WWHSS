@@ -14,6 +14,7 @@ import {
   createSubject,
   enrollStudent,
   linkGuardian,
+  AcademicsValidationError,
 } from "./academics.service.js";
 
 export const academicsRouter = Router();
@@ -104,7 +105,12 @@ const enrollSchema = z.object({
 academicsRouter.post("/enroll", authorize("student:view:full_profile"), async (req, res) => {
   const parsed = enrollSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  res.status(201).json(await enrollStudent(parsed.data));
+  try {
+    res.status(201).json(await enrollStudent(parsed.data));
+  } catch (e) {
+    if (e instanceof AcademicsValidationError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
 });
 
 const guardianSchema = z.object({

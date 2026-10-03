@@ -33,13 +33,55 @@ export async function createNotice(input: { title: string; body: string; audienc
   return prisma.notice.create({ data: input });
 }
 
-// A real audience filter: "public" is always included so the school
-// website can show general notices to visitors who aren't logged in at
-// all, alongside whatever audience-specific notices apply to a logged-in
-// viewer.
-export async function listNoticesForAudience(audience: string) {
+export async function getUserPermittedAudiences(userId: string): Promise<Set<string>> {
+  const permitted = new Set<string>(["public"]);
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      userRoles: { include: { role: { include: { rolePermissions: { include: { permission: true } } } } } },
+      studentProfile: true,
+      guardianOf: true,
+    },
+  });
+
+  if (!user) return permitted;
+
+  const roleKeys = new Set(user.userRoles.map((ur) => ur.role.key));
+  const permKeys = new Set(
+    user.userRoles.flatMap((ur) => ur.role.rolePermissions.map((rp) => rp.permission.key))
+  );
+
+  // Admin / Principal / Announcement Publishers have access to all audiences
+  if (roleKeys.has("super_admin") || roleKeys.has("principal") || permKeys.has("cms:manage") || permKeys.has("announcements:publish")) {
+    return new Set(["public", "students", "teachers", "parents", "staff"]);
+  }
+
+  if (user.studentProfile || roleKeys.has("student")) {
+    permitted.add("students");
+  }
+
+  if (user.guardianOf.length > 0 || roleKeys.has("parent")) {
+    permitted.add("parents");
+    permitted.add("students");
+  }
+
+  if (roleKeys.has("teacher") || roleKeys.has("class_teacher")) {
+    permitted.add("teachers");
+    permitted.add("staff");
+    permitted.add("students");
+  }
+
+  if (roleKeys.has("accountant") || roleKeys.has("librarian")) {
+    permitted.add("staff");
+  }
+
+  return permitted;
+}
+
+export async function listNoticesForAudiences(audiences: string[]) {
   return prisma.notice.findMany({
-    where: { audience: { in: [audience, "public"] } },
+    where: { audience: { in: audiences } },
     orderBy: { publishedAt: "desc" },
     take: 50,
   });

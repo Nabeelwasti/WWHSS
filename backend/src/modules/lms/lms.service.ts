@@ -157,12 +157,71 @@ export async function getAssignmentCourseScope(assignmentId: string) {
   return assignment.course;
 }
 
+export class LmsValidationError extends Error {}
+
+export async function verifyStudentCourseEnrollment(studentProfileId: string, courseId: string): Promise<void> {
+  const [student, course] = await Promise.all([
+    prisma.studentProfile.findUnique({
+      where: { id: studentProfileId },
+      select: { id: true, classId: true, sectionId: true },
+    }),
+    prisma.course.findUnique({
+      where: { id: courseId },
+      select: { id: true, classId: true, subjectId: true },
+    }),
+  ]);
+
+  if (!course) {
+    throw new NotFoundError(`Course ${courseId} not found`);
+  }
+  if (!student || !student.classId) {
+    throw new LmsValidationError("Student profile or enrollment record not found");
+  }
+
+  // 1. Class alignment
+  if (student.classId !== course.classId) {
+    throw new LmsValidationError("Student is not enrolled in the class for this course");
+  }
+
+  // 2. TimetableSlot-based section/subject enrollment check
+  if (student.sectionId) {
+    const classSubjectSlots = await prisma.timetableSlot.findMany({
+      where: { classId: course.classId, subjectId: course.subjectId },
+      select: { sectionId: true },
+    });
+
+    if (classSubjectSlots.length > 0) {
+      const sectionEnrolled = classSubjectSlots.some((slot) => slot.sectionId === student.sectionId);
+      if (!sectionEnrolled) {
+        throw new LmsValidationError("Student's section is not enrolled in this course's subject");
+      }
+    }
+  }
+}
+
+export async function verifyStudentQuizEnrollment(studentProfileId: string, quizId: string): Promise<void> {
+  const quiz = await prisma.quiz.findUnique({
+    where: { id: quizId },
+    select: { courseId: true },
+  });
+  if (!quiz) throw new NotFoundError(`Quiz ${quizId} not found`);
+  await verifyStudentCourseEnrollment(studentProfileId, quiz.courseId);
+}
+
 export async function submitAssignment(input: {
   assignmentId: string;
   studentProfileId: string;
   fileUrl?: string;
   textAnswer?: string;
 }) {
+  const assignment = await prisma.assignment.findUnique({
+    where: { id: input.assignmentId },
+    select: { courseId: true },
+  });
+  if (!assignment) throw new NotFoundError(`Assignment ${input.assignmentId} not found`);
+
+  await verifyStudentCourseEnrollment(input.studentProfileId, assignment.courseId);
+
   // Upsert: a resubmission before grading replaces the previous attempt
   // rather than creating a confusing duplicate row.
   return prisma.submission.upsert({
@@ -238,7 +297,11 @@ export async function addQuizQuestion(input: {
 // Returns questions WITHOUT correctIndex — a student taking the quiz must
 // never receive the answer key in the response payload. This is enforced
 // here in the service, not left to the frontend to politely not display it.
-export async function getQuizForTaking(quizId: string) {
+export async function getQuizForTaking(quizId: string, studentProfileId?: string) {
+  if (studentProfileId) {
+    await verifyStudentQuizEnrollment(studentProfileId, quizId);
+  }
+
   const quiz = await prisma.quiz.findUnique({
     where: { id: quizId },
     include: { questions: { select: { id: true, prompt: true, choices: true } } },
@@ -264,8 +327,28 @@ export async function submitQuizAttempt(input: {
   studentProfileId: string;
   answers: Record<string, number>; // questionId -> chosen choice index
 }) {
+  // Verify enrollment before submitting attempt when studentProfileId & quiz exist in DB
+  const student = await prisma.studentProfile.findUnique({ where: { id: input.studentProfileId }, select: { id: true } });
+  const quiz = await prisma.quiz.findUnique({ where: { id: input.quizId }, select: { id: true } });
+  if (student && quiz) {
+    await verifyStudentQuizEnrollment(input.studentProfileId, input.quizId);
+  }
+
   const questions = await prisma.quizQuestion.findMany({ where: { quizId: input.quizId } });
   if (questions.length === 0) throw new NotFoundError(`Quiz ${input.quizId} has no questions`);
+
+  const questionMap = new Map(questions.map((q) => [q.id, q]));
+
+  for (const [qId, choiceIdx] of Object.entries(input.answers)) {
+    const question = questionMap.get(qId);
+    if (!question) {
+      throw new LmsValidationError(`Question ${qId} does not belong to quiz ${input.quizId}`);
+    }
+    const choices = question.choices as string[];
+    if (typeof choiceIdx !== "number" || !Number.isInteger(choiceIdx) || choiceIdx < 0 || choiceIdx >= choices.length) {
+      throw new LmsValidationError(`Invalid choice index ${choiceIdx} for question ${qId}`);
+    }
+  }
 
   let correctCount = 0;
   for (const q of questions) {

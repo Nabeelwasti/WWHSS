@@ -1,4 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+vi.mock("../../../db/client.js", () => ({
+  prisma: {
+    user: { findUnique: vi.fn() },
+    examResult: { findMany: vi.fn() },
+  },
+}));
+
 import { classifyTask, orderByTier, type ProviderConfig } from "../ai.service.js";
 
 describe("classifyTask", () => {
