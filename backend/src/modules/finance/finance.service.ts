@@ -60,9 +60,9 @@ export async function recordPayment(input: { invoiceId: string; amount: number; 
     }
 
     const previousPayments = await tx.payment.findMany({ where: { invoiceId: input.invoiceId } });
-    const previousPaidTotal = previousPayments.reduce((sum, p) => sum + p.amount, 0);
+    const previousPaidTotal = previousPayments.reduce((sum, p) => sum + Number(p.amount), 0);
     const roundedPreviousTotal = Math.round(previousPaidTotal * 100) / 100;
-    const roundedAmountDue = Math.round(invoice.amountDue * 100) / 100;
+    const roundedAmountDue = Math.round(Number(invoice.amountDue) * 100) / 100;
     const remainingBalance = Math.round((roundedAmountDue - roundedPreviousTotal) * 100) / 100;
 
     const roundedInputAmount = Math.round(input.amount * 100) / 100;
