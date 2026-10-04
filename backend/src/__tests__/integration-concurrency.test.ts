@@ -1,9 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { PrismaClient, Prisma } from "@prisma/client";
-import { recordPayment } from "../modules/finance/finance.service.js";
-import { issueBook, LibraryError } from "../modules/library/library.service.js";
-import { createTimetableSlot, ConflictError } from "../modules/timetable/timetable.service.js";
-import { FinanceValidationError } from "../modules/finance/finance.service.js";
 
 // Integration & concurrency test suite requires a dedicated disposable integration test database.
 // It MUST NOT run against arbitrary or development/production databases.
@@ -22,18 +18,26 @@ function getIntegrationTestDbUrl(): string {
   return url;
 }
 
-describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
-  let prisma: PrismaClient;
+let prisma: PrismaClient;
+let recordPayment: typeof import("../modules/finance/finance.service.js").recordPayment;
+let issueBook: typeof import("../modules/library/library.service.js").issueBook;
+let createTimetableSlot: typeof import("../modules/timetable/timetable.service.js").createTimetableSlot;
 
+describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
   beforeAll(async () => {
     const testDbUrl = getIntegrationTestDbUrl();
-    prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: testDbUrl,
-        },
-      },
-    });
+    process.env.DATABASE_URL = testDbUrl;
+
+    const dbModule = await import("../db/client.js");
+    const financeModule = await import("../modules/finance/finance.service.js");
+    const libraryModule = await import("../modules/library/library.service.js");
+    const timetableModule = await import("../modules/timetable/timetable.service.js");
+
+    prisma = dbModule.prisma;
+    recordPayment = financeModule.recordPayment;
+    issueBook = libraryModule.issueBook;
+    createTimetableSlot = timetableModule.createTimetableSlot;
+
     await prisma.$connect();
   });
 
