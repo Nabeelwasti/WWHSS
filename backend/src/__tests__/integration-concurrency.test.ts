@@ -249,9 +249,13 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
     });
     expect(nullStudent.id).toBeDefined();
 
+    const validStudentUser = await prisma.user.create({
+      data: { email: `valid-student-${Date.now()}@school.edu`, passwordHash: "hash", fullName: "Valid Student" },
+    });
+
     const validStudent = await prisma.studentProfile.create({
       data: {
-        userId: user.id,
+        userId: validStudentUser.id,
         admissionNo: `ADM-VALID-${Date.now()}`,
         classId: classB.id,
         sectionId: sectionB1.id,
