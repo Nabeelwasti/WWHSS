@@ -4,11 +4,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const srcDir = path.resolve(__dirname, "..");
+const frontendSrcDir = path.resolve(__dirname, "../../../frontend/src");
 
 describe("Frontend Localization & Accessibility Hardening Verification Suite", () => {
-  it("verifies 100% parity and non-empty values between English and Urdu dictionaries in i18n.tsx", async () => {
-    const i18nPath = path.resolve(srcDir, "i18n.tsx");
+  it("verifies 100% parity and non-empty values between English and Urdu dictionaries in i18n.tsx", () => {
+    const i18nPath = path.resolve(frontendSrcDir, "i18n.tsx");
     expect(fs.existsSync(i18nPath)).toBe(true);
     const content = fs.readFileSync(i18nPath, "utf-8");
 
@@ -39,7 +39,7 @@ describe("Frontend Localization & Accessibility Hardening Verification Suite", (
     ];
 
     for (const relFile of filesToInspect) {
-      const filePath = path.resolve(srcDir, relFile);
+      const filePath = path.resolve(frontendSrcDir, relFile);
       expect(fs.existsSync(filePath), `Component file ${relFile} must exist`).toBe(true);
       const fileContent = fs.readFileSync(filePath, "utf-8");
 
@@ -61,8 +61,8 @@ describe("Frontend Localization & Accessibility Hardening Verification Suite", (
   });
 
   it("verifies Service Worker update toast integration and PWA cache handling in sw.js and UpdateToast.tsx", () => {
-    const swPath = path.resolve(srcDir, "../public/sw.js");
-    const toastPath = path.resolve(srcDir, "components/UpdateToast.tsx");
+    const swPath = path.resolve(frontendSrcDir, "../public/sw.js");
+    const toastPath = path.resolve(frontendSrcDir, "components/UpdateToast.tsx");
 
     expect(fs.existsSync(swPath)).toBe(true);
     expect(fs.existsSync(toastPath)).toBe(true);
