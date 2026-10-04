@@ -89,7 +89,7 @@ export async function recordPayment(input: { invoiceId: string; amount: number; 
 
     const previousPayments = await tx.payment.findMany({ where: { invoiceId: input.invoiceId } });
     const previousPaidTotal = previousPayments.reduce(
-      (sum, p) => sum.add(new Prisma.Decimal(p.amount)),
+      (sum, p) => sum.add(p.amount),
       new Prisma.Decimal(0)
     );
     const amountDue = new Prisma.Decimal(invoice.amountDue);

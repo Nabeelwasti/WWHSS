@@ -5,20 +5,42 @@ import { issueBook, LibraryError } from "../modules/library/library.service.js";
 import { createTimetableSlot, ConflictError } from "../modules/timetable/timetable.service.js";
 import { FinanceValidationError } from "../modules/finance/finance.service.js";
 
-// Genuinely isolated real-PostgreSQL integration & concurrency test suite.
-// Executed against disposable PostgreSQL test database when DATABASE_URL is available.
-const isPostgres = Boolean(process.env.DATABASE_URL && process.env.DATABASE_URL.includes("postgres"));
+// Integration & concurrency test suite requires a dedicated disposable integration test database.
+// It MUST NOT run against arbitrary or development/production databases.
+function getIntegrationTestDbUrl(): string {
+  const url = process.env.INTEGRATION_TEST_DB_URL;
+  if (!url) {
+    throw new Error(
+      "INTEGRATION TEST CONFIGURATION ERROR: Integration & concurrency tests require a dedicated disposable test database specified via the INTEGRATION_TEST_DB_URL environment variable. Execution aborted."
+    );
+  }
+  if (!url.includes("integration_test") && !url.includes("ci_wwhs_integration_test")) {
+    throw new Error(
+      `INTEGRATION TEST SAFETY ERROR: Target URL "${url}" does not match dedicated integration test database naming conventions (must contain 'integration_test'). Execution aborted to protect development/production databases.`
+    );
+  }
+  return url;
+}
 
-describe.skipIf(!isPostgres)("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
+describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
   let prisma: PrismaClient;
 
   beforeAll(async () => {
-    prisma = new PrismaClient();
+    const testDbUrl = getIntegrationTestDbUrl();
+    prisma = new PrismaClient({
+      datasources: {
+        db: {
+          url: testDbUrl,
+        },
+      },
+    });
     await prisma.$connect();
   });
 
   afterAll(async () => {
-    await prisma.$disconnect();
+    if (prisma) {
+      await prisma.$disconnect();
+    }
   });
 
   it("proves concurrent finance payments cannot overpay or duplicate incorrectly", async () => {
