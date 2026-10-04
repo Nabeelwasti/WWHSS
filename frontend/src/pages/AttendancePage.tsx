@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { api, ApiError, type StudentInRoster } from "../api";
+import { useLanguage } from "../i18n.js";
 
 type MyClass = { id: string; name: string; sections: { id: string; name: string }[] };
 type Status = "present" | "absent" | "late" | "excused";
 
 export function AttendancePage() {
+  const { t } = useLanguage();
   const [classes, setClasses] = useState<MyClass[] | null>(null);
   const [classId, setClassId] = useState("");
   const [sectionId, setSectionId] = useState("");
@@ -32,8 +34,6 @@ export function AttendancePage() {
     try {
       const res = await api.studentsInSection(section);
       setStudents(res.students);
-      // Default every real student to "present" — a genuine starting
-      // assumption the teacher corrects, never a fabricated final answer.
       const initial: Record<string, Status> = {};
       res.students.forEach((s) => (initial[s.id] = "present"));
       setStatuses(initial);
@@ -62,34 +62,39 @@ export function AttendancePage() {
   }
 
   return (
-    <div style={{ maxWidth: 640, margin: "0 auto", padding: 24, fontFamily: "sans-serif" }}>
-      <h1 style={{ fontSize: 18 }}>Mark attendance</h1>
+    <div className="page" style={{ maxWidth: 640, margin: "0 auto" }}>
+      <h1 style={{ fontSize: 20, margin: "0 0 16px 0" }}>{t("attendance.title")}</h1>
 
       {error && (
-        <p role="alert" style={{ color: "#a32d2d" }}>
+        <p role="alert" className="alert alert-danger">
           {error}
         </p>
       )}
-      {notice && <p style={{ color: "#1a7d3a" }}>{notice}</p>}
+      {notice && (
+        <p role="status" className="alert alert-success">
+          {notice}
+        </p>
+      )}
 
-      {classes === null && !error && <p>Loading your classes…</p>}
+      {classes === null && !error && <p className="text-muted text-sm">{t("common.loading")}</p>}
       {classes?.length === 0 && (
-        <p style={{ color: "#555" }}>
-          No classes are assigned to you yet — a genuinely empty state, not a bug. Ask an administrator
-          to assign you to a class/section.
+        <p className="text-muted text-sm">
+          No classes are assigned to you yet. Ask an administrator to assign you to a class/section.
         </p>
       )}
 
       {classes && classes.length > 0 && (
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+        <div className="flex gap-2 flex-wrap mb-4">
           <select
+            className="input"
             value={classId}
             onChange={(e) => {
               setClassId(e.target.value);
               loadRoster("");
             }}
+            aria-label={t("attendance.selectClass")}
           >
-            <option value="">Select class</option>
+            <option value="">{t("attendance.selectClass")}</option>
             {classes.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -97,8 +102,14 @@ export function AttendancePage() {
             ))}
           </select>
 
-          <select value={sectionId} onChange={(e) => loadRoster(e.target.value)} disabled={!classId}>
-            <option value="">Select section</option>
+          <select
+            className="input"
+            value={sectionId}
+            onChange={(e) => loadRoster(e.target.value)}
+            disabled={!classId}
+            aria-label={t("attendance.selectSection")}
+          >
+            <option value="">{t("attendance.selectSection")}</option>
             {selectedClass?.sections.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
@@ -106,46 +117,54 @@ export function AttendancePage() {
             ))}
           </select>
 
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <input
+            className="input"
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            aria-label="Attendance Date"
+          />
         </div>
       )}
 
       {students && students.length === 0 && (
-        <p style={{ color: "#555" }}>This section has no enrolled students yet.</p>
+        <p className="text-muted text-sm">This section has no enrolled students yet.</p>
       )}
 
       {students && students.length > 0 && (
         <>
           <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
             <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
-                <th>Roll #</th>
-                <th>Name</th>
-                <th>Status</th>
+              <tr style={{ textAlign: "left", borderBottom: "1px solid var(--border)" }}>
+                <th scope="col">{t("attendance.rollNum")}</th>
+                <th scope="col">{t("attendance.name")}</th>
+                <th scope="col">{t("attendance.status")}</th>
               </tr>
             </thead>
             <tbody>
               {students.map((s) => (
-                <tr key={s.id} style={{ borderBottom: "1px solid #eee" }}>
+                <tr key={s.id} style={{ borderBottom: "1px solid var(--border)" }}>
                   <td>{s.rollNumber ?? "—"}</td>
                   <td>{s.user.fullName}</td>
                   <td>
                     <select
+                      className="input"
                       value={statuses[s.id]}
                       onChange={(e) => setStatuses((prev) => ({ ...prev, [s.id]: e.target.value as Status }))}
+                      aria-label={`Attendance status for ${s.user.fullName}`}
                     >
-                      <option value="present">Present</option>
-                      <option value="absent">Absent</option>
-                      <option value="late">Late</option>
-                      <option value="excused">Excused</option>
+                      <option value="present">{t("attendance.present")}</option>
+                      <option value="absent">{t("attendance.absent")}</option>
+                      <option value="late">{t("attendance.late")}</option>
+                      <option value="excused">{t("attendance.excused")}</option>
                     </select>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <button onClick={handleSave} disabled={saving} style={{ marginTop: 12 }}>
-            {saving ? "Saving…" : "Save attendance"}
+          <button onClick={handleSave} disabled={saving} className="btn btn-primary mt-4">
+            {saving ? t("attendance.saving") : t("attendance.save")}
           </button>
         </>
       )}

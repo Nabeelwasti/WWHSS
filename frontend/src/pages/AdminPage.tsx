@@ -1,12 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiError, type UserSummary, type RoleSummary, type ClassSummary } from "../api";
-
-// Every list here starts empty and is only ever populated by a real
-// response from the backend. There is no seeded sample roster baked into
-// this file — an admin using a fresh install sees a genuinely empty state
-// until they create real accounts and classes.
+import { useLanguage } from "../i18n.js";
 
 export function AdminPage() {
+  const { t } = useLanguage();
   const [users, setUsers] = useState<UserSummary[] | null>(null);
   const [roles, setRoles] = useState<RoleSummary[] | null>(null);
   const [classes, setClasses] = useState<ClassSummary[] | null>(null);
@@ -21,8 +18,6 @@ export function AdminPage() {
       setClasses(c.classes);
       setError(null);
     } catch (e) {
-      // A 403 here is a real, expected outcome for anyone without
-      // "users:manage" — shown honestly, not hidden.
       setError(e instanceof ApiError ? e.message : "Could not load admin data.");
     }
   }
@@ -82,8 +77,6 @@ export function AdminPage() {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
     try {
-      // Requires a real AcademicYear to already exist — enforced by the
-      // backend's foreign key, not glossed over here.
       await api.createClass({
         name: String(form.get("name")),
         academicYearId: String(form.get("academicYearId")),
@@ -97,35 +90,37 @@ export function AdminPage() {
   }
 
   return (
-    <div style={{ maxWidth: 720, margin: "0 auto", padding: 24, fontFamily: "sans-serif" }}>
-      <h1 style={{ fontSize: 18 }}>Administration</h1>
+    <div className="page" style={{ maxWidth: 720, margin: "0 auto" }}>
+      <h1 style={{ fontSize: 20, margin: "0 0 16px 0" }}>{t("admin.title")}</h1>
 
       {error && (
-        <p role="alert" style={{ color: "#a32d2d" }}>
+        <p role="alert" className="alert alert-danger">
           {error}
         </p>
       )}
-      {notice && <p style={{ color: "#1a7d3a" }}>{notice}</p>}
-
-      <section style={{ marginTop: 20 }}>
-        <h2 style={{ fontSize: 14, color: "#666", textTransform: "uppercase" }}>Create a user</h2>
-        <form onSubmit={handleCreateUser} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <input name="fullName" placeholder="Full name" required />
-          <input name="email" type="email" placeholder="Email" required />
-          <button type="submit">Create</button>
-        </form>
-        <p style={{ fontSize: 12, color: "#777" }}>
-          A one-time password is generated server-side and shown once — it is never a fixed default like
-          the seeded admin account.
+      {notice && (
+        <p role="status" className="alert alert-success">
+          {notice}
         </p>
+      )}
+
+      <section className="card">
+        <h2 className="card-title">{t("admin.createUser")}</h2>
+        <form onSubmit={handleCreateUser} className="flex gap-2 flex-wrap">
+          <input className="input" name="fullName" placeholder={t("admin.fullName")} aria-label={t("admin.fullName")} required />
+          <input className="input" name="email" type="email" placeholder={t("admin.email")} aria-label={t("admin.email")} required />
+          <button type="submit" className="btn btn-primary">
+            {t("admin.create")}
+          </button>
+        </form>
       </section>
 
-      <section style={{ marginTop: 20 }}>
-        <h2 style={{ fontSize: 14, color: "#666", textTransform: "uppercase" }}>Assign a role</h2>
-        <form onSubmit={handleAssignRole} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <select name="userId" required defaultValue="">
+      <section className="card">
+        <h2 className="card-title">{t("admin.assignRole")}</h2>
+        <form onSubmit={handleAssignRole} className="flex gap-2 flex-wrap">
+          <select className="input" name="userId" required defaultValue="" aria-label={t("admin.selectUser")}>
             <option value="" disabled>
-              Select user
+              {t("admin.selectUser")}
             </option>
             {users?.map((u) => (
               <option key={u.id} value={u.id}>
@@ -133,9 +128,9 @@ export function AdminPage() {
               </option>
             ))}
           </select>
-          <select name="roleKey" required defaultValue="">
+          <select className="input" name="roleKey" required defaultValue="" aria-label={t("admin.selectRole")}>
             <option value="" disabled>
-              Select role
+              {t("admin.selectRole")}
             </option>
             {roles?.map((r) => (
               <option key={r.id} value={r.key}>
@@ -143,56 +138,57 @@ export function AdminPage() {
               </option>
             ))}
           </select>
-          <select name="classId" defaultValue="">
-            <option value="">No class scope (school-wide)</option>
+          <select className="input" name="classId" defaultValue="" aria-label="Class Scope">
+            <option value="">{t("admin.noScope")}</option>
             {classes?.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
           </select>
-          <button type="submit">Assign</button>
+          <button type="submit" className="btn btn-primary">
+            {t("admin.assign")}
+          </button>
         </form>
       </section>
 
-      <section style={{ marginTop: 20 }}>
-        <h2 style={{ fontSize: 14, color: "#666", textTransform: "uppercase" }}>Create a class</h2>
-        <form onSubmit={handleCreateClass} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <input name="name" placeholder="e.g. Grade 10" required />
-          <input name="academicYearId" placeholder="Academic year ID" required />
-          <button type="submit">Create</button>
+      <section className="card">
+        <h2 className="card-title">{t("admin.createClass")}</h2>
+        <form onSubmit={handleCreateClass} className="flex gap-2 flex-wrap">
+          <input className="input" name="name" placeholder={t("admin.className")} aria-label={t("admin.className")} required />
+          <input className="input" name="academicYearId" placeholder={t("admin.academicYearId")} aria-label={t("admin.academicYearId")} required />
+          <button type="submit" className="btn btn-primary">
+            {t("admin.create")}
+          </button>
         </form>
-        <p style={{ fontSize: 12, color: "#777" }}>
-          Create an academic year directly via the API first (
-          <code>POST /api/academics/academic-years</code>) — a picker for this belongs in a future pass,
-          not faked here as a dropdown with invented years.
-        </p>
       </section>
 
-      <section style={{ marginTop: 20 }}>
-        <h2 style={{ fontSize: 14, color: "#666", textTransform: "uppercase" }}>Current users</h2>
-        {users === null && <p>Loading…</p>}
-        {users?.length === 0 && <p style={{ color: "#555" }}>No users yet besides your own account.</p>}
+      <section className="card">
+        <h2 className="card-title">{t("admin.currentUsers")}</h2>
+        {users === null && <p className="text-muted text-sm">{t("common.loading")}</p>}
+        {users?.length === 0 && <p className="text-muted text-sm">No users yet besides your own account.</p>}
         {users && users.length > 0 && (
           <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
             <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Roles</th>
-                <th>Status</th>
-                <th></th>
+              <tr style={{ textAlign: "left", borderBottom: "1px solid var(--border)" }}>
+                <th scope="col">{t("admin.name")}</th>
+                <th scope="col">{t("admin.email")}</th>
+                <th scope="col">{t("admin.roles")}</th>
+                <th scope="col">{t("admin.status")}</th>
+                <th scope="col"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
               {users.map((u) => (
-                <tr key={u.id} style={{ borderBottom: "1px solid #eee" }}>
+                <tr key={u.id} style={{ borderBottom: "1px solid var(--border)" }}>
                   <td>{u.fullName}</td>
                   <td>{u.email}</td>
                   <td>{u.userRoles.map((ur) => ur.role.name).join(", ") || "—"}</td>
-                  <td>{u.isActive ? "Active" : "Deactivated"}</td>
+                  <td>{u.isActive ? t("admin.active") : t("admin.deactivated")}</td>
                   <td>
-                    <button onClick={() => handleResetPassword(u)}>Reset password</button>
+                    <button onClick={() => handleResetPassword(u)} className="btn btn-ghost btn-sm">
+                      {t("admin.resetPassword")}
+                    </button>
                   </td>
                 </tr>
               ))}

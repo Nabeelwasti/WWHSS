@@ -1,7 +1,33 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+vi.mock("argon2", () => ({
+  default: {
+    hash: vi.fn().mockResolvedValue("mocked_hash"),
+    verify: vi.fn().mockResolvedValue(true),
+  },
+  hash: vi.fn().mockResolvedValue("mocked_hash"),
+  verify: vi.fn().mockResolvedValue(true),
+}));
+
+vi.mock("../db/client.js", () => ({
+  prisma: {},
+}));
+
+import { authRouter } from "../modules/identity/auth.routes.js";
+import { attendanceRouter } from "../modules/attendance/attendance.routes.js";
+import { academicsRouter } from "../modules/academics/academics.routes.js";
+import { usersRouter } from "../modules/users/users.routes.js";
+import { lmsRouter } from "../modules/lms/lms.routes.js";
+import { examsRouter } from "../modules/exams/exams.routes.js";
+import { timetableRouter } from "../modules/timetable/timetable.routes.js";
+import { notificationsRouter } from "../modules/notifications/notifications.routes.js";
+import { libraryRouter } from "../modules/library/library.routes.js";
+import { financeRouter } from "../modules/finance/finance.routes.js";
+import { cmsRouter } from "../modules/cms/cms.routes.js";
+import { aiRouter } from "../modules/ai/ai.routes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -16,8 +42,48 @@ interface OpenApiDoc {
   };
 }
 
+function getImplementedExpressRoutes(): { path: string; method: string }[] {
+  const modules = [
+    { prefix: "/api/auth", router: authRouter },
+    { prefix: "/api/attendance", router: attendanceRouter },
+    { prefix: "/api/academics", router: academicsRouter },
+    { prefix: "/api/users", router: usersRouter },
+    { prefix: "/api/lms", router: lmsRouter },
+    { prefix: "/api/exams", router: examsRouter },
+    { prefix: "/api/timetable", router: timetableRouter },
+    { prefix: "/api/notifications", router: notificationsRouter },
+    { prefix: "/api/library", router: libraryRouter },
+    { prefix: "/api/finance", router: financeRouter },
+    { prefix: "/api/cms", router: cmsRouter },
+    { prefix: "/api/ai", router: aiRouter },
+  ];
+
+  const routes: { path: string; method: string }[] = [{ path: "/health", method: "get" }];
+
+  for (const mod of modules) {
+    if (!mod.router || !mod.router.stack) continue;
+    for (const layer of mod.router.stack) {
+      if (layer.route) {
+        const rawPath = layer.route.path;
+        const openApiPath = (mod.prefix + rawPath)
+          .replace(/:([A-Za-z0-9_]+)/g, "{$1}")
+          .replace(/\/+/g, "/")
+          .replace(/\/$/, "");
+        const normPath = openApiPath === "" ? "/" : openApiPath;
+        for (const [method, active] of Object.entries(layer.route.methods)) {
+          if (active) {
+            routes.push({ path: normPath, method: method.toLowerCase() });
+          }
+        }
+      }
+    }
+  }
+
+  return routes;
+}
+
 describe("OpenAPI Contract Validation Test Suite", () => {
-  it("verifies backend openapi.json exists and is valid OpenAPI 3.0.3", () => {
+  it("verifies backend openapi.json exists and is valid OpenAPI 3.0.3 structural document", () => {
     const openapiPath = path.resolve(__dirname, "../../openapi.json");
     expect(fs.existsSync(openapiPath)).toBe(true);
 
@@ -28,105 +94,43 @@ describe("OpenAPI Contract Validation Test Suite", () => {
     expect(doc.info).toBeDefined();
     expect(doc.info.title).toBe("WWHS Digital Campus API");
     expect(doc.paths).toBeDefined();
-    expect(Object.keys(doc.paths).length).toBeGreaterThan(30);
   });
 
-  it("verifies all $ref links in openapi.json resolve to existing schemas/responses", () => {
+  it("verifies all $ref links in openapi.json resolve to existing schemas/responses/securitySchemes", () => {
     const openapiPath = path.resolve(__dirname, "../../openapi.json");
     const raw = fs.readFileSync(openapiPath, "utf-8");
     const doc = JSON.parse(raw) as OpenApiDoc;
 
-    const refRegex = /"\$ref":\s*"#\/components\/(schemas|responses)\/([A-Za-z0-9_]+)"/g;
+    const refRegex = /"\$ref":\s*"#\/components\/(schemas|responses|securitySchemes)\/([A-Za-z0-9_]+)"/g;
     let match;
     while ((match = refRegex.exec(raw)) !== null) {
-      const type = match[1] as "schemas" | "responses";
+      const type = match[1] as "schemas" | "responses" | "securitySchemes";
       const key = match[2];
       expect(doc.components?.[type]?.[key], `$ref '#/components/${type}/${key}' must exist`).toBeDefined();
     }
   });
 
-  it("verifies all core implemented API endpoints and HTTP methods match the contract exactly", () => {
+  it("asserts EXACT equality between implemented Express route operations and documented OpenAPI operations", () => {
     const openapiPath = path.resolve(__dirname, "../../openapi.json");
     const doc = JSON.parse(fs.readFileSync(openapiPath, "utf-8")) as OpenApiDoc;
 
-    const expectedEndpoints: { path: string; methods: string[] }[] = [
-      { path: "/health", methods: ["get"] },
-      { path: "/api/auth/login", methods: ["post"] },
-      { path: "/api/auth/refresh", methods: ["post"] },
-      { path: "/api/auth/logout", methods: ["post"] },
-      { path: "/api/auth/change-password", methods: ["post"] },
-      { path: "/api/auth/me", methods: ["get"] },
-      { path: "/api/auth/ai-consent", methods: ["post"] },
-      { path: "/api/attendance/mark", methods: ["post"] },
-      { path: "/api/attendance/student/{studentProfileId}", methods: ["get"] },
-      { path: "/api/attendance/student/{studentProfileId}/summary", methods: ["get"] },
-      { path: "/api/attendance/class", methods: ["get"] },
-      { path: "/api/academics/classes", methods: ["get", "post"] },
-      { path: "/api/academics/subjects", methods: ["get", "post"] },
-      { path: "/api/academics/sections/{sectionId}/students", methods: ["get"] },
-      { path: "/api/academics/my-classes", methods: ["get"] },
-      { path: "/api/academics/academic-years", methods: ["post"] },
-      { path: "/api/academics/sections", methods: ["post"] },
-      { path: "/api/academics/enroll", methods: ["post"] },
-      { path: "/api/academics/link-guardian", methods: ["post"] },
-      { path: "/api/users", methods: ["get", "post"] },
-      { path: "/api/users/roles", methods: ["get"] },
-      { path: "/api/users/{userId}/roles", methods: ["post"] },
-      { path: "/api/users/roles/{userRoleId}", methods: ["delete"] },
-      { path: "/api/users/{userId}/deactivate", methods: ["post"] },
-      { path: "/api/users/{userId}/reset-password", methods: ["post"] },
-      { path: "/api/lms/courses", methods: ["get", "post"] },
-      { path: "/api/lms/lessons", methods: ["post"] },
-      { path: "/api/lms/courses/{courseId}/lessons", methods: ["get"] },
-      { path: "/api/lms/resources", methods: ["post"] },
-      { path: "/api/lms/assignments", methods: ["post"] },
-      { path: "/api/lms/courses/{courseId}/assignments", methods: ["get"] },
-      { path: "/api/lms/my-assignments/{studentProfileId}", methods: ["get"] },
-      { path: "/api/lms/my-quizzes/{studentProfileId}", methods: ["get"] },
-      { path: "/api/lms/submissions", methods: ["post"] },
-      { path: "/api/lms/assignments/{assignmentId}/submissions", methods: ["get"] },
-      { path: "/api/lms/submissions/{submissionId}/grade", methods: ["post"] },
-      { path: "/api/lms/quizzes", methods: ["post"] },
-      { path: "/api/lms/quizzes/questions", methods: ["post"] },
-      { path: "/api/lms/quizzes/{quizId}", methods: ["get"] },
-      { path: "/api/lms/quizzes/{quizId}/attempts", methods: ["post"] },
-      { path: "/api/lms/my-quiz-attempts/{studentProfileId}", methods: ["get"] },
-      { path: "/api/exams", methods: ["get", "post"] },
-      { path: "/api/exams/results", methods: ["post"] },
-      { path: "/api/exams/results/student/{studentProfileId}", methods: ["get"] },
-      { path: "/api/timetable/slots", methods: ["post"] },
-      { path: "/api/timetable/class", methods: ["get"] },
-      { path: "/api/timetable/my-schedule", methods: ["get"] },
-      { path: "/api/timetable/rooms", methods: ["get", "post"] },
-      { path: "/api/notifications", methods: ["get"] },
-      { path: "/api/notifications/{id}/read", methods: ["post"] },
-      { path: "/api/library/books", methods: ["post"] },
-      { path: "/api/library/copies", methods: ["post"] },
-      { path: "/api/library/search", methods: ["get"] },
-      { path: "/api/library/issue", methods: ["post"] },
-      { path: "/api/library/loans/{loanId}/return", methods: ["post"] },
-      { path: "/api/library/my-loans", methods: ["get"] },
-      { path: "/api/finance/fee-structures", methods: ["post"] },
-      { path: "/api/finance/generate-invoices", methods: ["post"] },
-      { path: "/api/finance/payments", methods: ["post"] },
-      { path: "/api/finance/student/{studentProfileId}", methods: ["get"] },
-      { path: "/api/cms/pages/{slug}", methods: ["get"] },
-      { path: "/api/cms/notices", methods: ["get", "post"] },
-      { path: "/api/cms/events", methods: ["get", "post"] },
-      { path: "/api/cms/gallery", methods: ["get", "post"] },
-      { path: "/api/cms/pages", methods: ["post"] },
-      { path: "/api/cms/pages/{slug}/publish", methods: ["post"] },
-      { path: "/api/cms/pages/{slug}/unpublish", methods: ["post"] },
-      { path: "/api/cms/admin/pages", methods: ["get"] },
-      { path: "/api/ai/ask", methods: ["post"] },
-    ];
+    const expressRoutes = getImplementedExpressRoutes();
+    const implementedSet = new Set(expressRoutes.map((r) => `${r.method.toUpperCase()} ${r.path}`));
 
-    for (const ep of expectedEndpoints) {
-      const pathObj = doc.paths[ep.path];
-      expect(pathObj, `Path '${ep.path}' must exist in openapi.json`).toBeDefined();
-      for (const method of ep.methods) {
-        expect(pathObj[method], `Method '${method.toUpperCase()}' for path '${ep.path}' must exist in openapi.json`).toBeDefined();
+    const openApiSet = new Set<string>();
+    const validMethods = new Set(["get", "post", "put", "delete", "patch", "options", "head"]);
+    for (const [pathKey, pathObj] of Object.entries(doc.paths)) {
+      for (const method of Object.keys(pathObj as Record<string, unknown>)) {
+        if (validMethods.has(method.toLowerCase())) {
+          openApiSet.add(`${method.toUpperCase()} ${pathKey}`);
+        }
       }
     }
+
+    const missingInOpenApi = [...implementedSet].filter((x) => !openApiSet.has(x)).sort();
+    const extraInOpenApi = [...openApiSet].filter((x) => !implementedSet.has(x)).sort();
+
+    expect(missingInOpenApi, `The following implemented routes are missing from openapi.json: ${missingInOpenApi.join(", ")}`).toEqual([]);
+    expect(extraInOpenApi, `The following documented OpenAPI routes do not exist in Express routers: ${extraInOpenApi.join(", ")}`).toEqual([]);
   });
 });

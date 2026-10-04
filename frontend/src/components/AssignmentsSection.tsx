@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../api";
+import { useLanguage } from "../i18n.js";
 
 type Assignment = {
   id: string;
@@ -11,6 +12,7 @@ type Assignment = {
 };
 
 export function AssignmentsSection({ studentProfileId }: { studentProfileId: string }) {
+  const { t } = useLanguage();
   const [assignments, setAssignments] = useState<Assignment[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
@@ -33,9 +35,6 @@ export function AssignmentsSection({ studentProfileId }: { studentProfileId: str
   async function handleSubmit(assignmentId: string) {
     setSubmittingId(assignmentId);
     try {
-      // A real, minimal text submission. A file-upload flow is a genuine
-      // follow-up (needs real storage wiring) rather than faked here with
-      // a fileUrl that points nowhere.
       await api.submitAssignment({ assignmentId, studentProfileId, textAnswer: "Submitted from dashboard." });
       setNotice("Submitted.");
       await load();
@@ -47,45 +46,54 @@ export function AssignmentsSection({ studentProfileId }: { studentProfileId: str
   }
 
   return (
-    <section style={{ marginTop: 24 }}>
-      <h2 style={{ fontSize: 14, color: "#666", textTransform: "uppercase" }}>My assignments</h2>
+    <section className="card">
+      <h2 className="card-title">{t("assignments.myAssignments")}</h2>
 
       {error && (
-        <p role="alert" style={{ color: "#a32d2d" }}>
+        <p role="alert" className="alert alert-danger">
           {error}
         </p>
       )}
-      {notice && <p style={{ color: "#1a7d3a", fontSize: 13 }}>{notice}</p>}
+      {notice && (
+        <p role="status" className="alert alert-success">
+          {notice}
+        </p>
+      )}
 
-      {assignments === null && !error && <p>Loading…</p>}
+      {assignments === null && !error && <p className="text-muted text-sm">{t("common.loading")}</p>}
 
       {assignments?.length === 0 && (
-        <p style={{ color: "#555" }}>No assignments yet — a genuinely empty class, not a hidden bug.</p>
+        <p className="text-muted text-sm">{t("assignments.noAssignments")}</p>
       )}
 
       {assignments && assignments.length > 0 && (
-        <ul style={{ listStyle: "none", padding: 0 }}>
+        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
           {assignments.map((a) => {
             const mySubmission = a.submissions[0];
             return (
               <li
                 key={a.id}
-                style={{ borderBottom: "1px solid #eee", padding: "8px 0", display: "flex", justifyContent: "space-between" }}
+                style={{ borderBottom: "1px solid var(--border)", padding: "10px 0" }}
+                className="flex justify-between items-center"
               >
                 <div>
                   <strong>{a.title}</strong>
-                  <div style={{ fontSize: 12, color: "#666" }}>
-                    {a.course.subject.name} · due {new Date(a.dueAt).toLocaleDateString()}
+                  <div className="text-muted text-xs">
+                    {a.course.subject.name} · {t("assignments.due")} {new Date(a.dueAt).toLocaleDateString()}
                   </div>
                 </div>
-                <div style={{ textAlign: "right" }}>
+                <div>
                   {mySubmission ? (
-                    <span style={{ fontSize: 13 }}>
-                      {mySubmission.score !== null ? `Graded: ${mySubmission.score}/${a.maxScore}` : "Submitted, awaiting grade"}
+                    <span className="text-sm">
+                      {mySubmission.score !== null ? `${t("assignments.graded")}: ${mySubmission.score}/${a.maxScore}` : t("assignments.awaiting")}
                     </span>
                   ) : (
-                    <button disabled={submittingId === a.id} onClick={() => handleSubmit(a.id)}>
-                      {submittingId === a.id ? "Submitting…" : "Submit"}
+                    <button
+                      disabled={submittingId === a.id}
+                      onClick={() => handleSubmit(a.id)}
+                      className="btn btn-primary btn-sm"
+                    >
+                      {submittingId === a.id ? t("assignments.submitting") : t("assignments.submit")}
                     </button>
                   )}
                 </div>

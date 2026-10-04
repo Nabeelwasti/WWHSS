@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { api, ApiError, type InvoiceSummary } from "../api";
+import { useLanguage } from "../i18n.js";
 
 export function FinanceSection({ studentProfileId }: { studentProfileId: string }) {
+  const { t } = useLanguage();
   const [invoices, setInvoices] = useState<InvoiceSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -13,28 +15,28 @@ export function FinanceSection({ studentProfileId }: { studentProfileId: string 
   }, [studentProfileId]);
 
   return (
-    <section style={{ marginTop: 24 }}>
-      <h2 style={{ fontSize: 14, color: "#666", textTransform: "uppercase" }}>Fees</h2>
+    <section className="card">
+      <h2 className="card-title">{t("finance.fees")}</h2>
       {error && (
-        <p role="alert" style={{ color: "#a32d2d" }}>
+        <p role="alert" className="alert alert-danger">
           {error}
         </p>
       )}
-      {invoices === null && !error && <p>Loading…</p>}
-      {invoices?.length === 0 && <p style={{ color: "#555" }}>No invoices issued yet.</p>}
+      {invoices === null && !error && <p className="text-muted text-sm">{t("common.loading")}</p>}
+      {invoices?.length === 0 && <p className="text-muted text-sm">{t("finance.noInvoices")}</p>}
       {invoices && invoices.length > 0 && (
         <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
           <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
-              <th>Fee</th>
-              <th>Amount due</th>
-              <th>Due date</th>
-              <th>Status</th>
+            <tr style={{ textAlign: "left", borderBottom: "1px solid var(--border)" }}>
+              <th scope="col">{t("finance.fee")}</th>
+              <th scope="col">{t("finance.amountDue")}</th>
+              <th scope="col">{t("finance.dueDate")}</th>
+              <th scope="col">{t("finance.status")}</th>
             </tr>
           </thead>
           <tbody>
             {invoices.map((inv) => (
-              <tr key={inv.id} style={{ borderBottom: "1px solid #eee" }}>
+              <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)" }}>
                 <td>{inv.feeStructure.name}</td>
                 <td>{inv.amountDue}</td>
                 <td>{new Date(inv.dueDate).toLocaleDateString()}</td>

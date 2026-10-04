@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { api, ApiError, type BookSummary, type LoanSummary } from "../api";
+import { useLanguage } from "../i18n.js";
 
 export function LibrarySection() {
+  const { t } = useLanguage();
   const [query, setQuery] = useState("");
   const [books, setBooks] = useState<BookSummary[] | null>(null);
   const [loans, setLoans] = useState<LoanSummary[] | null>(null);
@@ -24,41 +26,51 @@ export function LibrarySection() {
   }
 
   return (
-    <section style={{ marginTop: 24 }}>
-      <h2 style={{ fontSize: 14, color: "#666", textTransform: "uppercase" }}>Library</h2>
+    <section className="card">
+      <h2 className="card-title">{t("library.header")}</h2>
       {error && (
-        <p role="alert" style={{ color: "#a32d2d" }}>
+        <p role="alert" className="alert alert-danger">
           {error}
         </p>
       )}
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search books…" />
-        <button onClick={search}>Search</button>
+      <div className="flex gap-2 mb-2">
+        <input
+          className="input"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t("library.placeholder")}
+          aria-label={t("library.placeholder")}
+        />
+        <button onClick={search} className="btn btn-primary">
+          {t("library.search")}
+        </button>
       </div>
 
       {books && (
-        <ul style={{ fontSize: 13, paddingLeft: 16 }}>
-          {books.length === 0 && <li style={{ color: "#555", listStyle: "none" }}>No matching books found.</li>}
+        <ul className="text-sm" style={{ paddingLeft: 16 }}>
+          {books.length === 0 && <li style={{ listStyle: "none" }} className="text-muted">{t("library.noBooks")}</li>}
           {books.map((b) => (
             <li key={b.id}>
               {b.title} — {b.author}{" "}
-              <span style={{ color: "#777" }}>
-                ({b.copies.filter((c) => c.available).length}/{b.copies.length} available)
+              <span className="text-muted text-xs">
+                ({b.copies.filter((c) => c.available).length}/{b.copies.length} {t("library.available")})
               </span>
             </li>
           ))}
         </ul>
       )}
 
-      <h3 style={{ fontSize: 13, color: "#666", marginTop: 12 }}>My current & past loans</h3>
-      {loans === null && <p style={{ fontSize: 13 }}>Loading…</p>}
-      {loans?.length === 0 && <p style={{ fontSize: 13, color: "#555" }}>No borrowing history yet.</p>}
+      <h3 className="card-title text-sm mt-3" style={{ textTransform: "none", letterSpacing: 0 }}>
+        {t("library.myLoans")}
+      </h3>
+      {loans === null && <p className="text-muted text-sm">{t("common.loading")}</p>}
+      {loans?.length === 0 && <p className="text-muted text-sm">{t("library.noLoans")}</p>}
       {loans && loans.length > 0 && (
-        <ul style={{ fontSize: 13, paddingLeft: 16 }}>
+        <ul className="text-sm" style={{ paddingLeft: 16 }}>
           {loans.map((l) => (
             <li key={l.id}>
-              {l.bookCopy.book.title} — {l.returnedAt ? "returned" : `due ${new Date(l.dueAt).toLocaleDateString()}`}
+              {l.bookCopy.book.title} — {l.returnedAt ? t("library.returned") : `${t("library.due")} ${new Date(l.dueAt).toLocaleDateString()}`}
               {l.fineAmount ? ` (fine: ${l.fineAmount})` : ""}
             </li>
           ))}

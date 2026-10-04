@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { api, type NotificationSummary } from "../api";
+import { useLanguage } from "../i18n.js";
 
 export function NotificationsBell() {
+  const { t } = useLanguage();
   const [notifications, setNotifications] = useState<NotificationSummary[]>([]);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -17,9 +19,6 @@ export function NotificationsBell() {
 
   useEffect(() => {
     load();
-    // Real polling, not a fabricated live badge — every 30s is a plain,
-    // honest way to approximate "live" without adding websocket
-    // infrastructure this project doesn't have yet.
     const interval = setInterval(load, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -41,15 +40,22 @@ export function NotificationsBell() {
 
   return (
     <div style={{ position: "relative" }}>
-      <button onClick={handleOpen} style={{ position: "relative" }}>
-        Notifications
+      <button
+        onClick={handleOpen}
+        aria-label={t("notifications.header")}
+        aria-expanded={open}
+        aria-haspopup="true"
+        className="btn btn-ghost btn-sm"
+        style={{ position: "relative" }}
+      >
+        {t("notifications.header")}
         {unreadCount > 0 && (
           <span
             style={{
               position: "absolute",
-              top: -6,
-              right: -6,
-              background: "#a32d2d",
+              top: -4,
+              right: -4,
+              background: "var(--danger)",
               color: "#fff",
               borderRadius: 10,
               fontSize: 10,
@@ -63,12 +69,14 @@ export function NotificationsBell() {
 
       {open && (
         <div
+          role="menu"
+          aria-label={t("notifications.header")}
           style={{
             position: "absolute",
             right: 0,
             top: "110%",
-            background: "#fff",
-            border: "1px solid #ddd",
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
             borderRadius: 8,
             width: 280,
             maxHeight: 320,
@@ -78,30 +86,35 @@ export function NotificationsBell() {
           }}
         >
           {error && (
-            <p role="alert" style={{ color: "#a32d2d", fontSize: 12, padding: 8 }}>
+            <p role="alert" className="alert alert-danger" style={{ fontSize: 12, padding: 8, margin: 8 }}>
               {error}
             </p>
           )}
           {notifications.length === 0 && !error && (
-            <p style={{ fontSize: 13, color: "#666", padding: 12 }}>
-              No notifications yet — a genuinely empty inbox, not a loading glitch.
+            <p className="text-muted text-sm" style={{ padding: 12, margin: 0 }}>
+              {t("notifications.empty")}
             </p>
           )}
           {notifications.map((n) => (
             <div
               key={n.id}
+              role="menuitem"
+              tabIndex={0}
               onClick={() => !n.isRead && handleMarkRead(n.id)}
+              onKeyDown={(e) => {
+                if ((e.key === "Enter" || e.key === " ") && !n.isRead) handleMarkRead(n.id);
+              }}
               style={{
                 padding: 10,
-                borderBottom: "1px solid #eee",
+                borderBottom: "1px solid var(--border)",
                 fontSize: 13,
-                background: n.isRead ? "#fff" : "#f0f6ff",
+                background: n.isRead ? "transparent" : "var(--surface-2)",
                 cursor: n.isRead ? "default" : "pointer",
               }}
             >
               <strong>{n.title}</strong>
-              <div style={{ color: "#555" }}>{n.body}</div>
-              <div style={{ fontSize: 11, color: "#999", marginTop: 2 }}>
+              <div className="text-muted">{n.body}</div>
+              <div className="text-muted text-xs mt-1">
                 {new Date(n.createdAt).toLocaleString()}
               </div>
             </div>

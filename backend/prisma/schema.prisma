@@ -14,32 +14,32 @@ datasource db {
 // ---------- IDENTITY ----------
 
 model User {
-  id            String   @id @default(uuid())
-  email         String   @unique
-  passwordHash  String
-  fullName      String
-  phone         String?
-  photoUrl      String?
+  id                       String   @id @default(uuid())
+  email                    String   @unique
+  passwordHash             String
+  fullName                 String
+  phone                    String?
+  photoUrl                 String?
   // Explicit, real opt-in consent — OFF by default. Only when true may the
   // AI assistant include this person's own real school data (their own
   // attendance/results, never anyone else's) in what it sends to an AI
   // provider. Required because sending real personal data to a third-party
   // AI API is a genuine privacy decision, not something to default to
   // silently just because it would make responses more personalized.
-  aiPersonalizationConsent Boolean @default(false)
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  aiPersonalizationConsent Boolean  @default(false)
+  isActive                 Boolean  @default(true)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 
-  userRoles        UserRole[]
-  studentProfile   StudentProfile?
-  guardianOf       ParentStudentLink[] @relation("Guardian")
-  refreshTokens    RefreshToken[]
-  auditLogs        AuditLog[]
-  bookLoans        BookLoan[]
-  notifications    Notification[]
-  timetableSlots   TimetableSlot[]     @relation("TeacherSlots")
-  aiUsageRecords   AiUsageRecord[]
+  userRoles      UserRole[]
+  studentProfile StudentProfile?
+  guardianOf     ParentStudentLink[] @relation("Guardian")
+  refreshTokens  RefreshToken[]
+  auditLogs      AuditLog[]
+  bookLoans      BookLoan[]
+  notifications  Notification[]
+  timetableSlots TimetableSlot[]     @relation("TeacherSlots")
+  aiUsageRecords AiUsageRecord[]
 
   @@map("users")
 }
@@ -60,8 +60,8 @@ model RefreshToken {
 // Extensible role catalog — NOT a hardcoded enum, so a school can add
 // roles (e.g. "Transport Coordinator") without a code change.
 model Role {
-  id          String   @id @default(uuid())
-  key         String   @unique // e.g. "teacher", "class_teacher", "principal"
+  id          String  @id @default(uuid())
+  key         String  @unique // e.g. "teacher", "class_teacher", "principal"
   name        String
   description String?
 
@@ -72,8 +72,8 @@ model Role {
 }
 
 model Permission {
-  id          String @id @default(uuid())
-  key         String @unique // e.g. "attendance:mark", "finance:view"
+  id          String  @id @default(uuid())
+  key         String  @unique // e.g. "attendance:mark", "finance:view"
   description String?
 
   rolePermissions RolePermission[]
@@ -104,9 +104,9 @@ model UserRole {
   departmentId String?
   createdAt    DateTime @default(now())
 
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role   Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  class  Class?   @relation(fields: [classId], references: [id])
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role    Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  class   Class?   @relation(fields: [classId], references: [id])
   section Section? @relation(fields: [sectionId, classId], references: [id, classId])
   subject Subject? @relation(fields: [subjectId], references: [id])
 
@@ -133,13 +133,13 @@ model ParentStudentLink {
 
 model AcademicYear {
   id        String   @id @default(uuid())
-  label     String   // "2026-2027"
+  label     String // "2026-2027"
   startDate DateTime
   endDate   DateTime
   isActive  Boolean  @default(false)
 
-  classes Class[]
-  exams   Exam[]
+  classes       Class[]
+  exams         Exam[]
   feeStructures FeeStructure[]
 
   @@map("academic_years")
@@ -150,11 +150,11 @@ model Class {
   name           String // "Grade 10"
   academicYearId String
 
-  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
-  sections     Section[]
-  userRoles    UserRole[]
-  students     StudentProfile[]
-  courses      Course[]
+  academicYear   AcademicYear     @relation(fields: [academicYearId], references: [id])
+  sections       Section[]
+  userRoles      UserRole[]
+  students       StudentProfile[]
+  courses        Course[]
   timetableSlots TimetableSlot[]
   feeStructures  FeeStructure[]
 
@@ -166,10 +166,10 @@ model Section {
   name    String // "A"
   classId String
 
-  class     Class      @relation(fields: [classId], references: [id])
-  students  StudentProfile[]
-  userRoles UserRole[]
-  timetableSlots TimetableSlot[]
+  class             Class              @relation(fields: [classId], references: [id])
+  students          StudentProfile[]
+  userRoles         UserRole[]
+  timetableSlots    TimetableSlot[]
   attendanceRecords AttendanceRecord[]
 
   @@unique([id, classId])
@@ -177,7 +177,7 @@ model Section {
 }
 
 model Subject {
-  id   String @id @default(uuid())
+  id   String  @id @default(uuid())
   name String
   code String? @unique
 
@@ -191,19 +191,19 @@ model Subject {
 }
 
 model StudentProfile {
-  id             String   @id @default(uuid())
-  userId         String   @unique
-  admissionNo    String   @unique
-  classId        String?
-  sectionId      String?
-  rollNumber     String?
-  dateOfBirth    DateTime?
-  admissionDate  DateTime?
+  id            String    @id @default(uuid())
+  userId        String    @unique
+  admissionNo   String    @unique
+  classId       String?
+  sectionId     String?
+  rollNumber    String?
+  dateOfBirth   DateTime?
+  admissionDate DateTime?
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  class     Class?   @relation(fields: [classId], references: [id])
-  section   Section? @relation(fields: [sectionId, classId], references: [id, classId])
-  guardians ParentStudentLink[]
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  class             Class?              @relation(fields: [classId], references: [id])
+  section           Section?            @relation(fields: [sectionId, classId], references: [id, classId])
+  guardians         ParentStudentLink[]
   attendanceRecords AttendanceRecord[]
   submissions       Submission[]
   quizAttempts      QuizAttempt[]
@@ -218,12 +218,12 @@ model StudentProfile {
 // Every sensitive action is logged: who, what, when. This is not optional
 // for a system holding student records.
 model AuditLog {
-  id         String   @id @default(uuid())
-  userId     String?
-  action     String   // e.g. "attendance:mark", "grades:update"
-  resource   String?  // e.g. "student:1234"
-  metadata   Json?
-  createdAt  DateTime @default(now())
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String // e.g. "attendance:mark", "grades:update"
+  resource  String? // e.g. "student:1234"
+  metadata  Json?
+  createdAt DateTime @default(now())
 
   user User? @relation(fields: [userId], references: [id])
 
@@ -240,7 +240,7 @@ model AttendanceRecord {
   classId          String
   sectionId        String
   date             DateTime
-  status           String   // present | absent | late | excused
+  status           String // present | absent | late | excused
   markedByUserId   String
   createdAt        DateTime @default(now())
 
@@ -260,22 +260,22 @@ model Course {
   classId   String
   title     String // e.g. "Grade 10 Physics"
 
-  subject Subject @relation(fields: [subjectId], references: [id])
-  class   Class   @relation(fields: [classId], references: [id])
-  lessons Lesson[]
+  subject     Subject      @relation(fields: [subjectId], references: [id])
+  class       Class        @relation(fields: [classId], references: [id])
+  lessons     Lesson[]
   assignments Assignment[]
-  quizzes Quiz[]
+  quizzes     Quiz[]
 
   @@map("courses")
 }
 
 model Lesson {
-  id           String  @id @default(uuid())
-  courseId     String
-  title        String
-  content      String? // rich text / markdown
-  orderIndex   Int     @default(0)
-  createdAt    DateTime @default(now())
+  id         String   @id @default(uuid())
+  courseId   String
+  title      String
+  content    String? // rich text / markdown
+  orderIndex Int      @default(0)
+  createdAt  DateTime @default(now())
 
   course    Course     @relation(fields: [courseId], references: [id])
   resources Resource[]
@@ -284,11 +284,11 @@ model Lesson {
 }
 
 model Resource {
-  id       String  @id @default(uuid())
-  lessonId String?
-  title    String
-  fileUrl  String
-  fileType String // pdf | video | image | doc | link
+  id               String  @id @default(uuid())
+  lessonId         String?
+  title            String
+  fileUrl          String
+  fileType         String // pdf | video | image | doc | link
   uploadedByUserId String
 
   lesson Lesson? @relation(fields: [lessonId], references: [id])
@@ -343,11 +343,11 @@ model Quiz {
 }
 
 model QuizQuestion {
-  id            String @id @default(uuid())
-  quizId        String
-  prompt        String
-  choices       Json   // ["A","B","C","D"]
-  correctIndex  Int
+  id           String @id @default(uuid())
+  quizId       String
+  prompt       String
+  choices      Json // ["A","B","C","D"]
+  correctIndex Int
 
   quiz Quiz @relation(fields: [quizId], references: [id])
 
@@ -372,12 +372,12 @@ model QuizAttempt {
 
 model Exam {
   id             String   @id @default(uuid())
-  name           String   // "Mid-Term 2026"
+  name           String // "Mid-Term 2026"
   academicYearId String
   startDate      DateTime
   endDate        DateTime
 
-  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
+  academicYear AcademicYear  @relation(fields: [academicYearId], references: [id])
   examSubjects ExamSubject[]
   results      ExamResult[]
 
@@ -388,7 +388,7 @@ model ExamSubject {
   id        String  @id @default(uuid())
   examId    String
   subjectId String
-  maxMarks  Decimal @db.Decimal(5,2)
+  maxMarks  Decimal @db.Decimal(5, 2)
 
   exam    Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)
   subject Subject      @relation(fields: [subjectId], references: [id], onDelete: Cascade)
@@ -400,20 +400,20 @@ model ExamSubject {
 }
 
 model ExamResult {
-  id               String       @id @default(uuid())
+  id               String  @id @default(uuid())
   examId           String
   studentProfileId String
   subjectId        String
   examSubjectId    String
-  marksObtained    Decimal      @db.Decimal(5,2)
-  maxMarks         Decimal      @db.Decimal(5,2)
+  marksObtained    Decimal @db.Decimal(5, 2)
+  maxMarks         Decimal @db.Decimal(5, 2)
   grade            String?
   remarks          String?
 
-  exam        Exam         @relation(fields: [examId], references: [id])
+  exam        Exam           @relation(fields: [examId], references: [id])
   student     StudentProfile @relation(fields: [studentProfileId], references: [id])
-  subject     Subject      @relation(fields: [subjectId], references: [id])
-  examSubject ExamSubject  @relation(fields: [examSubjectId, examId, subjectId], references: [id, examId, subjectId], onDelete: Cascade)
+  subject     Subject        @relation(fields: [subjectId], references: [id])
+  examSubject ExamSubject    @relation(fields: [examSubjectId, examId, subjectId], references: [id, examId, subjectId], onDelete: Cascade)
 
   @@unique([examId, studentProfileId, subjectId])
   @@unique([examSubjectId, studentProfileId])
@@ -425,7 +425,7 @@ model ExamResult {
 model AiUsageRecord {
   id        String   @id @default(uuid())
   userId    String
-  date      String   // Format: "YYYY-MM-DD"
+  date      String // Format: "YYYY-MM-DD"
   count     Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -444,19 +444,20 @@ model Room {
   name String @unique
 
   slots TimetableSlot[]
+
   @@map("rooms")
 }
 
 model TimetableSlot {
-  id         String @id @default(uuid())
-  classId    String
-  sectionId  String
-  subjectId  String
-  teacherId  String // Users.id
-  roomId     String?
-  dayOfWeek  Int    // 0=Sunday .. 6=Saturday
-  startTime  String // "09:00"
-  endTime    String // "09:45"
+  id        String  @id @default(uuid())
+  classId   String
+  sectionId String
+  subjectId String
+  teacherId String // Users.id
+  roomId    String?
+  dayOfWeek Int // 0=Sunday .. 6=Saturday
+  startTime String // "09:00"
+  endTime   String // "09:45"
 
   class   Class   @relation(fields: [classId], references: [id])
   section Section @relation(fields: [sectionId, classId], references: [id, classId])
@@ -473,10 +474,10 @@ model TimetableSlot {
 // ---------- LIBRARY ----------
 
 model Book {
-  id       String @id @default(uuid())
+  id       String     @id @default(uuid())
   title    String
   author   String
-  isbn     String? @unique
+  isbn     String?    @unique
   category String?
   copies   BookCopy[]
 
@@ -489,20 +490,20 @@ model BookCopy {
   barcode   String  @unique
   available Boolean @default(true)
 
-  book  Book        @relation(fields: [bookId], references: [id])
+  book  Book       @relation(fields: [bookId], references: [id])
   loans BookLoan[]
 
   @@map("book_copies")
 }
 
 model BookLoan {
-  id           String    @id @default(uuid())
-  bookCopyId   String
-  userId       String
-  issuedAt     DateTime  @default(now())
-  dueAt        DateTime
-  returnedAt   DateTime?
-  fineAmount   Decimal?  @db.Decimal(10,2)
+  id         String    @id @default(uuid())
+  bookCopyId String
+  userId     String
+  issuedAt   DateTime  @default(now())
+  dueAt      DateTime
+  returnedAt DateTime?
+  fineAmount Decimal?  @db.Decimal(10, 2)
 
   bookCopy BookCopy @relation(fields: [bookCopyId], references: [id])
   user     User     @relation(fields: [userId], references: [id])
@@ -516,8 +517,8 @@ model FeeStructure {
   id             String  @id @default(uuid())
   classId        String
   academicYearId String
-  name           String  // "Tuition Term 1"
-  amount         Decimal @db.Decimal(10,2)
+  name           String // "Tuition Term 1"
+  amount         Decimal @db.Decimal(10, 2)
 
   class        Class        @relation(fields: [classId], references: [id])
   academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
@@ -527,15 +528,15 @@ model FeeStructure {
 }
 
 model FeeInvoice {
-  id               String    @id @default(uuid())
+  id               String   @id @default(uuid())
   feeStructureId   String
   studentProfileId String
-  amountDue        Decimal   @db.Decimal(10,2)
+  amountDue        Decimal  @db.Decimal(10, 2)
   dueDate          DateTime
-  status           String    @default("pending") // pending | paid | overdue | waived
-  createdAt        DateTime  @default(now())
+  status           String   @default("pending") // pending | paid | overdue | waived
+  createdAt        DateTime @default(now())
 
-  feeStructure FeeStructure @relation(fields: [feeStructureId], references: [id])
+  feeStructure FeeStructure   @relation(fields: [feeStructureId], references: [id])
   student      StudentProfile @relation(fields: [studentProfileId], references: [id])
   payments     Payment[]
 
@@ -547,11 +548,11 @@ model FeeInvoice {
 }
 
 model Payment {
-  id           String   @id @default(uuid())
-  invoiceId    String
-  amount       Decimal  @db.Decimal(10,2)
-  method       String   // cash | bank_transfer | card | online
-  paidAt       DateTime @default(now())
+  id               String   @id @default(uuid())
+  invoiceId        String
+  amount           Decimal  @db.Decimal(10, 2)
+  method           String // cash | bank_transfer | card | online
+  paidAt           DateTime @default(now())
   receivedByUserId String?
 
   invoice FeeInvoice @relation(fields: [invoiceId], references: [id])
@@ -562,30 +563,30 @@ model Payment {
 // ---------- PUBLIC WEBSITE / CMS ----------
 
 model CmsPage {
-  id          String   @id @default(uuid())
-  slug        String   @unique // "admissions", "about"
-  title       String
-  content     String   // rich text / markdown
-  isPublished Boolean  @default(false)
+  id              String   @id @default(uuid())
+  slug            String   @unique // "admissions", "about"
+  title           String
+  content         String // rich text / markdown
+  isPublished     Boolean  @default(false)
   updatedByUserId String
-  updatedAt   DateTime @updatedAt
+  updatedAt       DateTime @updatedAt
 
   @@map("cms_pages")
 }
 
 model Notice {
-  id          String   @id @default(uuid())
-  title       String
-  body        String
-  audience    String   // "public" | "students" | "teachers" | "parents" | "staff"
-  publishedAt DateTime @default(now())
+  id                String   @id @default(uuid())
+  title             String
+  body              String
+  audience          String // "public" | "students" | "teachers" | "parents" | "staff"
+  publishedAt       DateTime @default(now())
   publishedByUserId String
 
   @@map("notices")
 }
 
 model EventItem {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   title       String
   description String?
   startAt     DateTime
@@ -596,11 +597,11 @@ model EventItem {
 }
 
 model GalleryItem {
-  id          String @id @default(uuid())
-  title       String
-  imageUrl    String
-  albumName   String?
-  uploadedAt  DateTime @default(now())
+  id         String   @id @default(uuid())
+  title      String
+  imageUrl   String
+  albumName  String?
+  uploadedAt DateTime @default(now())
 
   @@map("gallery_items")
 }
@@ -612,7 +613,7 @@ model Notification {
   userId    String
   title     String
   body      String
-  type      String   // "assignment" | "attendance" | "announcement" | "fee" | "system"
+  type      String // "assignment" | "attendance" | "announcement" | "fee" | "system"
   isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
 

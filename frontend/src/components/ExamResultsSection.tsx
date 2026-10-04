@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { api, ApiError, type ExamResultSummary } from "../api";
+import { useLanguage } from "../i18n.js";
 
 export function ExamResultsSection({ studentProfileId }: { studentProfileId: string }) {
+  const { t } = useLanguage();
   const [results, setResults] = useState<ExamResultSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -13,31 +15,31 @@ export function ExamResultsSection({ studentProfileId }: { studentProfileId: str
   }, [studentProfileId]);
 
   return (
-    <section style={{ marginTop: 24 }}>
-      <h2 style={{ fontSize: 14, color: "#666", textTransform: "uppercase" }}>My results</h2>
+    <section className="card">
+      <h2 className="card-title">{t("exams.myResults")}</h2>
 
       {error && (
-        <p role="alert" style={{ color: "#a32d2d" }}>
+        <p role="alert" className="alert alert-danger">
           {error}
         </p>
       )}
-      {results === null && !error && <p>Loading…</p>}
+      {results === null && !error && <p className="text-muted text-sm">{t("common.loading")}</p>}
       {results?.length === 0 && (
-        <p style={{ color: "#555" }}>No results recorded yet — nothing has been entered, not a hidden bug.</p>
+        <p className="text-muted text-sm">{t("exams.noResults")}</p>
       )}
       {results && results.length > 0 && (
         <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
           <thead>
-            <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
-              <th>Exam</th>
-              <th>Subject</th>
-              <th>Marks</th>
-              <th>Grade</th>
+            <tr style={{ textAlign: "left", borderBottom: "1px solid var(--border)" }}>
+              <th scope="col">{t("exams.exam")}</th>
+              <th scope="col">{t("exams.subject")}</th>
+              <th scope="col">{t("exams.marks")}</th>
+              <th scope="col">{t("exams.grade")}</th>
             </tr>
           </thead>
           <tbody>
             {results.map((r) => (
-              <tr key={r.id} style={{ borderBottom: "1px solid #eee" }}>
+              <tr key={r.id} style={{ borderBottom: "1px solid var(--border)" }}>
                 <td>{r.exam.name}</td>
                 <td>{r.subject.name}</td>
                 <td>

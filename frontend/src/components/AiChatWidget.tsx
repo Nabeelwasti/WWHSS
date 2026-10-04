@@ -1,9 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { api, ApiError } from "../api";
 import { useAuth } from "../AuthContext";
+import { useLanguage } from "../i18n.js";
 
 export function AiChatWidget() {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const [message, setMessage] = useState("");
   const [reply, setReply] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -19,8 +21,6 @@ export function AiChatWidget() {
       const res = await api.askAI(message);
       setReply(res.reply);
     } catch (e) {
-      // A real 503 here means no AI provider is genuinely configured on
-      // this deployment — shown honestly, not disguised as a canned reply.
       setError(e instanceof ApiError ? e.message : "The assistant is unavailable right now.");
     } finally {
       setLoading(false);
@@ -32,9 +32,6 @@ export function AiChatWidget() {
     setConsentBusy(true);
     try {
       await api.setAiConsent(!user.aiPersonalizationConsent);
-      // A real page reload is the simplest honest way to reflect the new
-      // consent state everywhere without threading a refetch through every
-      // component that reads `user`.
       window.location.reload();
     } catch {
       setConsentBusy(false);
@@ -43,17 +40,18 @@ export function AiChatWidget() {
 
   return (
     <section className="card">
-      <h2 className="card-title">Campus AI</h2>
+      <h2 className="card-title">{t("ai.title")}</h2>
 
       <form onSubmit={handleSubmit} className="flex gap-2">
         <input
           className="input"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          placeholder="Ask a general academic question…"
+          placeholder={t("ai.askPlaceholder")}
+          aria-label={t("ai.askPlaceholder")}
         />
         <button type="submit" disabled={loading || !message.trim()} className="btn btn-primary">
-          {loading ? "…" : "Ask"}
+          {loading ? "…" : t("ai.askBtn")}
         </button>
       </form>
 
@@ -63,7 +61,7 @@ export function AiChatWidget() {
         </p>
       )}
       {reply && (
-        <p className="text-sm mt-2" style={{ whiteSpace: "pre-wrap" }}>
+        <p role="status" className="text-sm mt-2" style={{ whiteSpace: "pre-wrap" }}>
           {reply}
         </p>
       )}
@@ -76,15 +74,9 @@ export function AiChatWidget() {
             onChange={toggleConsent}
             disabled={consentBusy}
           />
-          Let the assistant see my own real attendance streak and recent results, to give more
-          personal answers. You can turn this off anytime — it's never used without your say-so.
+          {t("ai.consentLabel")}
         </label>
       )}
-
-      <p className="text-xs text-muted mt-2">
-        It won't look up records you haven't allowed it to see. Ask it general academic questions or,
-        if you've turned personalization on above, things like "how am I doing?"
-      </p>
     </section>
   );
 }
