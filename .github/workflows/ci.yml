@@ -70,6 +70,9 @@ jobs:
         run: npm run test:unit
       - name: Run integration & concurrency tests
         working-directory: backend
+        env:
+          DATABASE_URL: "postgresql://ci_user:ci_password_12345@localhost:5432/ci_wwhs_integration_test?schema=public"
+          INTEGRATION_TEST_DB_URL: "postgresql://ci_user:ci_password_12345@localhost:5432/ci_wwhs_integration_test?schema=public"
         run: npm run test:integration
       - name: Type-check and build
         working-directory: backend

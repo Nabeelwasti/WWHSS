@@ -1,6 +1,33 @@
 import { prisma } from "../../db/client.js";
+import { Prisma } from "@prisma/client";
 
 export class ConflictError extends Error {}
+
+async function runSerializableTransaction<T>(
+  fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  maxRetries = 5
+): Promise<T> {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await prisma.$transaction(fn, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (err: any) {
+      attempt++;
+      const isSerializationFailure =
+        err?.code === "P2034" ||
+        (typeof err?.message === "string" &&
+          (err.message.includes("serialization") ||
+            err.message.includes("deadlock") ||
+            err.message.includes("concurrent update") ||
+            err.message.includes("could not serialize access")));
+      if (isSerializationFailure && attempt < maxRetries) {
+        await new Promise((res) => setTimeout(res, Math.pow(2, attempt) * 10));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
 
 // Real conflict detection: a teacher can't be in two places at once, and
 // neither can a room. This checks actual overlapping rows in the database
@@ -33,7 +60,7 @@ export async function createTimetableSlot(input: {
     if (!room) throw new ConflictError(`Room ${input.roomId} not found`);
   }
 
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
     const overlapping = await tx.timetableSlot.findMany({
       where: {
         dayOfWeek: input.dayOfWeek,
