@@ -262,7 +262,8 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
     const testDate = `2026-10-04-test-${Date.now()}`;
 
     // Fill quota up to maxDailyAiRequests - 1 so exactly 1 slot remains
-    const limit = 5;
+    const envModule = await import("../config/env.js");
+    const limit = envModule.env.maxDailyAiRequests;
     await prisma.aiUsageRecord.create({
       data: { userId: user.id, date: testDate, count: limit - 1 },
     });
