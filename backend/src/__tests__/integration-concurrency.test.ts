@@ -1,8 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { PrismaClient, Prisma } from "@prisma/client";
 
-// Integration & concurrency test suite requires a dedicated disposable integration test database.
-// It MUST NOT run against arbitrary or development/production databases.
 function getIntegrationTestDbUrl(): string {
   const url = process.env.INTEGRATION_TEST_DB_URL;
   if (!url) {
@@ -22,6 +20,10 @@ let prisma: PrismaClient;
 let recordPayment: typeof import("../modules/finance/finance.service.js").recordPayment;
 let issueBook: typeof import("../modules/library/library.service.js").issueBook;
 let createTimetableSlot: typeof import("../modules/timetable/timetable.service.js").createTimetableSlot;
+let refresh: typeof import("../modules/identity/auth.service.js").refresh;
+let reserveAiQuota: typeof import("../modules/ai/ai.service.js").reserveAiQuota;
+let releaseAiQuota: typeof import("../modules/ai/ai.service.js").releaseAiQuota;
+let hashRefreshToken: typeof import("../modules/identity/tokens.js").hashRefreshToken;
 
 describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
   beforeAll(async () => {
@@ -32,11 +34,18 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
     const financeModule = await import("../modules/finance/finance.service.js");
     const libraryModule = await import("../modules/library/library.service.js");
     const timetableModule = await import("../modules/timetable/timetable.service.js");
+    const authModule = await import("../modules/identity/auth.service.js");
+    const aiModule = await import("../modules/ai/ai.service.js");
+    const tokenModule = await import("../modules/identity/tokens.js");
 
     prisma = dbModule.prisma;
     recordPayment = financeModule.recordPayment;
     issueBook = libraryModule.issueBook;
     createTimetableSlot = timetableModule.createTimetableSlot;
+    refresh = authModule.refresh;
+    reserveAiQuota = aiModule.reserveAiQuota;
+    releaseAiQuota = aiModule.releaseAiQuota;
+    hashRefreshToken = tokenModule.hashRefreshToken;
 
     await prisma.$connect();
   });
@@ -47,7 +56,7 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
     }
   });
 
-  it("proves concurrent finance payments cannot overpay or duplicate incorrectly", async () => {
+  it("proves concurrent finance payments cannot overpay and verifies exact payment count, amounts, invoice status and audit logs", async () => {
     const ay = await prisma.academicYear.create({
       data: { label: "2026-2027", startDate: new Date("2026-09-01"), endDate: new Date("2027-06-30") },
     });
@@ -75,13 +84,23 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
     const fulfilled = results.filter((r) => r.status === "fulfilled");
     const rejected = results.filter((r) => r.status === "rejected");
 
-    // Exactly 2 payments of 200 should succeed (400 total), 350+200 would exceed 500 so 3rd+ fail
-    expect(fulfilled.length).toBeLessThanOrEqual(2);
-    expect(rejected.length).toBeGreaterThanOrEqual(3);
+    // Exactly 2 payments of $200 succeed ($400 total), remaining $100 rejects subsequent $200 payment attempts
+    expect(fulfilled.length).toBe(2);
+    expect(rejected.length).toBe(3);
 
     const payments = await prisma.payment.findMany({ where: { invoiceId: invoice.id } });
+    expect(payments.length).toBe(2);
+
     const totalPaid = payments.reduce((sum, p) => sum.add(p.amount), new Prisma.Decimal(0));
-    expect(totalPaid.toNumber()).toBeLessThanOrEqual(500);
+    expect(totalPaid.toNumber()).toBe(400);
+
+    const updatedInvoice = await prisma.feeInvoice.findUnique({ where: { id: invoice.id } });
+    expect(updatedInvoice?.status).toBe("partial");
+
+    const auditLogs = await prisma.auditLog.findMany({
+      where: { userId: user.id, action: "finance:payment", resource: `invoice:${invoice.id}` },
+    });
+    expect(auditLogs.length).toBe(2);
   });
 
   it("proves concurrent library issueBook calls allow exactly one successful issuance", async () => {
@@ -107,106 +126,169 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
     expect(updatedCopy?.available).toBe(false);
   });
 
-  it("proves refresh-token replay/rotation permits exactly one successful claim", async () => {
+  it("proves refresh-token rotation permits exactly one successful claim using production refresh() service", async () => {
     const user = await prisma.user.create({
       data: { email: `rt-user-${Date.now()}@school.edu`, passwordHash: "hash", fullName: "RT User" },
     });
-    const rt = await prisma.refreshToken.create({
+    const rawToken = `rt-raw-token-${Date.now()}-${Math.random()}`;
+    const hash = hashRefreshToken(rawToken);
+
+    await prisma.refreshToken.create({
       data: {
         userId: user.id,
-        tokenHash: `hash-${Date.now()}`,
+        tokenHash: hash,
         expiresAt: new Date(Date.now() + 86400000),
         revoked: false,
       },
     });
 
-    // Simulate concurrent atomic rotation attempt
-    const attempts = await Promise.all(
-      Array.from({ length: 5 }).map(() =>
-        prisma.refreshToken.updateMany({
-          where: { id: rt.id, revoked: false },
-          data: { revoked: true },
-        })
-      )
+    // Concurrently exercise the production refresh() service 5 times with the exact same token
+    const results = await Promise.allSettled(
+      Array.from({ length: 5 }).map(() => refresh(rawToken))
     );
 
-    const successfulRotations = attempts.filter((a) => a.count === 1);
-    const failedRotations = attempts.filter((a) => a.count === 0);
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
 
-    expect(successfulRotations.length).toBe(1);
-    expect(failedRotations.length).toBe(4);
+    expect(fulfilled.length).toBe(1);
+    expect(rejected.length).toBe(4);
   });
 
-  it("proves composite class/section foreign keys reject inconsistent data", async () => {
+  it("proves database integrity constraints independently reject inconsistent class/section/exam/subject relationships for UserRole, StudentProfile, AttendanceRecord, TimetableSlot, and ExamResult", async () => {
     const ay = await prisma.academicYear.create({
       data: { label: "2026-2027", startDate: new Date("2026-09-01"), endDate: new Date("2027-06-30") },
     });
     const classA = await prisma.class.create({ data: { name: "Class A", academicYearId: ay.id } });
     const classB = await prisma.class.create({ data: { name: "Class B", academicYearId: ay.id } });
     const sectionB1 = await prisma.section.create({ data: { name: "B1", classId: classB.id } });
+    const role = await prisma.role.create({ data: { key: `role-${Date.now()}`, name: "Teacher Role" } });
+    const subject = await prisma.subject.create({ data: { name: "Physics", code: `PHY-INT-${Date.now()}` } });
 
     const user = await prisma.user.create({
-      data: { email: `student-mismatch-${Date.now()}@school.edu`, passwordHash: "hash", fullName: "Mismatch Student" },
+      data: { email: `integrity-user-${Date.now()}@school.edu`, passwordHash: "hash", fullName: "Integrity User" },
     });
 
-    // Attempt to assign student to Class A with Section B1 (which belongs to Class B)
+    // 1. UserRole: Class A with Section B1 (which belongs to Class B) MUST be rejected by DB FK constraint
     await expect(
-      prisma.studentProfile.create({
+      prisma.userRole.create({
         data: {
           userId: user.id,
-          admissionNo: `ADM-MIS-${Date.now()}`,
+          roleId: role.id,
           classId: classA.id,
           sectionId: sectionB1.id,
         },
       })
     ).rejects.toThrow();
-  });
 
-  it("proves ExamSubject / ExamResult integrity is strictly enforced", async () => {
-    const ay = await prisma.academicYear.create({
-      data: { label: "2026-2027", startDate: new Date("2026-09-01"), endDate: new Date("2027-06-30") },
-    });
-    const exam = await prisma.exam.create({
-      data: { name: "Finals 2026", academicYearId: ay.id, startDate: new Date(), endDate: new Date() },
-    });
-    const subject = await prisma.subject.create({ data: { name: "Mathematics", code: `MATH-${Date.now()}` } });
-    const examSubject = await prisma.examSubject.create({
-      data: { examId: exam.id, subjectId: subject.id, maxMarks: new Prisma.Decimal("100.00") },
-    });
+    // 2. StudentProfile: Class A with Section B1 MUST be rejected by DB FK constraint
+    await expect(
+      prisma.studentProfile.create({
+        data: {
+          userId: user.id,
+          admissionNo: `ADM-INT-${Date.now()}`,
+          classId: classA.id,
+          sectionId: sectionB1.id,
+        },
+      })
+    ).rejects.toThrow();
 
-    const user = await prisma.user.create({
-      data: { email: `exam-student-${Date.now()}@school.edu`, passwordHash: "hash", fullName: "Exam Student" },
-    });
-    const student = await prisma.studentProfile.create({
-      data: { userId: user.id, admissionNo: `ADM-EXAM-${Date.now()}` },
-    });
-
-    const result1 = await prisma.examResult.create({
+    const validStudent = await prisma.studentProfile.create({
       data: {
-        examId: exam.id,
-        subjectId: subject.id,
-        studentProfileId: student.id,
-        examSubjectId: examSubject.id,
-        marksObtained: new Prisma.Decimal("88.50"),
-        maxMarks: new Prisma.Decimal("100.00"),
+        userId: user.id,
+        admissionNo: `ADM-VALID-${Date.now()}`,
+        classId: classB.id,
+        sectionId: sectionB1.id,
       },
     });
 
-    expect(result1.examSubjectId).toBe(examSubject.id);
+    // 3. AttendanceRecord: Class A with Section B1 MUST be rejected by DB FK constraint
+    await expect(
+      prisma.attendanceRecord.create({
+        data: {
+          studentProfileId: validStudent.id,
+          classId: classA.id,
+          sectionId: sectionB1.id,
+          date: new Date(),
+          status: "present",
+          markedByUserId: user.id,
+        },
+      })
+    ).rejects.toThrow();
 
-    // Duplicate examResult for same examSubjectId and studentProfileId must be rejected by unique constraint
+    // 4. TimetableSlot: Class A with Section B1 MUST be rejected by DB FK constraint
+    await expect(
+      prisma.timetableSlot.create({
+        data: {
+          classId: classA.id,
+          sectionId: sectionB1.id,
+          subjectId: subject.id,
+          teacherId: user.id,
+          dayOfWeek: 1,
+          startTime: "10:00",
+          endTime: "10:45",
+        },
+      })
+    ).rejects.toThrow();
+
+    // 5. ExamResult: ExamSubject belongs to (exam, subjectA). Trying to create ExamResult with subjectB MUST be rejected
+    const exam = await prisma.exam.create({
+      data: { name: "Mid-Term", academicYearId: ay.id, startDate: new Date(), endDate: new Date() },
+    });
+    const subjectA = await prisma.subject.create({ data: { name: "Subject A", code: `SA-${Date.now()}` } });
+    const subjectB = await prisma.subject.create({ data: { name: "Subject B", code: `SB-${Date.now()}` } });
+
+    const examSubjectA = await prisma.examSubject.create({
+      data: { examId: exam.id, subjectId: subjectA.id, maxMarks: new Prisma.Decimal("100.00") },
+    });
+
     await expect(
       prisma.examResult.create({
         data: {
           examId: exam.id,
-          subjectId: subject.id,
-          studentProfileId: student.id,
-          examSubjectId: examSubject.id,
-          marksObtained: new Prisma.Decimal("90.00"),
+          studentProfileId: validStudent.id,
+          subjectId: subjectB.id, // Mismatched subjectId with examSubjectA (which is for subjectA)
+          examSubjectId: examSubjectA.id,
+          marksObtained: new Prisma.Decimal("75.00"),
           maxMarks: new Prisma.Decimal("100.00"),
         },
       })
     ).rejects.toThrow();
+  });
+
+  it("proves PostgreSQL-backed AI daily quota reservation is atomic under concurrent requests", async () => {
+    const user = await prisma.user.create({
+      data: { email: `ai-quota-${Date.now()}@school.edu`, passwordHash: "hash", fullName: "AI Quota User" },
+    });
+    const testDate = `2026-10-04-test-${Date.now()}`;
+
+    // Fill quota up to maxDailyAiRequests - 1 so exactly 1 slot remains
+    const limit = 5;
+    await prisma.aiUsageRecord.create({
+      data: { userId: user.id, date: testDate, count: limit - 1 },
+    });
+
+    // Fire 5 concurrent quota reservation attempts when only 1 slot is remaining
+    const results = await Promise.allSettled(
+      Array.from({ length: 5 }).map(() => reserveAiQuota(user.id, testDate))
+    );
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+
+    expect(fulfilled.length).toBe(1);
+    expect(rejected.length).toBe(4);
+
+    const record = await prisma.aiUsageRecord.findUnique({
+      where: { userId_date: { userId: user.id, date: testDate } },
+    });
+    expect(record?.count).toBe(limit);
+
+    // Verify releaseAiQuota safely decrements and restores slot without negative counts
+    await releaseAiQuota(user.id, testDate);
+    const releasedRecord = await prisma.aiUsageRecord.findUnique({
+      where: { userId_date: { userId: user.id, date: testDate } },
+    });
+    expect(releasedRecord?.count).toBe(limit - 1);
   });
 
   it("proves Decimal monetary/marks calculations remain exact", async () => {

@@ -1,16 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
-// English / Urdu, with right-to-left layout for Urdu. Chosen because many
-// parents in the school community read Urdu far more comfortably than
-// English, even though the school teaches in English — a language barrier
-// is one of the quiet reasons families stay disengaged.
-//
-// HONEST SCOPE: the wording below covers the screens families see first
-// (navigation, sign-in, public homepage, dashboard shell, "My progress").
-// Other screens are still English-only. The Urdu was written by an AI and
-// should be reviewed by a native speaker (ideally a teacher at the school)
-// before launch — tone and word choice matter for a school's voice.
-
 export type Lang = "en" | "ur";
 
 const dictionary = {
@@ -45,6 +34,39 @@ const dictionary = {
     "progress.msg.5": "Great streak! Showing up every day is the biggest step to learning.",
     "progress.msg.1": "Good to see you here. Every day you come builds your streak.",
     "progress.msg.0": "Every day is a fresh start. Come in tomorrow and start a new streak!",
+    "finance.title": "Finance & Fees",
+    "finance.invoices": "Fee Invoices",
+    "finance.amountDue": "Amount Due",
+    "finance.status": "Status",
+    "finance.pay": "Pay",
+    "library.title": "Library Catalog",
+    "library.search": "Search Books",
+    "library.available": "Available",
+    "library.borrowed": "Borrowed",
+    "exams.title": "Exam Results",
+    "exams.marks": "Marks Obtained",
+    "exams.grade": "Grade",
+    "assignments.title": "Assignments & Homework",
+    "assignments.due": "Due Date",
+    "assignments.submit": "Submit",
+    "timetable.title": "Weekly Timetable",
+    "timetable.day": "Day",
+    "timetable.time": "Time Slot",
+    "quizzes.title": "Quizzes & Assessments",
+    "quizzes.start": "Start Quiz",
+    "attendance.mark": "Mark Attendance",
+    "attendance.present": "Present",
+    "attendance.absent": "Absent",
+    "attendance.late": "Late",
+    "password.change": "Change Password",
+    "password.current": "Current Password",
+    "password.new": "New Password",
+    "ai.assistant": "Campus AI Assistant",
+    "ai.placeholder": "Ask anything about school...",
+    "ai.send": "Send",
+    "notifications.title": "Notifications",
+    "update.ready": "A new version is ready.",
+    "update.refresh": "Refresh",
     "lang.switchTo": "اردو",
   },
   ur: {
@@ -78,6 +100,39 @@ const dictionary = {
     "progress.msg.5": "بہت خوب! روزانہ آنا سیکھنے کی طرف سب سے بڑا قدم ہے۔",
     "progress.msg.1": "آپ کو یہاں دیکھ کر اچھا لگا۔ ہر دن کی حاضری آپ کا سلسلہ بڑھاتی ہے۔",
     "progress.msg.0": "ہر دن ایک نیا آغاز ہے۔ کل آئیں اور نیا سلسلہ شروع کریں!",
+    "finance.title": "مالیات اور فیس",
+    "finance.invoices": "فیس کے انوائس",
+    "finance.amountDue": "قابل ادا رقم",
+    "finance.status": "حیثیت",
+    "finance.pay": "ادائیگی کریں",
+    "library.title": "لائبریری کیٹلاگ",
+    "library.search": "کتابیں تلاش کریں",
+    "library.available": "دستیاب",
+    "library.borrowed": "مستعار",
+    "exams.title": "امتحانی نتائج",
+    "exams.marks": "حاصل کردہ نمبر",
+    "exams.grade": "گریڈ",
+    "assignments.title": "اسائنمنٹس اور ہوم ورک",
+    "assignments.due": "آخری تاریخ",
+    "assignments.submit": "جمع کرائیں",
+    "timetable.title": "ہفتہ وار ٹائم ٹیبل",
+    "timetable.day": "دن",
+    "timetable.time": "وقت",
+    "quizzes.title": "کوئز اور جائزے",
+    "quizzes.start": "کوئز شروع کریں",
+    "attendance.mark": "حاضری لگائیں",
+    "attendance.present": "حاضر",
+    "attendance.absent": "غیر حاضر",
+    "attendance.late": "تاخیر",
+    "password.change": "پاس ورڈ تبدیل کریں",
+    "password.current": "موجودہ پاس ورڈ",
+    "password.new": "نیا پاس ورڈ",
+    "ai.assistant": "کیمپس اے آئی اسسٹنٹ",
+    "ai.placeholder": "اسکول کے بارے میں کچھ بھی پوچھیں...",
+    "ai.send": "بھیجیں",
+    "notifications.title": "اطلاعات",
+    "update.ready": "ایک نیا ورژن دستیاب ہے۔",
+    "update.refresh": "تازہ کریں",
     "lang.switchTo": "English",
   },
 } as const;
@@ -102,8 +157,6 @@ function initialLanguage(): Lang {
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>(initialLanguage);
 
-  // Keep the page's reading direction and language in sync, so browsers,
-  // screen readers and text selection all behave correctly for Urdu.
   useEffect(() => {
     document.documentElement.lang = lang;
     document.documentElement.dir = lang === "ur" ? "rtl" : "ltr";
@@ -114,7 +167,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     try {
       localStorage.setItem(STORAGE_KEY, next);
     } catch {
-      // Not being able to remember the choice is harmless.
+      // Harmless storage failure catch
     }
   }
 

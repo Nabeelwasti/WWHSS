@@ -1,16 +1,9 @@
 import { useEffect, useState } from "react";
+import { useLanguage } from "../i18n.js";
 
-// How "auto-update" really works for a web app (explained here so it's
-// clear this isn't a limitation, it's how the web works everywhere):
-// the moment you deploy a new version to your server, EVERY visitor gets
-// the new code the next time they load the page — there's no app-store
-// approval, no per-device install step, nothing for you to push out
-// manually. The one wrinkle is a tab that's already open: this component
-// notices a new version arrived in the background and offers a one-tap
-// refresh, rather than silently reloading and possibly losing something
-// a teacher was halfway through typing (like marking attendance).
 export function UpdateToast() {
   const [updateReady, setUpdateReady] = useState(false);
+  const { t } = useLanguage();
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
@@ -52,13 +45,14 @@ export function UpdateToast() {
   if (!updateReady) return null;
 
   return (
-    <div className="toast" role="status">
-      <span>A new version is ready.</span>
+    <div className="toast" role="status" aria-live="polite">
+      <span>{t("update.ready")}</span>
       <button
         className="btn btn-sm btn-primary"
         onClick={() => (window as unknown as { __wwhsApplyUpdate?: () => void }).__wwhsApplyUpdate?.()}
+        aria-label={t("update.refresh")}
       >
-        Refresh
+        {t("update.refresh")}
       </button>
     </div>
   );

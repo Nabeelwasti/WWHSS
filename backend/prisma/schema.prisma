@@ -39,6 +39,7 @@ model User {
   bookLoans        BookLoan[]
   notifications    Notification[]
   timetableSlots   TimetableSlot[]     @relation("TeacherSlots")
+  aiUsageRecords   AiUsageRecord[]
 
   @@map("users")
 }
@@ -394,6 +395,7 @@ model ExamSubject {
   results ExamResult[]
 
   @@unique([examId, subjectId])
+  @@unique([id, examId, subjectId])
   @@map("exam_subjects")
 }
 
@@ -411,13 +413,28 @@ model ExamResult {
   exam        Exam         @relation(fields: [examId], references: [id])
   student     StudentProfile @relation(fields: [studentProfileId], references: [id])
   subject     Subject      @relation(fields: [subjectId], references: [id])
-  examSubject ExamSubject  @relation(fields: [examSubjectId], references: [id], onDelete: Cascade)
+  examSubject ExamSubject  @relation(fields: [examSubjectId, examId, subjectId], references: [id, examId, subjectId], onDelete: Cascade)
 
   @@unique([examId, studentProfileId, subjectId])
   @@unique([examSubjectId, studentProfileId])
   @@index([examSubjectId])
   @@index([examId, subjectId])
   @@map("exam_results")
+}
+
+model AiUsageRecord {
+  id        String   @id @default(uuid())
+  userId    String
+  date      String   // Format: "YYYY-MM-DD"
+  count     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId, date])
+  @@map("ai_usage_records")
 }
 
 // ---------- TIMETABLE ----------

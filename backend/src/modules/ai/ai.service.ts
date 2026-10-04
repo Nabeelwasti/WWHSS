@@ -1,6 +1,7 @@
 import { prisma } from "../../db/client.js";
 import { env } from "../../config/env.js";
 import { getStudentEngagementSummary } from "../attendance/attendance.service.js";
+import { Prisma } from "@prisma/client";
 
 export class AiConfigError extends Error {}
 
@@ -74,23 +75,66 @@ export function orderByTier(providers: ProviderConfig[], preferred: Tier): Provi
   return [...matching, ...other];
 }
 
-const userDailyUsage = new Map<string, { count: number; date: string }>();
-
-function checkAiBudget(userId: string): void {
-  const today = new Date().toISOString().slice(0, 10);
-  const usage = userDailyUsage.get(userId);
-  if (usage && usage.date === today && usage.count >= env.maxDailyAiRequests) {
-    throw new AiConfigError("Daily AI query quota reached for your account. Please try again tomorrow.");
+async function runSerializableQuotaTx<T>(
+  fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  maxRetries = 5
+): Promise<T> {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await prisma.$transaction(fn, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (err: unknown) {
+      attempt++;
+      const isSerializationFailure =
+        (err as Record<string, unknown>)?.code === "P2034" ||
+        (typeof (err as Record<string, unknown>)?.message === "string" &&
+          ((err as Error).message.includes("serialization") ||
+            (err as Error).message.includes("deadlock") ||
+            (err as Error).message.includes("concurrent update") ||
+            (err as Error).message.includes("could not serialize access")));
+      if (isSerializationFailure && attempt < maxRetries) {
+        await new Promise((res) => setTimeout(res, Math.pow(2, attempt) * 10));
+        continue;
+      }
+      throw err;
+    }
   }
 }
 
-function recordAiUsage(userId: string): void {
-  const today = new Date().toISOString().slice(0, 10);
-  const usage = userDailyUsage.get(userId);
-  if (usage && usage.date === today) {
-    usage.count += 1;
-  } else {
-    userDailyUsage.set(userId, { count: 1, date: today });
+export async function reserveAiQuota(userId: string, date: string = new Date().toISOString().slice(0, 10)): Promise<void> {
+  const limit = env.maxDailyAiRequests;
+  await runSerializableQuotaTx(async (tx) => {
+    const usage = await tx.aiUsageRecord.findUnique({
+      where: { userId_date: { userId, date } },
+    });
+
+    if (usage && usage.count >= limit) {
+      throw new AiConfigError("Daily AI query quota reached for your account. Please try again tomorrow.");
+    }
+
+    await tx.aiUsageRecord.upsert({
+      where: { userId_date: { userId, date } },
+      create: { userId, date, count: 1 },
+      update: { count: { increment: 1 } },
+    });
+  });
+}
+
+export async function releaseAiQuota(userId: string, date: string = new Date().toISOString().slice(0, 10)): Promise<void> {
+  try {
+    await runSerializableQuotaTx(async (tx) => {
+      const usage = await tx.aiUsageRecord.findUnique({
+        where: { userId_date: { userId, date } },
+      });
+      if (usage && usage.count > 0) {
+        await tx.aiUsageRecord.update({
+          where: { userId_date: { userId, date } },
+          data: { count: { decrement: 1 } },
+        });
+      }
+    });
+  } catch (err: unknown) {
+    console.error(`Failed to release AI quota for user ${userId} on date ${date}:`, err);
   }
 }
 
@@ -182,53 +226,60 @@ async function buildPersonalContext(userId: string): Promise<string> {
 }
 
 export async function askCampusAI(userId: string, message: string): Promise<string> {
-  checkAiBudget(userId);
+  const today = new Date().toISOString().slice(0, 10);
+  await reserveAiQuota(userId, today);
 
-  const truncatedMessage = message.slice(0, env.maxAiInputChars);
+  try {
+    const truncatedMessage = message.slice(0, env.maxAiInputChars);
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    include: { userRoles: { include: { role: true } } },
-  });
-  if (!user) throw new Error("User not found");
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { userRoles: { include: { role: true } } },
+    });
+    if (!user) throw new Error("User not found");
 
-  const roleNames = user.userRoles.map((ur) => ur.role.name).join(", ") || "no assigned role";
-  const personalContext = await buildPersonalContext(userId);
+    const roleNames = user.userRoles.map((ur) => ur.role.name).join(", ") || "no assigned role";
+    const personalContext = await buildPersonalContext(userId);
 
-  const systemPrompt = [
-    `You are the WWHS Digital Campus assistant, speaking with ${user.fullName}, whose role(s) at the school: ${roleNames}.`,
-    "You do NOT currently have live access to this school's actual attendance, grades, fees, or timetable records beyond what is explicitly given to you below.",
-    "If asked about specific personal school data you were not given below, say plainly that you can't look that up yet and suggest the relevant dashboard section instead. Never invent a plausible-sounding number, name, or date.",
-    "For general academic help (explaining a concept, drafting a lesson outline, study tips, encouragement), answer normally and helpfully. Be warm and encouraging, especially with students who seem to be struggling.",
-    personalContext,
-  ].filter(Boolean).join(" ");
+    const systemPrompt = [
+      `You are the WWHS Digital Campus assistant, speaking with ${user.fullName}, whose role(s) at the school: ${roleNames}.`,
+      "You do NOT currently have live access to this school's actual attendance, grades, fees, or timetable records beyond what is explicitly given to you below.",
+      "If asked about specific personal school data you were not given below, say plainly that you can't look that up yet and suggest the relevant dashboard section instead. Never invent a plausible-sounding number, name, or date.",
+      "For general academic help (explaining a concept, drafting a lesson outline, study tips, encouragement), answer normally and helpfully. Be warm and encouraging, especially with students who seem to be struggling.",
+      personalContext,
+    ].filter(Boolean).join(" ");
 
-  const providers = loadConfiguredProviders();
-  if (providers.length === 0) {
-    throw new AiConfigError(
-      "No AI provider is configured. Add at least one AI_PROVIDER_1 setting in backend/.env — see the comments there for Gemini, Anthropic, or a free self-hosted option. No offline fallback exists by design."
-    );
-  }
-
-  const preferredTier = classifyTask(truncatedMessage);
-  const ordered = orderByTier(providers, preferredTier);
-
-  const failures: string[] = [];
-  for (const cfg of ordered) {
-    try {
-      const reply = await callProvider(cfg, systemPrompt, truncatedMessage);
-      if (reply.trim().length > 0) {
-        recordAiUsage(userId);
-        return reply;
-      }
-      failures.push(`${cfg.type}: returned an empty reply`);
-    } catch (err) {
-      const rawMsg = err instanceof Error ? err.message : String(err);
-      failures.push(`${cfg.type}: ${sanitizeErrorMessage(rawMsg)}`);
+    const providers = loadConfiguredProviders();
+    if (providers.length === 0) {
+      throw new AiConfigError(
+        "No AI provider is configured. Add at least one AI_PROVIDER_1 setting in backend/.env — see the comments there for Gemini, Anthropic, or a free self-hosted option. No offline fallback exists by design."
+      );
     }
-  }
 
-  console.error("All configured AI providers failed:", failures);
-  throw new Error("The AI assistant is temporarily unavailable — every configured provider failed. Please try again shortly.");
+    const preferredTier = classifyTask(truncatedMessage);
+    const ordered = orderByTier(providers, preferredTier);
+
+    const failures: string[] = [];
+    for (const cfg of ordered) {
+      try {
+        const reply = await callProvider(cfg, systemPrompt, truncatedMessage);
+        if (reply.trim().length > 0) {
+          return reply;
+        }
+        failures.push(`${cfg.type}: returned an empty reply`);
+      } catch (err: unknown) {
+        const rawMsg = err instanceof Error ? err.message : String(err);
+        failures.push(`${cfg.type}: ${sanitizeErrorMessage(rawMsg)}`);
+      }
+    }
+
+    await releaseAiQuota(userId, today);
+    console.error("All configured AI providers failed:", failures);
+    throw new Error("The AI assistant is temporarily unavailable — every configured provider failed. Please try again shortly.");
+  } catch (err: unknown) {
+    if (err instanceof AiConfigError) throw err;
+    await releaseAiQuota(userId, today);
+    throw err;
+  }
 }
 
