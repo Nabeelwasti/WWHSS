@@ -138,8 +138,25 @@ export async function releaseAiQuota(userId: string, date: string = new Date().t
   }
 }
 
+const FETCH_TIMEOUT_MS = 15000;
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = FETCH_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(`Request timed out after ${timeoutMs}ms`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function callAnthropic(cfg: Extract<ProviderConfig, { type: "anthropic" }>, systemPrompt: string, userMessage: string): Promise<string> {
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
+  const response = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-api-key": cfg.apiKey, "anthropic-version": "2023-06-01" },
     body: JSON.stringify({ model: cfg.model, max_tokens: env.maxAiOutputTokens, system: systemPrompt, messages: [{ role: "user", content: userMessage }] }),
@@ -154,7 +171,7 @@ async function callAnthropic(cfg: Extract<ProviderConfig, { type: "anthropic" }>
 
 async function callGemini(cfg: Extract<ProviderConfig, { type: "gemini" }>, systemPrompt: string, userMessage: string): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${cfg.model}:generateContent?key=${cfg.apiKey}`;
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -171,7 +188,7 @@ async function callGemini(cfg: Extract<ProviderConfig, { type: "gemini" }>, syst
 }
 
 async function callOpenAiCompatible(cfg: Extract<ProviderConfig, { type: "openai_compatible" }>, systemPrompt: string, userMessage: string): Promise<string> {
-  const response = await fetch(`${cfg.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+  const response = await fetchWithTimeout(`${cfg.baseUrl.replace(/\/$/, "")}/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}) },
     body: JSON.stringify({

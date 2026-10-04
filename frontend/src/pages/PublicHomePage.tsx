@@ -1,17 +1,38 @@
 import { useEffect, useState } from "react";
-import { api } from "../api";
+import { api, ApiError } from "../api";
 import { useLanguage, LanguageToggle } from "../i18n";
 
 export function PublicHomePage({ onLoginClick }: { onLoginClick: () => void }) {
   const { t } = useLanguage();
   const [notices, setNotices] = useState<{ id: string; title: string; body: string; publishedAt: string }[] | null>(null);
   const [events, setEvents] = useState<{ id: string; title: string; startAt: string; location: string | null }[] | null>(null);
+  const [noticesError, setNoticesError] = useState<string | null>(null);
+  const [eventsError, setEventsError] = useState<string | null>(null);
 
   useEffect(() => {
     // Genuinely unauthenticated calls — no access token is attached, and
     // none is needed; the backend serves these to any visitor.
-    api.publicNotices().then((r) => setNotices(r.notices)).catch(() => setNotices([]));
-    api.publicEvents().then((r) => setEvents(r.events)).catch(() => setEvents([]));
+    api
+      .publicNotices()
+      .then((r) => {
+        setNotices(r.notices);
+        setNoticesError(null);
+      })
+      .catch((err) => {
+        setNotices([]);
+        setNoticesError(err instanceof ApiError ? err.message : "Failed to load notices");
+      });
+
+    api
+      .publicEvents()
+      .then((r) => {
+        setEvents(r.events);
+        setEventsError(null);
+      })
+      .catch((err) => {
+        setEvents([]);
+        setEventsError(err instanceof ApiError ? err.message : "Failed to load events");
+      });
   }, []);
 
   return (
@@ -36,8 +57,9 @@ export function PublicHomePage({ onLoginClick }: { onLoginClick: () => void }) {
       <div className="page page-wide">
         <section className="card card-accent">
           <h2 className="card-title">{t("home.notices")}</h2>
-          {notices === null && <SkeletonLines />}
-          {notices?.length === 0 && <p className="text-muted text-sm">{t("home.noNotices")}</p>}
+          {noticesError && <p role="alert" className="alert alert-danger" style={{ fontSize: 13, padding: "8px 12px" }}>{noticesError}</p>}
+          {notices === null && !noticesError && <SkeletonLines />}
+          {notices?.length === 0 && !noticesError && <p className="text-muted text-sm">{t("home.noNotices")}</p>}
           {notices?.map((n) => (
             <div key={n.id} style={{ borderBottom: "1px solid var(--border)", padding: "10px 0" }}>
               <strong style={{ fontSize: 14 }}>{n.title}</strong>
@@ -49,8 +71,9 @@ export function PublicHomePage({ onLoginClick }: { onLoginClick: () => void }) {
 
         <section className="card">
           <h2 className="card-title">{t("home.events")}</h2>
-          {events === null && <SkeletonLines />}
-          {events?.length === 0 && <p className="text-muted text-sm">{t("home.noEvents")}</p>}
+          {eventsError && <p role="alert" className="alert alert-danger" style={{ fontSize: 13, padding: "8px 12px" }}>{eventsError}</p>}
+          {events === null && !eventsError && <SkeletonLines />}
+          {events?.length === 0 && !eventsError && <p className="text-muted text-sm">{t("home.noEvents")}</p>}
           {events?.map((e) => (
             <div key={e.id} style={{ borderBottom: "1px solid var(--border)", padding: "10px 0" }} className="text-sm">
               <strong>{e.title}</strong> — {new Date(e.startAt).toLocaleDateString()}

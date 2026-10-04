@@ -31,15 +31,21 @@ model User {
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 
-  userRoles      UserRole[]
-  studentProfile StudentProfile?
-  guardianOf     ParentStudentLink[] @relation("Guardian")
-  refreshTokens  RefreshToken[]
-  auditLogs      AuditLog[]
-  bookLoans      BookLoan[]
-  notifications  Notification[]
-  timetableSlots TimetableSlot[]     @relation("TeacherSlots")
-  aiUsageRecords AiUsageRecord[]
+  userRoles               UserRole[]
+  studentProfile          StudentProfile?
+  guardianOf              ParentStudentLink[] @relation("Guardian")
+  refreshTokens           RefreshToken[]
+  auditLogs               AuditLog[]
+  bookLoans               BookLoan[]
+  notifications           Notification[]
+  timetableSlots          TimetableSlot[]     @relation("TeacherSlots")
+  aiUsageRecords          AiUsageRecord[]
+  markedAttendanceRecords AttendanceRecord[]  @relation("MarkedAttendanceRecords")
+  uploadedResources       Resource[]          @relation("UploadedResources")
+  gradedSubmissions       Submission[]        @relation("GradedSubmissions")
+  receivedPayments        Payment[]           @relation("ReceivedPayments")
+  updatedCmsPages         CmsPage[]           @relation("UpdatedCmsPages")
+  publishedNotices        Notice[]            @relation("PublishedNotices")
 
   @@map("users")
 }
@@ -244,8 +250,9 @@ model AttendanceRecord {
   markedByUserId   String
   createdAt        DateTime @default(now())
 
-  student StudentProfile @relation(fields: [studentProfileId], references: [id])
-  section Section        @relation(fields: [sectionId, classId], references: [id, classId])
+  student      StudentProfile @relation(fields: [studentProfileId], references: [id])
+  section      Section        @relation(fields: [sectionId, classId], references: [id, classId])
+  markedByUser User           @relation("MarkedAttendanceRecords", fields: [markedByUserId], references: [id])
 
   @@unique([studentProfileId, date])
   @@index([classId, sectionId, date])
@@ -291,7 +298,8 @@ model Resource {
   fileType         String // pdf | video | image | doc | link
   uploadedByUserId String
 
-  lesson Lesson? @relation(fields: [lessonId], references: [id])
+  lesson         Lesson? @relation(fields: [lessonId], references: [id])
+  uploadedByUser User    @relation("UploadedResources", fields: [uploadedByUserId], references: [id])
 
   @@map("resources")
 }
@@ -325,6 +333,7 @@ model Submission {
 
   assignment Assignment     @relation(fields: [assignmentId], references: [id])
   student    StudentProfile @relation(fields: [studentProfileId], references: [id])
+  gradedByUser User?        @relation("GradedSubmissions", fields: [gradedByUserId], references: [id])
 
   @@unique([assignmentId, studentProfileId])
   @@map("submissions")
@@ -555,7 +564,8 @@ model Payment {
   paidAt           DateTime @default(now())
   receivedByUserId String?
 
-  invoice FeeInvoice @relation(fields: [invoiceId], references: [id])
+  invoice        FeeInvoice @relation(fields: [invoiceId], references: [id])
+  receivedByUser User?      @relation("ReceivedPayments", fields: [receivedByUserId], references: [id])
 
   @@map("payments")
 }
@@ -571,6 +581,8 @@ model CmsPage {
   updatedByUserId String
   updatedAt       DateTime @updatedAt
 
+  updatedByUser User @relation("UpdatedCmsPages", fields: [updatedByUserId], references: [id])
+
   @@map("cms_pages")
 }
 
@@ -581,6 +593,8 @@ model Notice {
   audience          String // "public" | "students" | "teachers" | "parents" | "staff"
   publishedAt       DateTime @default(now())
   publishedByUserId String
+
+  publishedByUser User @relation("PublishedNotices", fields: [publishedByUserId], references: [id])
 
   @@map("notices")
 }

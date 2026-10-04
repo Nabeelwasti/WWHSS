@@ -97,14 +97,23 @@ async function main() {
       create: { key: roleKey, name: roleKey.replace(/_/g, " ") },
     });
 
+    const targetPermIds = new Set<string>();
     for (const permKey of permKeys) {
       const permission = await prisma.permission.findUniqueOrThrow({ where: { key: permKey } });
+      targetPermIds.add(permission.id);
       await prisma.rolePermission.upsert({
         where: { roleId_permissionId: { roleId: role.id, permissionId: permission.id } },
         update: {},
         create: { roleId: role.id, permissionId: permission.id },
       });
     }
+
+    await prisma.rolePermission.deleteMany({
+      where: {
+        roleId: role.id,
+        permissionId: { notIn: Array.from(targetPermIds) },
+      },
+    });
   }
 
   // The first administrator account. In production this REFUSES to run

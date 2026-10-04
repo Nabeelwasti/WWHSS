@@ -342,4 +342,80 @@ export const api = {
 
   publicEvents: () =>
     request<{ events: { id: string; title: string; startAt: string; location: string | null }[] }>("/cms/events"),
+
+  // ---- Admin: Academic & Guardian Extensions ----
+
+  linkGuardian: (input: { parentUserId: string; studentProfileId: string; relation: string }) =>
+    request("/academics/link-guardian", { method: "POST", body: JSON.stringify(input) }),
+
+  // ---- Admin: Exams & Results ----
+
+  listExams: () => request<{ exams: { id: string; name: string; startDate: string; endDate: string }[] }>("/exams"),
+
+  createExam: (input: { name: string; academicYearId: string; startDate: string; endDate: string }) =>
+    request("/exams", { method: "POST", body: JSON.stringify(input) }),
+
+  recordExamResults: (input: {
+    examId: string;
+    subjectId: string;
+    results: { studentProfileId: string; marksObtained: number; maxMarks: number; grade?: string; remarks?: string }[];
+  }) => request("/exams/results", { method: "POST", body: JSON.stringify(input) }),
+
+  // ---- Admin: Finance ----
+
+  createFeeStructure: (input: { classId: string; academicYearId: string; name: string; amount: number }) =>
+    request("/finance/fee-structures", { method: "POST", body: JSON.stringify(input) }),
+
+  generateInvoices: (input: { feeStructureId: string; dueDate: string }) =>
+    request<{ generated: number }>("/finance/generate-invoices", { method: "POST", body: JSON.stringify(input) }),
+
+  recordPayment: (input: { invoiceId: string; amount: number; method: string }) =>
+    request("/finance/payments", { method: "POST", body: JSON.stringify(input) }),
+
+  // ---- Admin: Library ----
+
+  createBook: (input: { title: string; author: string; isbn?: string; category?: string }) =>
+    request("/library/books", { method: "POST", body: JSON.stringify(input) }),
+
+  createBookCopy: (input: { bookId: string; barcode: string }) =>
+    request("/library/copies", { method: "POST", body: JSON.stringify(input) }),
+
+  issueBookLoan: (input: { bookCopyBarcode: string; userId: string; dueDate: string }) =>
+    request("/library/issue", { method: "POST", body: JSON.stringify(input) }),
+
+  returnBookLoan: (loanId: string) => request(`/library/loans/${loanId}/return`, { method: "POST" }),
+
+  // ---- Admin: Timetable & Rooms ----
+
+  createRoom: (name: string) => request("/timetable/rooms", { method: "POST", body: JSON.stringify({ name }) }),
+
+  listRooms: () => request<{ rooms: { id: string; name: string }[] }>("/timetable/rooms"),
+
+  createTimetableSlot: (input: {
+    classId: string;
+    sectionId: string;
+    subjectId: string;
+    teacherId: string;
+    roomId?: string;
+    dayOfWeek: number;
+    startTime: string;
+    endTime: string;
+  }) => request("/timetable/slots", { method: "POST", body: JSON.stringify(input) }),
+
+  // ---- Admin: CMS & Announcements ----
+
+  createNotice: (input: { title: string; body: string; audience: string }) =>
+    request("/cms/notices", { method: "POST", body: JSON.stringify(input) }),
+
+  createEvent: (input: { title: string; description?: string; startAt: string; endAt?: string; location?: string }) =>
+    request("/cms/events", { method: "POST", body: JSON.stringify(input) }),
+
+  createCmsPage: (input: { slug: string; title: string; content: string }) =>
+    request("/cms/pages", { method: "POST", body: JSON.stringify(input) }),
+
+  publishCmsPage: (slug: string) => request(`/cms/pages/${slug}/publish`, { method: "POST" }),
+
+  unpublishCmsPage: (slug: string) => request(`/cms/pages/${slug}/unpublish`, { method: "POST" }),
+
+  listCmsAdminPages: () => request<{ pages: { id: string; slug: string; title: string; isPublished: boolean }[] }>("/cms/admin/pages"),
 };

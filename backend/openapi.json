@@ -490,7 +490,7 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "classes": { "oneOf": [{ "type": "array", "items": { "$ref": "#/components/schemas/Class" } }, { "type": "null" }] },
+                    "classes": { "type": "array", "items": { "$ref": "#/components/schemas/Class" }, "nullable": true },
                     "scopeIsSchoolWide": { "type": "boolean" }
                   },
                   "required": ["classes", "scopeIsSchoolWide"]
@@ -1882,7 +1882,7 @@
                   "classId": { "type": "string", "format": "uuid" },
                   "academicYearId": { "type": "string", "format": "uuid" },
                   "name": { "type": "string", "minLength": 1 },
-                  "amount": { "type": "number", "exclusiveMinimum": 0 }
+                  "amount": { "type": "number", "minimum": 0, "exclusiveMinimum": true }
                 },
                 "required": ["classId", "academicYearId", "name", "amount"]
               }
@@ -1952,7 +1952,7 @@
                 "type": "object",
                 "properties": {
                   "invoiceId": { "type": "string", "format": "uuid" },
-                  "amount": { "type": "number", "exclusiveMinimum": 0 },
+                  "amount": { "type": "number", "minimum": 0, "exclusiveMinimum": true },
                   "method": { "type": "string", "enum": ["cash", "bank_transfer", "card", "online"] }
                 },
                 "required": ["invoiceId", "amount", "method"]
@@ -2001,6 +2001,9 @@
     "/api/cms/pages/{slug}": {
       "get": {
         "summary": "Get published CMS page by slug",
+        "parameters": [
+          { "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
         "responses": {
           "200": {
             "description": "Published CMS page",
