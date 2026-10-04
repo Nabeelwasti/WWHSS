@@ -10,6 +10,8 @@ on:
 jobs:
   backend-test:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: "postgresql://ci_user:ci_password_12345@localhost:5432/ci_wwhs_test?schema=public"
     services:
       postgres:
         image: postgres:16-alpine
@@ -36,21 +38,15 @@ jobs:
         run: npm ci
       - name: Validate Prisma schema
         working-directory: backend
-        env:
-          DATABASE_URL: "postgresql://ci_user:ci_password_12345@localhost:5432/ci_wwhs_test?schema=public"
         run: npx prisma validate
       - name: Verify migration directory presence
         working-directory: backend
         run: test -d prisma/migrations && test -f prisma/migrations/migration_lock.toml
       - name: Generate Prisma client
         working-directory: backend
-        env:
-          DATABASE_URL: "postgresql://ci_user:ci_password_12345@localhost:5432/ci_wwhs_test?schema=public"
         run: npx prisma generate
       - name: Deploy Prisma migrations
         working-directory: backend
-        env:
-          DATABASE_URL: "postgresql://ci_user:ci_password_12345@localhost:5432/ci_wwhs_test?schema=public"
         run: npx prisma migrate deploy
       - name: Dependency security check
         working-directory: backend
