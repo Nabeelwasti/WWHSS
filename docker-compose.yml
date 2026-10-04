@@ -11,7 +11,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: wwhs
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wwhs}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       POSTGRES_DB: wwhs_digital_campus
     volumes:
       - db_data:/var/lib/postgresql/data
@@ -26,10 +26,9 @@ services:
       timeout: 5s
       retries: 10
 
-  # One-shot setup job: creates the database tables and the first admin
-  # account, then exits. Safe to re-run — the seed uses upserts, and
-  # `prisma db push` refuses (rather than silently proceeds) if a change
-  # would destroy existing data.
+  # One-shot setup job: applies database migrations and seeds initial data,
+  # then exits. Safe to re-run — the seed uses upserts, and
+  # `prisma migrate deploy` applies only pending versioned migrations.
   migrate:
     build:
       context: ./backend

@@ -1,4 +1,5 @@
 import { prisma } from "../../db/client.js";
+import { Prisma } from "@prisma/client";
 
 export async function createExam(input: { name: string; academicYearId: string; startDate: string; endDate: string }) {
   return prisma.exam.create({
@@ -56,10 +57,13 @@ export async function recordExamResults(
     if (typeof r.marksObtained !== "number" || typeof r.maxMarks !== "number") {
       throw new ExamValidationError("Marks must be numbers");
     }
-    if (r.maxMarks <= 0) {
+    const marksObtainedDec = new Prisma.Decimal(r.marksObtained);
+    const maxMarksDec = new Prisma.Decimal(r.maxMarks);
+
+    if (maxMarksDec.lte(0)) {
       throw new ExamValidationError("Maximum marks must be greater than 0");
     }
-    if (r.marksObtained < 0 || r.marksObtained > r.maxMarks) {
+    if (marksObtainedDec.lt(0) || marksObtainedDec.gt(maxMarksDec)) {
       throw new ExamValidationError(
         `Marks obtained (${r.marksObtained}) must be between 0 and maximum marks (${r.maxMarks})`
       );
@@ -100,7 +104,7 @@ export async function recordExamResults(
   }
 
   return prisma.$transaction(async (tx) => {
-    const maxMarksForSubject = input.results.length > 0 ? input.results[0].maxMarks : 100;
+    const maxMarksForSubject = input.results.length > 0 ? new Prisma.Decimal(input.results[0].maxMarks) : new Prisma.Decimal(100);
     const examSubject = await tx.examSubject.upsert({
       where: { examId_subjectId: { examId: input.examId, subjectId: input.subjectId } },
       update: { maxMarks: maxMarksForSubject },
@@ -118,8 +122,8 @@ export async function recordExamResults(
             },
           },
           update: {
-            marksObtained: r.marksObtained,
-            maxMarks: r.maxMarks,
+            marksObtained: new Prisma.Decimal(r.marksObtained),
+            maxMarks: new Prisma.Decimal(r.maxMarks),
             grade: r.grade,
             remarks: r.remarks,
             examSubjectId: examSubject.id,
@@ -128,8 +132,8 @@ export async function recordExamResults(
             examId: input.examId,
             subjectId: input.subjectId,
             studentProfileId: r.studentProfileId,
-            marksObtained: r.marksObtained,
-            maxMarks: r.maxMarks,
+            marksObtained: new Prisma.Decimal(r.marksObtained),
+            maxMarks: new Prisma.Decimal(r.maxMarks),
             grade: r.grade,
             remarks: r.remarks,
             examSubjectId: examSubject.id,
@@ -149,7 +153,6 @@ export async function recordExamResults(
 
     return upserts;
   });
-
 }
 
 // A student's real report card — every subject's result for one exam,

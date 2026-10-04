@@ -20,9 +20,18 @@ jobs:
       - name: Install dependencies (ci)
         working-directory: backend
         run: npm ci
+      - name: Validate Prisma schema
+        working-directory: backend
+        run: npx prisma validate
+      - name: Verify migration directory presence
+        working-directory: backend
+        run: test -d prisma/migrations && test -f prisma/migrations/migration_lock.toml
       - name: Generate Prisma client
         working-directory: backend
         run: npx prisma generate
+      - name: Dependency security check
+        working-directory: backend
+        run: npm audit --audit-level=high
       - name: Run unit & security tests
         working-directory: backend
         run: npm test
@@ -42,6 +51,18 @@ jobs:
       - name: Install dependencies (ci)
         working-directory: frontend
         run: npm ci
+      - name: Dependency security check
+        working-directory: frontend
+        run: npm audit --audit-level=high
       - name: Type-check and build
         working-directory: frontend
         run: npm run build
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Dockerfile build (backend)
+        run: docker build -t wwhs-backend:ci ./backend
+      - name: Validate Dockerfile build (frontend)
+        run: docker build -t wwhs-frontend:ci ./frontend

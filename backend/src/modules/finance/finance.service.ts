@@ -1,6 +1,32 @@
 import { prisma } from "../../db/client.js";
+import { Prisma } from "@prisma/client";
 
 export class FinanceValidationError extends Error {}
+
+async function runSerializableTransaction<T>(
+  fn: (tx: Prisma.TransactionClient) => Promise<T>,
+  maxRetries = 5
+): Promise<T> {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await prisma.$transaction(fn, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (err: any) {
+      attempt++;
+      const isSerializationFailure =
+        err?.code === "P2034" ||
+        (typeof err?.message === "string" &&
+          (err.message.includes("serialization") ||
+            err.message.includes("deadlock") ||
+            err.message.includes("concurrent update")));
+      if (isSerializationFailure && attempt < maxRetries) {
+        await new Promise((res) => setTimeout(res, Math.pow(2, attempt) * 10));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
 
 export async function createFeeStructure(input: { classId: string; academicYearId: string; name: string; amount: number }) {
   if (typeof input.amount !== "number" || input.amount <= 0) {
@@ -48,7 +74,9 @@ export async function recordPayment(input: { invoiceId: string; amount: number; 
     throw new FinanceValidationError("Payment amount must be greater than zero");
   }
 
-  return prisma.$transaction(async (tx) => {
+  const paymentAmount = new Prisma.Decimal(input.amount);
+
+  return runSerializableTransaction(async (tx) => {
     const invoice = await tx.feeInvoice.findUnique({ where: { id: input.invoiceId } });
     if (!invoice) throw new FinanceValidationError("Invoice not found");
 
@@ -60,33 +88,33 @@ export async function recordPayment(input: { invoiceId: string; amount: number; 
     }
 
     const previousPayments = await tx.payment.findMany({ where: { invoiceId: input.invoiceId } });
-    const previousPaidTotal = previousPayments.reduce((sum, p) => sum + Number(p.amount), 0);
-    const roundedPreviousTotal = Math.round(previousPaidTotal * 100) / 100;
-    const roundedAmountDue = Math.round(Number(invoice.amountDue) * 100) / 100;
-    const remainingBalance = Math.round((roundedAmountDue - roundedPreviousTotal) * 100) / 100;
+    const previousPaidTotal = previousPayments.reduce(
+      (sum, p) => sum.add(new Prisma.Decimal(p.amount)),
+      new Prisma.Decimal(0)
+    );
+    const amountDue = new Prisma.Decimal(invoice.amountDue);
+    const remainingBalance = amountDue.sub(previousPaidTotal);
 
-    const roundedInputAmount = Math.round(input.amount * 100) / 100;
-
-    if (roundedInputAmount > remainingBalance + 0.001) {
+    if (paymentAmount.gt(remainingBalance)) {
       throw new FinanceValidationError(
-        `Payment amount (${roundedInputAmount}) exceeds remaining balance (${remainingBalance})`
+        `Payment amount (${paymentAmount.toNumber()}) exceeds remaining balance (${remainingBalance.toNumber()})`
       );
     }
 
     const payment = await tx.payment.create({
       data: {
         invoiceId: input.invoiceId,
-        amount: roundedInputAmount,
+        amount: paymentAmount,
         method: input.method,
         receivedByUserId: input.receivedByUserId,
       },
     });
 
-    const newTotalPaid = Math.round((roundedPreviousTotal + roundedInputAmount) * 100) / 100;
+    const newTotalPaid = previousPaidTotal.add(paymentAmount);
 
-    if (newTotalPaid >= roundedAmountDue - 0.001) {
+    if (newTotalPaid.gte(amountDue)) {
       await tx.feeInvoice.update({ where: { id: input.invoiceId }, data: { status: "paid" } });
-    } else if (newTotalPaid > 0) {
+    } else if (newTotalPaid.gt(new Prisma.Decimal(0))) {
       await tx.feeInvoice.update({ where: { id: input.invoiceId }, data: { status: "partial" } });
     }
 
@@ -95,7 +123,7 @@ export async function recordPayment(input: { invoiceId: string; amount: number; 
         userId: input.receivedByUserId,
         action: "finance:payment",
         resource: `invoice:${input.invoiceId}`,
-        metadata: { amount: roundedInputAmount, method: input.method },
+        metadata: { amount: paymentAmount.toNumber(), method: input.method },
       },
     });
 

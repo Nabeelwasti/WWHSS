@@ -6,12 +6,15 @@ export type AccessTokenPayload = { sub: string; email: string };
 
 export function signAccessToken(payload: AccessTokenPayload): string {
   return jwt.sign(payload, env.jwtAccessSecret, {
+    algorithm: "HS256",
     expiresIn: `${env.accessTokenTtlMin}m`,
   });
 }
 
 export function verifyAccessToken(token: string): AccessTokenPayload {
-  const payload = jwt.verify(token, env.jwtAccessSecret);
+  const payload = jwt.verify(token, env.jwtAccessSecret, {
+    algorithms: ["HS256"],
+  });
   if (
     typeof payload !== "object" ||
     payload === null ||

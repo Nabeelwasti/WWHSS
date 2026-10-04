@@ -1,26 +1,18 @@
 import { prisma } from "../../db/client.js";
+import { env } from "../../config/env.js";
 import { getStudentEngagementSummary } from "../attendance/attendance.service.js";
 
 export class AiConfigError extends Error {}
 
+export function sanitizeErrorMessage(msg: string): string {
+  return msg
+    .replace(/key=[A-Za-z0-9_-]+/gi, "key=[REDACTED]")
+    .replace(/x-api-key['"]?\s*:\s*['"]?[A-Za-z0-9_-]+/gi, "x-api-key: [REDACTED]")
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [REDACTED]");
+}
+
 // ---------- Multi-provider AI with real automatic fallback AND simple
 // task-based tiering ----------
-//
-// Configured with plain numbered settings in .env — no JSON, no code
-// editing required. Up to 10 slots (AI_PROVIDER_1 .. AI_PROVIDER_10):
-//
-//   AI_PROVIDER_1=gemini
-//   AI_PROVIDER_1_KEY=your-first-gemini-key
-//   AI_PROVIDER_1_TIER=fast          <- optional: "fast" or "smart"
-//
-// TIERING (a real, honest version of "auto-select the right model for the
-// task" — a simple length/keyword heuristic, not a claim of deep
-// understanding): a short, simple-looking question prefers providers
-// tagged "fast"; a longer or "explain/analyze/essay"-style question
-// prefers ones tagged "smart". If nothing matches that tier, or no tiers
-// are set at all, it just tries every configured provider in order — so
-// leaving AI_PROVIDER_N_TIER unset is completely fine and behaves exactly
-// like before.
 type Tier = "fast" | "smart";
 
 export type ProviderConfig =
@@ -70,9 +62,6 @@ function loadConfiguredProviders(): ProviderConfig[] {
   return providers;
 }
 
-// Deliberately simple and explainable — not a black box. A real ML
-// classifier would need training data and hosting we don't have; this
-// heuristic is honest about being a heuristic.
 export function classifyTask(message: string): Tier {
   const detailedSignals = /explain|analyz|essay|详细|compare|summari[sz]e in detail|step by step|why does|how does/i;
   if (message.length > 220 || detailedSignals.test(message)) return "smart";
@@ -82,19 +71,15 @@ export function classifyTask(message: string): Tier {
 export function orderByTier(providers: ProviderConfig[], preferred: Tier): ProviderConfig[] {
   const matching = providers.filter((p) => p.tier === preferred);
   const other = providers.filter((p) => p.tier !== preferred);
-  // Preferred tier first, then everything else as a real fallback — so a
-  // "fast" preference never means "smart" providers are unreachable, just
-  // tried second.
   return [...matching, ...other];
 }
 
 const userDailyUsage = new Map<string, { count: number; date: string }>();
-const MAX_DAILY_AI_REQUESTS = Number(process.env.MAX_DAILY_AI_REQUESTS ?? 100);
 
 function checkAiBudget(userId: string): void {
   const today = new Date().toISOString().slice(0, 10);
   const usage = userDailyUsage.get(userId);
-  if (usage && usage.date === today && usage.count >= MAX_DAILY_AI_REQUESTS) {
+  if (usage && usage.date === today && usage.count >= env.maxDailyAiRequests) {
     throw new AiConfigError("Daily AI query quota reached for your account. Please try again tomorrow.");
   }
 }
@@ -113,7 +98,7 @@ async function callAnthropic(cfg: Extract<ProviderConfig, { type: "anthropic" }>
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-api-key": cfg.apiKey, "anthropic-version": "2023-06-01" },
-    body: JSON.stringify({ model: cfg.model, max_tokens: 800, system: systemPrompt, messages: [{ role: "user", content: userMessage }] }),
+    body: JSON.stringify({ model: cfg.model, max_tokens: env.maxAiOutputTokens, system: systemPrompt, messages: [{ role: "user", content: userMessage }] }),
   });
   if (!response.ok) {
     const rawBody = await response.text().catch(() => "");
@@ -147,7 +132,7 @@ async function callOpenAiCompatible(cfg: Extract<ProviderConfig, { type: "openai
     headers: { "Content-Type": "application/json", ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}) },
     body: JSON.stringify({
       model: cfg.model,
-      max_tokens: 800,
+      max_tokens: env.maxAiOutputTokens,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },
@@ -168,10 +153,6 @@ async function callProvider(cfg: ProviderConfig, systemPrompt: string, userMessa
   return callOpenAiCompatible(cfg, systemPrompt, userMessage);
 }
 
-// Builds real, consent-gated personal context. Only ever pulls data this
-// exact person is already allowed to see about THEMSELVES — never another
-// student's, never bypassing the permission engine used everywhere else in
-// the app. Returns nothing extra at all if consent isn't given.
 async function buildPersonalContext(userId: string): Promise<string> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -203,6 +184,8 @@ async function buildPersonalContext(userId: string): Promise<string> {
 export async function askCampusAI(userId: string, message: string): Promise<string> {
   checkAiBudget(userId);
 
+  const truncatedMessage = message.slice(0, env.maxAiInputChars);
+
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: { userRoles: { include: { role: true } } },
@@ -227,20 +210,13 @@ export async function askCampusAI(userId: string, message: string): Promise<stri
     );
   }
 
-  const preferredTier = classifyTask(message);
+  const preferredTier = classifyTask(truncatedMessage);
   const ordered = orderByTier(providers, preferredTier);
-
-function sanitizeErrorMessage(msg: string): string {
-  return msg
-    .replace(/key=[A-Za-z0-9_-]+/gi, "key=[REDACTED]")
-    .replace(/x-api-key['"]?\s*:\s*['"]?[A-Za-z0-9_-]+/gi, "x-api-key: [REDACTED]")
-    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [REDACTED]");
-}
 
   const failures: string[] = [];
   for (const cfg of ordered) {
     try {
-      const reply = await callProvider(cfg, systemPrompt, message);
+      const reply = await callProvider(cfg, systemPrompt, truncatedMessage);
       if (reply.trim().length > 0) {
         recordAiUsage(userId);
         return reply;
