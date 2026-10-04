@@ -4,6 +4,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
+ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder?schema=public"
 RUN npx prisma generate
 RUN npm run build
 
@@ -25,6 +26,7 @@ RUN npm ci --omit=dev
 # than regenerated, since the Prisma CLI (a dev dependency) isn't installed
 # here.
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=build /app/node_modules/@prisma/client ./node_modules/@prisma/client
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
 
