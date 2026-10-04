@@ -277,7 +277,7 @@ CREATE TABLE "exam_results" (
     "examId" TEXT NOT NULL,
     "studentProfileId" TEXT NOT NULL,
     "subjectId" TEXT NOT NULL,
-    "examSubjectId" TEXT,
+    "examSubjectId" TEXT NOT NULL,
     "marksObtained" DECIMAL(5,2) NOT NULL,
     "maxMarks" DECIMAL(5,2) NOT NULL,
     "grade" TEXT,
@@ -459,6 +459,9 @@ CREATE INDEX "user_roles_userId_idx" ON "user_roles"("userId");
 CREATE UNIQUE INDEX "parent_student_links_parentId_studentId_key" ON "parent_student_links"("parentId", "studentId");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "sections_id_classId_key" ON "sections"("id", "classId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "subjects_code_key" ON "subjects"("code");
 
 -- CreateIndex
@@ -487,6 +490,15 @@ CREATE UNIQUE INDEX "exam_subjects_examId_subjectId_key" ON "exam_subjects"("exa
 
 -- CreateIndex
 CREATE UNIQUE INDEX "exam_results_examId_studentProfileId_subjectId_key" ON "exam_results"("examId", "studentProfileId", "subjectId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "exam_results_examSubjectId_studentProfileId_key" ON "exam_results"("examSubjectId", "studentProfileId");
+
+-- CreateIndex
+CREATE INDEX "exam_results_examSubjectId_idx" ON "exam_results"("examSubjectId");
+
+-- CreateIndex
+CREATE INDEX "exam_results_examId_subjectId_idx" ON "exam_results"("examId", "subjectId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "rooms_name_key" ON "rooms"("name");
@@ -534,7 +546,7 @@ ALTER TABLE "user_roles" ADD CONSTRAINT "user_roles_roleId_fkey" FOREIGN KEY ("r
 ALTER TABLE "user_roles" ADD CONSTRAINT "user_roles_classId_fkey" FOREIGN KEY ("classId") REFERENCES "classes"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "user_roles" ADD CONSTRAINT "user_roles_sectionId_fkey" FOREIGN KEY ("sectionId") REFERENCES "sections"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "user_roles" ADD CONSTRAINT "user_roles_sectionId_classId_fkey" FOREIGN KEY ("sectionId", "classId") REFERENCES "sections"("id", "classId") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "user_roles" ADD CONSTRAINT "user_roles_subjectId_fkey" FOREIGN KEY ("subjectId") REFERENCES "subjects"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -558,13 +570,16 @@ ALTER TABLE "student_profiles" ADD CONSTRAINT "student_profiles_userId_fkey" FOR
 ALTER TABLE "student_profiles" ADD CONSTRAINT "student_profiles_classId_fkey" FOREIGN KEY ("classId") REFERENCES "classes"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "student_profiles" ADD CONSTRAINT "student_profiles_sectionId_fkey" FOREIGN KEY ("sectionId") REFERENCES "sections"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "student_profiles" ADD CONSTRAINT "student_profiles_sectionId_classId_fkey" FOREIGN KEY ("sectionId", "classId") REFERENCES "sections"("id", "classId") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "audit_logs" ADD CONSTRAINT "audit_logs_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "attendance_records" ADD CONSTRAINT "attendance_records_studentProfileId_fkey" FOREIGN KEY ("studentProfileId") REFERENCES "student_profiles"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "attendance_records" ADD CONSTRAINT "attendance_records_sectionId_classId_fkey" FOREIGN KEY ("sectionId", "classId") REFERENCES "sections"("id", "classId") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "courses" ADD CONSTRAINT "courses_subjectId_fkey" FOREIGN KEY ("subjectId") REFERENCES "subjects"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -618,13 +633,13 @@ ALTER TABLE "exam_results" ADD CONSTRAINT "exam_results_studentProfileId_fkey" F
 ALTER TABLE "exam_results" ADD CONSTRAINT "exam_results_subjectId_fkey" FOREIGN KEY ("subjectId") REFERENCES "subjects"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "exam_results" ADD CONSTRAINT "exam_results_examSubjectId_fkey" FOREIGN KEY ("examSubjectId") REFERENCES "exam_subjects"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "exam_results" ADD CONSTRAINT "exam_results_examSubjectId_fkey" FOREIGN KEY ("examSubjectId") REFERENCES "exam_subjects"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "timetable_slots" ADD CONSTRAINT "timetable_slots_classId_fkey" FOREIGN KEY ("classId") REFERENCES "classes"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "timetable_slots" ADD CONSTRAINT "timetable_slots_sectionId_fkey" FOREIGN KEY ("sectionId") REFERENCES "sections"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "timetable_slots" ADD CONSTRAINT "timetable_slots_sectionId_classId_fkey" FOREIGN KEY ("sectionId", "classId") REFERENCES "sections"("id", "classId") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "timetable_slots" ADD CONSTRAINT "timetable_slots_subjectId_fkey" FOREIGN KEY ("subjectId") REFERENCES "subjects"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

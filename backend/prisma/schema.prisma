@@ -106,7 +106,7 @@ model UserRole {
   user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
   role   Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
   class  Class?   @relation(fields: [classId], references: [id])
-  section Section? @relation(fields: [sectionId], references: [id])
+  section Section? @relation(fields: [sectionId, classId], references: [id, classId])
   subject Subject? @relation(fields: [subjectId], references: [id])
 
   @@index([userId])
@@ -169,7 +169,9 @@ model Section {
   students  StudentProfile[]
   userRoles UserRole[]
   timetableSlots TimetableSlot[]
+  attendanceRecords AttendanceRecord[]
 
+  @@unique([id, classId])
   @@map("sections")
 }
 
@@ -199,7 +201,7 @@ model StudentProfile {
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   class     Class?   @relation(fields: [classId], references: [id])
-  section   Section? @relation(fields: [sectionId], references: [id])
+  section   Section? @relation(fields: [sectionId, classId], references: [id, classId])
   guardians ParentStudentLink[]
   attendanceRecords AttendanceRecord[]
   submissions       Submission[]
@@ -242,6 +244,7 @@ model AttendanceRecord {
   createdAt        DateTime @default(now())
 
   student StudentProfile @relation(fields: [studentProfileId], references: [id])
+  section Section        @relation(fields: [sectionId, classId], references: [id, classId])
 
   @@unique([studentProfileId, date])
   @@index([classId, sectionId, date])
@@ -399,7 +402,7 @@ model ExamResult {
   examId           String
   studentProfileId String
   subjectId        String
-  examSubjectId    String?
+  examSubjectId    String
   marksObtained    Decimal      @db.Decimal(5,2)
   maxMarks         Decimal      @db.Decimal(5,2)
   grade            String?
@@ -408,9 +411,12 @@ model ExamResult {
   exam        Exam         @relation(fields: [examId], references: [id])
   student     StudentProfile @relation(fields: [studentProfileId], references: [id])
   subject     Subject      @relation(fields: [subjectId], references: [id])
-  examSubject ExamSubject? @relation(fields: [examSubjectId], references: [id])
+  examSubject ExamSubject  @relation(fields: [examSubjectId], references: [id], onDelete: Cascade)
 
   @@unique([examId, studentProfileId, subjectId])
+  @@unique([examSubjectId, studentProfileId])
+  @@index([examSubjectId])
+  @@index([examId, subjectId])
   @@map("exam_results")
 }
 
@@ -436,7 +442,7 @@ model TimetableSlot {
   endTime    String // "09:45"
 
   class   Class   @relation(fields: [classId], references: [id])
-  section Section @relation(fields: [sectionId], references: [id])
+  section Section @relation(fields: [sectionId, classId], references: [id, classId])
   subject Subject @relation(fields: [subjectId], references: [id])
   teacher User    @relation("TeacherSlots", fields: [teacherId], references: [id])
   room    Room?   @relation(fields: [roomId], references: [id])
