@@ -152,6 +152,17 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
 
     expect(fulfilled.length).toBe(1);
     expect(rejected.length).toBe(4);
+
+    // Assert original refresh token row is revoked exactly once
+    const dbOriginalRow = await prisma.refreshToken.findFirst({ where: { tokenHash: hash } });
+    expect(dbOriginalRow?.revoked).toBe(true);
+
+    // Assert exactly ONE active replacement refresh token row exists for user
+    const userTokens = await prisma.refreshToken.findMany({ where: { userId: user.id, revoked: false } });
+    expect(userTokens.length).toBe(1);
+
+    // Assert replay attempt with original token fails
+    await expect(refresh(rawToken)).rejects.toThrow();
   });
 
   it("proves database integrity constraints independently reject inconsistent class/section/exam/subject relationships for UserRole, StudentProfile, AttendanceRecord, TimetableSlot, and ExamResult", async () => {
@@ -192,6 +203,52 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
       })
     ).rejects.toThrow();
 
+    // 3. UserRole: sectionId populated without classId MUST be rejected by DB CHECK constraint
+    await expect(
+      prisma.userRole.create({
+        data: {
+          userId: user.id,
+          roleId: role.id,
+          classId: null,
+          sectionId: sectionB1.id,
+        },
+      })
+    ).rejects.toThrow();
+
+    // 4. StudentProfile: sectionId populated without classId MUST be rejected by DB CHECK constraint
+    await expect(
+      prisma.studentProfile.create({
+        data: {
+          userId: user.id,
+          admissionNo: `ADM-NOCLASS-${Date.now()}`,
+          classId: null,
+          sectionId: sectionB1.id,
+        },
+      })
+    ).rejects.toThrow();
+
+    // 5. UserRole: NULL/NULL classId and sectionId MUST succeed (unscoped role)
+    const nullRole = await prisma.userRole.create({
+      data: {
+        userId: user.id,
+        roleId: role.id,
+        classId: null,
+        sectionId: null,
+      },
+    });
+    expect(nullRole.id).toBeDefined();
+
+    // 6. StudentProfile: NULL/NULL classId and sectionId MUST succeed
+    const nullStudent = await prisma.studentProfile.create({
+      data: {
+        userId: user.id,
+        admissionNo: `ADM-NULL-${Date.now()}`,
+        classId: null,
+        sectionId: null,
+      },
+    });
+    expect(nullStudent.id).toBeDefined();
+
     const validStudent = await prisma.studentProfile.create({
       data: {
         userId: user.id,
@@ -201,7 +258,7 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
       },
     });
 
-    // 3. AttendanceRecord: Class A with Section B1 MUST be rejected by DB FK constraint
+    // 7. AttendanceRecord: Class A with Section B1 MUST be rejected by DB FK constraint
     await expect(
       prisma.attendanceRecord.create({
         data: {
@@ -215,7 +272,7 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
       })
     ).rejects.toThrow();
 
-    // 4. TimetableSlot: Class A with Section B1 MUST be rejected by DB FK constraint
+    // 8. TimetableSlot: Class A with Section B1 MUST be rejected by DB FK constraint
     await expect(
       prisma.timetableSlot.create({
         data: {
@@ -230,7 +287,7 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
       })
     ).rejects.toThrow();
 
-    // 5. ExamResult: ExamSubject belongs to (exam, subjectA). Trying to create ExamResult with subjectB MUST be rejected
+    // 9. ExamResult: ExamSubject belongs to (exam, subjectA). Trying to create ExamResult with subjectB MUST be rejected
     const exam = await prisma.exam.create({
       data: { name: "Mid-Term", academicYearId: ay.id, startDate: new Date(), endDate: new Date() },
     });
@@ -290,6 +347,29 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
       where: { userId_date: { userId: user.id, date: testDate } },
     });
     expect(releasedRecord?.count).toBe(limit - 1);
+  });
+
+  it("proves AI request failure releases reserved quota exactly once and repeated releases do not produce negative quota", async () => {
+    const user = await prisma.user.create({
+      data: { email: `ai-fail-user-${Date.now()}@school.edu`, passwordHash: "hash", fullName: "AI Fail User" },
+    });
+    const today = new Date().toISOString().slice(0, 10);
+
+    const aiModule = await import("../modules/ai/ai.service.js");
+    // askCampusAI with no provider throws AiConfigError and safely releases quota exactly once
+    await expect(aiModule.askCampusAI(user.id, "Test question")).rejects.toThrow();
+
+    const record = await prisma.aiUsageRecord.findUnique({
+      where: { userId_date: { userId: user.id, date: today } },
+    });
+    expect(record ? record.count : 0).toBe(0);
+
+    // Further release call does not result in negative quota
+    await aiModule.releaseAiQuota(user.id, today);
+    const releasedAgain = await prisma.aiUsageRecord.findUnique({
+      where: { userId_date: { userId: user.id, date: today } },
+    });
+    expect(releasedAgain ? releasedAgain.count : 0).toBe(0);
   });
 
   it("proves Decimal monetary/marks calculations remain exact", async () => {

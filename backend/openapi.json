@@ -11,357 +11,6 @@
       "description": "Local development server"
     }
   ],
-  "components": {
-    "securitySchemes": {
-      "bearerAuth": {
-        "type": "http",
-        "scheme": "bearer",
-        "bearerFormat": "JWT",
-        "description": "JSON Web Token passed in the Authorization header as Bearer <token>"
-      },
-      "cookieAuth": {
-        "type": "apiKey",
-        "in": "cookie",
-        "name": "refresh_token",
-        "description": "HttpOnly refresh token cookie"
-      }
-    },
-    "schemas": {
-      "ErrorResponse": {
-        "type": "object",
-        "properties": {
-          "error": {
-            "oneOf": [
-              { "type": "string" },
-              { "type": "object" }
-            ]
-          }
-        },
-        "required": ["error"]
-      },
-      "User": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "email": { "type": "string", "format": "email" },
-          "fullName": { "type": "string" },
-          "phone": { "type": "string", "nullable": true },
-          "photoUrl": { "type": "string", "nullable": true },
-          "isActive": { "type": "boolean" },
-          "aiPersonalizationConsent": { "type": "boolean" }
-        },
-        "required": ["id", "email", "fullName", "isActive"]
-      },
-      "AcademicYear": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "label": { "type": "string" },
-          "startDate": { "type": "string", "format": "date-time" },
-          "endDate": { "type": "string", "format": "date-time" }
-        },
-        "required": ["id", "label", "startDate", "endDate"]
-      },
-      "Class": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "name": { "type": "string" },
-          "academicYearId": { "type": "string", "format": "uuid" }
-        },
-        "required": ["id", "name", "academicYearId"]
-      },
-      "Section": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "name": { "type": "string" },
-          "classId": { "type": "string", "format": "uuid" }
-        },
-        "required": ["id", "name", "classId"]
-      },
-      "Subject": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "name": { "type": "string" },
-          "code": { "type": "string", "nullable": true }
-        },
-        "required": ["id", "name"]
-      },
-      "StudentProfile": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "userId": { "type": "string", "format": "uuid" },
-          "admissionNo": { "type": "string" },
-          "classId": { "type": "string", "format": "uuid", "nullable": true },
-          "sectionId": { "type": "string", "format": "uuid", "nullable": true },
-          "rollNumber": { "type": "string", "nullable": true },
-          "dateOfBirth": { "type": "string", "format": "date-time", "nullable": true },
-          "admissionDate": { "type": "string", "format": "date-time", "nullable": true }
-        },
-        "required": ["id", "userId", "admissionNo"]
-      },
-      "Role": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "key": { "type": "string" },
-          "name": { "type": "string" },
-          "description": { "type": "string", "nullable": true }
-        },
-        "required": ["id", "key", "name"]
-      },
-      "UserRole": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "userId": { "type": "string", "format": "uuid" },
-          "roleId": { "type": "string", "format": "uuid" },
-          "classId": { "type": "string", "format": "uuid", "nullable": true },
-          "sectionId": { "type": "string", "format": "uuid", "nullable": true },
-          "subjectId": { "type": "string", "format": "uuid", "nullable": true },
-          "departmentId": { "type": "string", "format": "uuid", "nullable": true }
-        },
-        "required": ["id", "userId", "roleId"]
-      },
-      "AttendanceRecord": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "studentProfileId": { "type": "string", "format": "uuid" },
-          "classId": { "type": "string", "format": "uuid" },
-          "sectionId": { "type": "string", "format": "uuid" },
-          "date": { "type": "string", "format": "date-time" },
-          "status": { "type": "string", "enum": ["present", "absent", "late", "excused"] },
-          "markedByUserId": { "type": "string", "format": "uuid" }
-        },
-        "required": ["id", "studentProfileId", "classId", "sectionId", "date", "status", "markedByUserId"]
-      },
-      "Course": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "title": { "type": "string" },
-          "classId": { "type": "string", "format": "uuid" },
-          "subjectId": { "type": "string", "format": "uuid" }
-        },
-        "required": ["id", "title", "classId", "subjectId"]
-      },
-      "Lesson": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "courseId": { "type": "string", "format": "uuid" },
-          "title": { "type": "string" },
-          "content": { "type": "string", "nullable": true },
-          "orderIndex": { "type": "integer" }
-        },
-        "required": ["id", "courseId", "title", "orderIndex"]
-      },
-      "Assignment": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "courseId": { "type": "string", "format": "uuid" },
-          "title": { "type": "string" },
-          "description": { "type": "string", "nullable": true },
-          "dueAt": { "type": "string", "format": "date-time" },
-          "maxScore": { "type": "integer" }
-        },
-        "required": ["id", "courseId", "title", "dueAt", "maxScore"]
-      },
-      "AssignmentSubmission": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "assignmentId": { "type": "string", "format": "uuid" },
-          "studentProfileId": { "type": "string", "format": "uuid" },
-          "fileUrl": { "type": "string", "nullable": true },
-          "textAnswer": { "type": "string", "nullable": true },
-          "submittedAt": { "type": "string", "format": "date-time" },
-          "score": { "type": "number", "nullable": true },
-          "feedback": { "type": "string", "nullable": true },
-          "gradedAt": { "type": "string", "format": "date-time", "nullable": true },
-          "gradedByUserId": { "type": "string", "format": "uuid", "nullable": true }
-        },
-        "required": ["id", "assignmentId", "studentProfileId", "submittedAt"]
-      },
-      "Quiz": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "courseId": { "type": "string", "format": "uuid" },
-          "title": { "type": "string" }
-        },
-        "required": ["id", "courseId", "title"]
-      },
-      "Exam": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "name": { "type": "string" },
-          "academicYearId": { "type": "string", "format": "uuid" },
-          "startDate": { "type": "string", "format": "date-time" },
-          "endDate": { "type": "string", "format": "date-time" }
-        },
-        "required": ["id", "name", "academicYearId", "startDate", "endDate"]
-      },
-      "TimetableSlot": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "classId": { "type": "string", "format": "uuid" },
-          "sectionId": { "type": "string", "format": "uuid" },
-          "subjectId": { "type": "string", "format": "uuid" },
-          "teacherId": { "type": "string", "format": "uuid" },
-          "roomId": { "type": "string", "format": "uuid", "nullable": true },
-          "dayOfWeek": { "type": "integer" },
-          "startTime": { "type": "string" },
-          "endTime": { "type": "string" }
-        },
-        "required": ["id", "classId", "sectionId", "subjectId", "teacherId", "dayOfWeek", "startTime", "endTime"]
-      },
-      "Room": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "name": { "type": "string" }
-        },
-        "required": ["id", "name"]
-      },
-      "Notification": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "userId": { "type": "string", "format": "uuid" },
-          "title": { "type": "string" },
-          "body": { "type": "string" },
-          "type": { "type": "string" },
-          "read": { "type": "boolean" },
-          "createdAt": { "type": "string", "format": "date-time" }
-        },
-        "required": ["id", "userId", "title", "body", "type", "read", "createdAt"]
-      },
-      "Book": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "title": { "type": "string" },
-          "author": { "type": "string" },
-          "isbn": { "type": "string", "nullable": true },
-          "category": { "type": "string", "nullable": true }
-        },
-        "required": ["id", "title", "author"]
-      },
-      "BookCopy": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "bookId": { "type": "string", "format": "uuid" },
-          "barcode": { "type": "string" },
-          "available": { "type": "boolean" }
-        },
-        "required": ["id", "bookId", "barcode", "available"]
-      },
-      "BookLoan": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "bookCopyId": { "type": "string", "format": "uuid" },
-          "userId": { "type": "string", "format": "uuid" },
-          "issuedAt": { "type": "string", "format": "date-time" },
-          "dueAt": { "type": "string", "format": "date-time" },
-          "returnedAt": { "type": "string", "format": "date-time", "nullable": true }
-        },
-        "required": ["id", "bookCopyId", "userId", "issuedAt", "dueAt"]
-      },
-      "FeeStructure": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "classId": { "type": "string", "format": "uuid" },
-          "academicYearId": { "type": "string", "format": "uuid" },
-          "name": { "type": "string" },
-          "amount": { "type": "number" }
-        },
-        "required": ["id", "classId", "academicYearId", "name", "amount"]
-      },
-      "FeeInvoice": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "feeStructureId": { "type": "string", "format": "uuid" },
-          "studentProfileId": { "type": "string", "format": "uuid" },
-          "amountDue": { "type": "number" },
-          "dueDate": { "type": "string", "format": "date-time" },
-          "status": { "type": "string", "enum": ["pending", "partial", "paid"] }
-        },
-        "required": ["id", "feeStructureId", "studentProfileId", "amountDue", "dueDate", "status"]
-      },
-      "Payment": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "invoiceId": { "type": "string", "format": "uuid" },
-          "amount": { "type": "number" },
-          "method": { "type": "string", "enum": ["cash", "bank_transfer", "card", "online"] },
-          "paidAt": { "type": "string", "format": "date-time" },
-          "receivedByUserId": { "type": "string", "format": "uuid" }
-        },
-        "required": ["id", "invoiceId", "amount", "method", "paidAt", "receivedByUserId"]
-      },
-      "CmsPage": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "slug": { "type": "string" },
-          "title": { "type": "string" },
-          "content": { "type": "string" },
-          "published": { "type": "boolean" },
-          "updatedAt": { "type": "string", "format": "date-time" },
-          "updatedByUserId": { "type": "string", "format": "uuid" }
-        },
-        "required": ["id", "slug", "title", "content", "published", "updatedAt", "updatedByUserId"]
-      },
-      "CmsNotice": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "title": { "type": "string" },
-          "body": { "type": "string" },
-          "audience": { "type": "string", "enum": ["public", "students", "teachers", "parents", "staff"] },
-          "publishedAt": { "type": "string", "format": "date-time" },
-          "publishedByUserId": { "type": "string", "format": "uuid" }
-        },
-        "required": ["id", "title", "body", "audience", "publishedAt", "publishedByUserId"]
-      },
-      "CmsEvent": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "title": { "type": "string" },
-          "description": { "type": "string", "nullable": true },
-          "startAt": { "type": "string", "format": "date-time" },
-          "endAt": { "type": "string", "format": "date-time", "nullable": true },
-          "location": { "type": "string", "nullable": true }
-        },
-        "required": ["id", "title", "startAt"]
-      },
-      "GalleryItem": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "title": { "type": "string" },
-          "imageUrl": { "type": "string" },
-          "albumName": { "type": "string", "nullable": true },
-          "createdAt": { "type": "string", "format": "date-time" }
-        },
-        "required": ["id", "title", "imageUrl", "createdAt"]
-      }
-    }
-  },
   "paths": {
     "/health": {
       "get": {
@@ -721,6 +370,34 @@
           },
           "401": { "$ref": "#/components/responses/Error401" }
         }
+      },
+      "post": {
+        "summary": "Create class",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string", "minLength": 1 },
+                  "academicYearId": { "type": "string", "format": "uuid" }
+                },
+                "required": ["name", "academicYearId"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Class created",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Class" } } }
+          },
+          "400": { "$ref": "#/components/responses/Error400" },
+          "401": { "$ref": "#/components/responses/Error401" },
+          "403": { "$ref": "#/components/responses/Error403" }
+        }
       }
     },
     "/api/academics/subjects": {
@@ -743,6 +420,34 @@
             }
           },
           "401": { "$ref": "#/components/responses/Error401" }
+        }
+      },
+      "post": {
+        "summary": "Create subject",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string", "minLength": 1 },
+                  "code": { "type": "string" }
+                },
+                "required": ["name"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Subject created",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Subject" } } }
+          },
+          "400": { "$ref": "#/components/responses/Error400" },
+          "401": { "$ref": "#/components/responses/Error401" },
+          "403": { "$ref": "#/components/responses/Error403" }
         }
       }
     },
@@ -828,36 +533,6 @@
         }
       }
     },
-    "/api/academics/classes": {
-      "post": {
-        "summary": "Create class",
-        "security": [{ "bearerAuth": [] }],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "name": { "type": "string", "minLength": 1 },
-                  "academicYearId": { "type": "string", "format": "uuid" }
-                },
-                "required": ["name", "academicYearId"]
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Class created",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Class" } } }
-          },
-          "400": { "$ref": "#/components/responses/Error400" },
-          "401": { "$ref": "#/components/responses/Error401" },
-          "403": { "$ref": "#/components/responses/Error403" }
-        }
-      }
-    },
     "/api/academics/sections": {
       "post": {
         "summary": "Create section within class",
@@ -881,36 +556,6 @@
           "201": {
             "description": "Section created",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Section" } } }
-          },
-          "400": { "$ref": "#/components/responses/Error400" },
-          "401": { "$ref": "#/components/responses/Error401" },
-          "403": { "$ref": "#/components/responses/Error403" }
-        }
-      }
-    },
-    "/api/academics/subjects": {
-      "post": {
-        "summary": "Create subject",
-        "security": [{ "bearerAuth": [] }],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "name": { "type": "string", "minLength": 1 },
-                  "code": { "type": "string" }
-                },
-                "required": ["name"]
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Subject created",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Subject" } } }
           },
           "400": { "$ref": "#/components/responses/Error400" },
           "401": { "$ref": "#/components/responses/Error401" },
@@ -1208,6 +853,32 @@
       }
     },
     "/api/lms/courses": {
+      "get": {
+        "summary": "List courses for class",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "classId", "in": "query", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of courses",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "courses": { "type": "array", "items": { "$ref": "#/components/schemas/Course" } }
+                  },
+                  "required": ["courses"]
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Error400" },
+          "401": { "$ref": "#/components/responses/Error401" },
+          "403": { "$ref": "#/components/responses/Error403" }
+        }
+      },
       "post": {
         "summary": "Create LMS course",
         "security": [{ "bearerAuth": [] }],
@@ -1231,32 +902,6 @@
           "201": {
             "description": "Course created",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Course" } } }
-          },
-          "400": { "$ref": "#/components/responses/Error400" },
-          "401": { "$ref": "#/components/responses/Error401" },
-          "403": { "$ref": "#/components/responses/Error403" }
-        }
-      },
-      "get": {
-        "summary": "List courses for class",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [
-          { "name": "classId", "in": "query", "required": true, "schema": { "type": "string", "format": "uuid" } }
-        ],
-        "responses": {
-          "200": {
-            "description": "List of courses",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "courses": { "type": "array", "items": { "$ref": "#/components/schemas/Course" } }
-                  },
-                  "required": ["courses"]
-                }
-              }
-            }
           },
           "400": { "$ref": "#/components/responses/Error400" },
           "401": { "$ref": "#/components/responses/Error401" },
@@ -1750,6 +1395,28 @@
       }
     },
     "/api/exams": {
+      "get": {
+        "summary": "List all exams",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "List of exams",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "exams": { "type": "array", "items": { "$ref": "#/components/schemas/Exam" } }
+                  },
+                  "required": ["exams"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Error401" },
+          "403": { "$ref": "#/components/responses/Error403" }
+        }
+      },
       "post": {
         "summary": "Create exam session",
         "security": [{ "bearerAuth": [] }],
@@ -1776,28 +1443,6 @@
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Exam" } } }
           },
           "400": { "$ref": "#/components/responses/Error400" },
-          "401": { "$ref": "#/components/responses/Error401" },
-          "403": { "$ref": "#/components/responses/Error403" }
-        }
-      },
-      "get": {
-        "summary": "List all exams",
-        "security": [{ "bearerAuth": [] }],
-        "responses": {
-          "200": {
-            "description": "List of exams",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "exams": { "type": "array", "items": { "$ref": "#/components/schemas/Exam" } }
-                  },
-                  "required": ["exams"]
-                }
-              }
-            }
-          },
           "401": { "$ref": "#/components/responses/Error401" },
           "403": { "$ref": "#/components/responses/Error403" }
         }
@@ -1975,6 +1620,28 @@
       }
     },
     "/api/timetable/rooms": {
+      "get": {
+        "summary": "List all rooms",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "List of rooms",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "rooms": { "type": "array", "items": { "$ref": "#/components/schemas/Room" } }
+                  },
+                  "required": ["rooms"]
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Error401" },
+          "403": { "$ref": "#/components/responses/Error403" }
+        }
+      },
       "post": {
         "summary": "Create classroom / room",
         "security": [{ "bearerAuth": [] }],
@@ -1998,28 +1665,6 @@
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Room" } } }
           },
           "400": { "$ref": "#/components/responses/Error400" },
-          "401": { "$ref": "#/components/responses/Error401" },
-          "403": { "$ref": "#/components/responses/Error403" }
-        }
-      },
-      "get": {
-        "summary": "List all rooms",
-        "security": [{ "bearerAuth": [] }],
-        "responses": {
-          "200": {
-            "description": "List of rooms",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "rooms": { "type": "array", "items": { "$ref": "#/components/schemas/Room" } }
-                  },
-                  "required": ["rooms"]
-                }
-              }
-            }
-          },
           "401": { "$ref": "#/components/responses/Error401" },
           "403": { "$ref": "#/components/responses/Error403" }
         }

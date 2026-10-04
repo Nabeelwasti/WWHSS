@@ -228,6 +228,14 @@ async function buildPersonalContext(userId: string): Promise<string> {
 export async function askCampusAI(userId: string, message: string): Promise<string> {
   const today = new Date().toISOString().slice(0, 10);
   await reserveAiQuota(userId, today);
+  let quotaReleased = false;
+
+  const safeRelease = async () => {
+    if (!quotaReleased) {
+      quotaReleased = true;
+      await releaseAiQuota(userId, today);
+    }
+  };
 
   try {
     const truncatedMessage = message.slice(0, env.maxAiInputChars);
@@ -273,12 +281,11 @@ export async function askCampusAI(userId: string, message: string): Promise<stri
       }
     }
 
-    await releaseAiQuota(userId, today);
+    await safeRelease();
     console.error("All configured AI providers failed:", failures);
     throw new Error("The AI assistant is temporarily unavailable — every configured provider failed. Please try again shortly.");
   } catch (err: unknown) {
-    if (err instanceof AiConfigError) throw err;
-    await releaseAiQuota(userId, today);
+    await safeRelease();
     throw err;
   }
 }

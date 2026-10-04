@@ -11,14 +11,14 @@ async function runSerializableTransaction<T>(
   while (true) {
     try {
       return await prisma.$transaction(fn, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-    } catch (err: any) {
+    } catch (err: unknown) {
       attempt++;
       const isSerializationFailure =
-        err?.code === "P2034" ||
-        (typeof err?.message === "string" &&
-          (err.message.includes("serialization") ||
-            err.message.includes("deadlock") ||
-            err.message.includes("concurrent update")));
+        (err as Record<string, unknown>)?.code === "P2034" ||
+        (typeof (err as Record<string, unknown>)?.message === "string" &&
+          (((err as Error).message.includes("serialization")) ||
+            ((err as Error).message.includes("deadlock")) ||
+            ((err as Error).message.includes("concurrent update"))));
       if (isSerializationFailure && attempt < maxRetries) {
         await new Promise((res) => setTimeout(res, Math.pow(2, attempt) * 10));
         continue;
