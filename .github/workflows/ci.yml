@@ -7,6 +7,10 @@ on:
   pull_request:
     branches: [ main ]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend-test:
     runs-on: ubuntu-latest
@@ -23,9 +27,9 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
+          --health-cmd "pg_isready -U ci_user -d ci_wwhs_test"
+          --health-interval 3s
+          --health-timeout 3s
           --health-retries 5
     steps:
       - uses: actions/checkout@v4
@@ -49,16 +53,9 @@ jobs:
       - name: Deploy Prisma migrations (unit test DB)
         working-directory: backend
         run: npx prisma migrate deploy
-      - name: Install postgresql-client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - name: Create dedicated integration test database
-        working-directory: backend
         run: |
-          if PGPASSWORD=ci_password_12345 psql -h localhost -U ci_user -d ci_wwhs_test -tAc "SELECT 1 FROM pg_database WHERE datname = 'ci_wwhs_integration_test'" | grep -q 1; then
-            echo "Database ci_wwhs_integration_test already exists."
-          else
-            PGPASSWORD=ci_password_12345 psql -h localhost -U ci_user -d ci_wwhs_test -c "CREATE DATABASE ci_wwhs_integration_test;"
-          fi
+          docker exec $(docker ps -q -f name=postgres) psql -U ci_user -d ci_wwhs_test -c "CREATE DATABASE ci_wwhs_integration_test;" || true
       - name: Deploy Prisma migrations (integration test DB)
         working-directory: backend
         run: DATABASE_URL="$INTEGRATION_TEST_DB_URL" npx prisma migrate deploy
