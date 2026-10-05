@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
+import { prisma } from "../db/client.js";
 import { verifyAccessToken } from "../modules/identity/tokens.js";
 
 declare global {
