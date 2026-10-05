@@ -28,6 +28,7 @@ import { libraryRouter } from "../modules/library/library.routes.js";
 import { financeRouter } from "../modules/finance/finance.routes.js";
 import { cmsRouter } from "../modules/cms/cms.routes.js";
 import { aiRouter } from "../modules/ai/ai.routes.js";
+import { documentsRouter } from "../modules/documents/documents.routes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -56,6 +57,7 @@ function getImplementedExpressRoutes(): { path: string; method: string }[] {
     { prefix: "/api/finance", router: financeRouter },
     { prefix: "/api/cms", router: cmsRouter },
     { prefix: "/api/ai", router: aiRouter },
+    { prefix: "/api/documents", router: documentsRouter },
   ];
 
   const routes: { path: string; method: string }[] = [{ path: "/health", method: "get" }];

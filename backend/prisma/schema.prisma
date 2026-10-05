@@ -208,29 +208,32 @@ model Subject {
 }
 
 model StudentProfile {
-  id                String    @id @default(uuid())
-  userId            String    @unique
-  admissionNo       String    @unique
-  classId           String?
-  sectionId         String?
-  rollNumber        String?
-  registrationNo    String?   @unique
-  dateOfBirth       DateTime?
-  admissionDate     DateTime?
-  fatherName        String?
-  motherName        String?
-  guardianName      String?
-  guardianRelation  String?
-  guardianPhone     String?
-  emergencyContact  String?
-  address           String?
-  city              String?
-  bloodGroup        String?
-  medicalNotes      String?
-  status            String    @default("ACTIVE") // ACTIVE | PROMOTED | TRANSFERRED | WITHDRAWN | SUSPENDED
-  withdrawalReason  String?
-  transferDate      DateTime?
-  fundingCategoryId String?
+  id                  String    @id @default(uuid())
+  userId              String    @unique
+  admissionNo         String    @unique
+  classId             String?
+  sectionId           String?
+  rollNumber          String?
+  registrationNo      String?   @unique
+  gender              String?
+  dateOfBirth         DateTime?
+  admissionDate       DateTime?
+  fatherName          String?
+  motherName          String?
+  guardianName        String?
+  guardianRelation    String?
+  guardianPhone       String?
+  emergencyContact    String?
+  address             String?
+  city                String?
+  bloodGroup          String?
+  medicalNotes        String?
+  previousSchool      String?
+  boardRegistrationNo String?
+  status              String    @default("ACTIVE") // ACTIVE | PROMOTED | TRANSFERRED | WITHDRAWN | SUSPENDED | GRADUATED
+  withdrawalReason    String?
+  transferDate        DateTime?
+  fundingCategoryId   String?
 
   user              User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   class             Class?                 @relation(fields: [classId], references: [id])
@@ -249,6 +252,8 @@ model StudentProfile {
 
   @@index([classId, sectionId])
   @@index([status])
+  @@index([gender])
+  @@index([fundingCategoryId])
   @@map("student_profiles")
 }
 

@@ -1,5 +1,6 @@
 # ---------- Build stage: full dev deps, compiles TypeScript, generates Prisma client ----------
 FROM node:20-slim AS build
+RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -10,6 +11,7 @@ RUN npm run build
 
 # ---------- Production stage: only what's actually needed at runtime ----------
 FROM node:20-slim AS production
+RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV NODE_ENV=production
 

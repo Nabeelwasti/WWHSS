@@ -126,6 +126,7 @@ usersRouter.get("/students/search", authorize("academics:view"), async (req, res
   const sectionId = typeof req.query.sectionId === "string" ? req.query.sectionId : undefined;
   const status = typeof req.query.status === "string" ? req.query.status : undefined;
   const fundingCategoryId = typeof req.query.fundingCategoryId === "string" ? req.query.fundingCategoryId : undefined;
+  const gender = typeof req.query.gender === "string" ? req.query.gender : undefined;
   const page = typeof req.query.page === "string" ? parseInt(req.query.page, 10) : undefined;
   const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : undefined;
   const sortBy = typeof req.query.sortBy === "string" ? (req.query.sortBy as any) : undefined;
@@ -137,6 +138,7 @@ usersRouter.get("/students/search", authorize("academics:view"), async (req, res
     sectionId,
     status,
     fundingCategoryId,
+    gender,
     page,
     limit,
     sortBy,
@@ -157,6 +159,7 @@ usersRouter.get("/students/:studentProfileId", authorize("student:view:full_prof
 
 const updateStudentSchema = z.object({
   registrationNo: z.string().optional(),
+  gender: z.enum(["Male", "Female", "Other"]).optional(),
   fatherName: z.string().optional(),
   motherName: z.string().optional(),
   guardianName: z.string().optional(),
@@ -167,6 +170,8 @@ const updateStudentSchema = z.object({
   city: z.string().optional(),
   bloodGroup: z.string().optional(),
   medicalNotes: z.string().optional(),
+  previousSchool: z.string().optional(),
+  boardRegistrationNo: z.string().optional(),
   status: z.enum(["ACTIVE", "PROMOTED", "TRANSFERRED", "WITHDRAWN", "SUSPENDED", "GRADUATED"]).optional(),
   withdrawalReason: z.string().optional(),
   transferDate: z.string().optional(),

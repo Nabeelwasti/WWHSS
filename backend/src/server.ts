@@ -18,6 +18,7 @@ import { libraryRouter } from "./modules/library/library.routes.js";
 import { financeRouter } from "./modules/finance/finance.routes.js";
 import { cmsRouter } from "./modules/cms/cms.routes.js";
 import { aiRouter } from "./modules/ai/ai.routes.js";
+import { documentsRouter } from "./modules/documents/documents.routes.js";
 
 const app = express();
 
@@ -118,6 +119,7 @@ app.use("/api/library", libraryRouter);
 app.use("/api/finance", financeRouter);
 app.use("/api/cms", cmsRouter);
 app.use("/api/ai", aiRouter);
+app.use("/api/documents", documentsRouter);
 
 // Central error handler: never leak stack traces to the client, always log
 // server-side, so a bug in one module can't turn into an information leak.

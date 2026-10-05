@@ -130,6 +130,7 @@ export interface SearchStudentsOptions {
   sectionId?: string;
   status?: string;
   fundingCategoryId?: string;
+  gender?: string;
   page?: number;
   limit?: number;
   sortBy?: "fullName" | "admissionNo" | "rollNumber" | "status";
@@ -147,6 +148,7 @@ export async function searchStudentProfiles(options: SearchStudentsOptions = {})
   if (options.sectionId) where.sectionId = options.sectionId;
   if (options.status) where.status = options.status;
   if (options.fundingCategoryId) where.fundingCategoryId = options.fundingCategoryId;
+  if (options.gender) where.gender = options.gender;
 
   if (options.query && options.query.trim().length > 0) {
     const q = options.query.trim();
@@ -161,6 +163,7 @@ export async function searchStudentProfiles(options: SearchStudentsOptions = {})
       { guardianName: { contains: q, mode: "insensitive" } },
       { guardianPhone: { contains: q, mode: "insensitive" } },
       { user: { phone: { contains: q, mode: "insensitive" } } },
+      { boardRegistrationNo: { contains: q, mode: "insensitive" } },
     ];
   }
 
@@ -225,6 +228,7 @@ export async function updateStudentProfile(
   studentProfileId: string,
   input: {
     registrationNo?: string;
+    gender?: string;
     fatherName?: string;
     motherName?: string;
     guardianName?: string;
@@ -235,6 +239,8 @@ export async function updateStudentProfile(
     city?: string;
     bloodGroup?: string;
     medicalNotes?: string;
+    previousSchool?: string;
+    boardRegistrationNo?: string;
     status?: string;
     withdrawalReason?: string;
     transferDate?: string;
@@ -253,6 +259,7 @@ export async function updateStudentProfile(
       where: { id: studentProfileId },
       data: {
         registrationNo: input.registrationNo,
+        gender: input.gender,
         fatherName: input.fatherName,
         motherName: input.motherName,
         guardianName: input.guardianName,
@@ -263,6 +270,8 @@ export async function updateStudentProfile(
         city: input.city,
         bloodGroup: input.bloodGroup,
         medicalNotes: input.medicalNotes,
+        previousSchool: input.previousSchool,
+        boardRegistrationNo: input.boardRegistrationNo,
         status: input.status,
         withdrawalReason: input.withdrawalReason,
         transferDate: input.transferDate ? new Date(input.transferDate) : undefined,
