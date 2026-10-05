@@ -1,4 +1,21 @@
 -- CreateTable
+CREATE TABLE "staff_profiles" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "employeeId" TEXT NOT NULL,
+    "designation" TEXT NOT NULL,
+    "qualification" TEXT,
+    "departmentId" TEXT,
+    "joiningDate" TIMESTAMP(3),
+    "status" TEXT NOT NULL DEFAULT 'ACTIVE',
+    "emergencyContact" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "staff_profiles_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "ai_assessment_tests" (
     "id" TEXT NOT NULL,
     "title" TEXT NOT NULL,
@@ -68,7 +85,19 @@ CREATE TABLE "document_records" (
 );
 
 -- CreateIndex
+CREATE UNIQUE INDEX "staff_profiles_userId_key" ON "staff_profiles"("userId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "staff_profiles_employeeId_key" ON "staff_profiles"("employeeId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "document_records_docNumber_key" ON "document_records"("docNumber");
+
+-- AddForeignKey
+ALTER TABLE "staff_profiles" ADD CONSTRAINT "staff_profiles_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "staff_profiles" ADD CONSTRAINT "staff_profiles_departmentId_fkey" FOREIGN KEY ("departmentId") REFERENCES "departments"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "ai_assessment_tests" ADD CONSTRAINT "ai_assessment_tests_classId_fkey" FOREIGN KEY ("classId") REFERENCES "classes"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
