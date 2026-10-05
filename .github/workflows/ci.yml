@@ -55,7 +55,11 @@ jobs:
         run: npx prisma migrate deploy
       - name: Create dedicated integration test database
         run: |
-          docker exec $(docker ps -q -f name=postgres) psql -U ci_user -d ci_wwhs_test -c "CREATE DATABASE ci_wwhs_integration_test;" || true
+          CONTAINER_ID=$(docker ps -q -f name=postgres)
+          DB_EXISTS=$(docker exec "$CONTAINER_ID" psql -U ci_user -d ci_wwhs_test -tAc "SELECT 1 FROM pg_database WHERE datname='ci_wwhs_integration_test';")
+          if [ "$DB_EXISTS" != "1" ]; then
+            docker exec "$CONTAINER_ID" psql -U ci_user -d ci_wwhs_test -c "CREATE DATABASE ci_wwhs_integration_test;"
+          fi
       - name: Deploy Prisma migrations (integration test DB)
         working-directory: backend
         run: DATABASE_URL="$INTEGRATION_TEST_DB_URL" npx prisma migrate deploy

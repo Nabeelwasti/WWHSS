@@ -220,6 +220,75 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
       };
     }
 
+    case "fee_statement": {
+      const student = await prisma.studentProfile.findUnique({
+        where: { id: referenceId },
+        include: {
+          user: { select: { fullName: true, email: true } },
+          class: true,
+          section: true,
+          fundingCategory: true,
+          feeInvoices: { include: { feeStructure: true, payments: true, feeWaivers: true } },
+        },
+      });
+      if (!student) throw new DocumentValidationError(`Student ${referenceId} not found`);
+
+      return {
+        docType: "fee_statement",
+        docNumber: `STMT-${student.id.slice(0, 8)}`,
+        issueDate,
+        header,
+        title: "Student Fee Account Statement / فيس والى تفصيل",
+        entity: {
+          name: student.user.fullName,
+          admissionNo: student.admissionNo,
+          className: student.class?.name || "N/A",
+          fundingCategory: student.fundingCategory?.name || "Standard",
+        },
+        records: student.feeInvoices.map((inv) => ({
+          invoiceName: inv.feeStructure.name,
+          dueDate: inv.dueDate.toISOString().slice(0, 10),
+          amountDue: inv.amountDue.toNumber(),
+          paid: inv.payments.reduce((sum, p) => sum + p.amount.toNumber(), 0),
+          waived: inv.feeWaivers.reduce((sum, w) => sum + w.amount.toNumber(), 0),
+          status: inv.status.toUpperCase(),
+        })),
+        signatures: [{ title: "Accounts Officer", name: "____________________" }],
+      };
+    }
+
+    case "attendance_report": {
+      const student = await prisma.studentProfile.findUnique({
+        where: { id: referenceId },
+        include: {
+          user: { select: { fullName: true } },
+          class: true,
+          section: true,
+          attendanceRecords: { orderBy: { date: "desc" }, take: 30 },
+        },
+      });
+      if (!student) throw new DocumentValidationError(`Student ${referenceId} not found`);
+
+      return {
+        docType: "attendance_report",
+        docNumber: `ATT-${student.id.slice(0, 8)}`,
+        issueDate,
+        header,
+        title: "Student Attendance Log & Report / حاضرى رپورٹ",
+        entity: {
+          name: student.user.fullName,
+          admissionNo: student.admissionNo,
+          className: student.class?.name || "N/A",
+          sectionName: student.section?.name || "N/A",
+        },
+        records: student.attendanceRecords.map((a) => ({
+          date: a.date.toISOString().slice(0, 10),
+          status: a.status.toUpperCase(),
+        })),
+        signatures: [{ title: "Class Teacher", name: "____________________" }],
+      };
+    }
+
     default: {
       return {
         docType,

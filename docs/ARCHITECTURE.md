@@ -9,7 +9,7 @@ integration seam becomes a place where identity, permissions, or UX diverge).
 
 Chosen: **one deployable application**, internally organized as modules
 (identity, academics, attendance, LMS, exams, timetable, library, finance,
-communication, AI) that all share one database, one auth system, one
+communication, AI, storage, backup) that all share one database, one auth system, one
 permission engine. Modules are separated by code boundaries, not network
 boundaries. This can be split into services later if scale ever demands it —
 nothing here prevents that migration.
@@ -19,20 +19,14 @@ nothing here prevents that migration.
 | Layer | Choice | Why |
 |---|---|---|
 | Database | PostgreSQL | ACID, mature, free, excellent support for row-level security (used for permission enforcement), self-hostable, huge ecosystem |
-| Backend | Node.js + TypeScript + Express (or Fastify) | One language across stack lowers maintenance burden for a small team; TypeScript catches whole classes of bugs before production; huge library ecosystem; easy to self-host in a single container |
+| Backend | Node.js + TypeScript + Express | One language across stack lowers maintenance burden for a small team; TypeScript catches whole classes of bugs before production; huge library ecosystem; easy to self-host in a single container |
 | ORM | Prisma | Type-safe queries, migrations, works well with Postgres RLS patterns |
 | Auth | Self-hosted, sessions or JWT + refresh tokens, argon2 password hashing | No dependency on a third-party identity vendor; school owns the credentials |
-| Frontend | React + TypeScript + Vite, Tailwind CSS | Fast dev cycle, huge component ecosystem, easy PWA support, good mobile performance |
-| File storage | Local disk (or S3-compatible MinIO if self-hosted object storage is wanted) | Avoids mandatory cloud dependency; MinIO gives an S3 API without vendor lock-in |
-| Background jobs | BullMQ + Redis (optional; can start with a simple cron table) | Notifications, report generation, scheduled attendance alerts |
-| Deployment | Docker Compose (Postgres + Redis + app + reverse proxy) | Single `docker compose up` gets a school running on their own hardware or any VPS |
-| AI layer | Provider-agnostic adapter (Anthropic API by default, swappable) | Never hard-locks the AI assistant to one vendor; the permission engine gates what context reaches the model, not the model itself |
-
-Nothing here is mandatory dogma — e.g. Fastify instead of Express, or SQLite
-for a very small deployment, are reasonable substitutions. The two decisions
-that matter most and should **not** be casually changed are: (1) one
-database/one auth for the whole product, (2) permissions enforced at the
-data-access layer, never only in the UI.
+| Frontend | React + TypeScript + Vite | Fast dev cycle, huge component ecosystem, easy PWA support, good mobile performance |
+| File storage | Local disk / Private Storage service | MIME and size validation, safe filename generation, session-authorized retrieval |
+| Deployment | Docker Compose (Postgres + app + reverse proxy) | Single `docker compose up` gets a school running on their own hardware or any VPS |
+| AI layer | Provider-agnostic adapter (Anthropic / Gemini / OpenAI compatible) | Never hard-locks the AI assistant to one vendor; permission engine gates what context reaches the model |
+| Backups | Encrypted AES-256-GCM Backup Engine | Off-host encrypted database backups, JSON export, and verified recovery drills |
 
 ## 3. Identity & permission model (the foundation everything else depends on)
 
@@ -48,44 +42,32 @@ data-access layer, never only in the UI.
   `finance:view`, `student:view:full_profile`.
 - `role_permissions` — which permissions a role grants, optionally scoped.
 - `relationships` — explicit table for parent↔student, class_teacher↔class,
-  subject_teacher↔class+subject. This is what stops "a teacher can see every
-  student" — access is derived from an explicit relationship row, not from
-  job title alone.
+  subject_teacher↔class+subject.
 
 **Enforcement happens in one place**: a permission-check function/middleware
-that every API route calls before touching data, backed by Postgres
-row-level security policies as a second, database-level line of defense (so
-even a bug in application code can't leak cross-student data). The frontend
-hides UI it has no permission for, but that is a convenience, never the
-security boundary.
+that every API route calls before touching data.
 
-## 4. Module map (how "one dashboard" is built from many domains)
+## 4. Key Subsystems & Capabilities
 
-Every module exposes:
-1. A Postgres schema (its own tables, foreign keys into `users`/`classes`)
-2. A service layer (business logic, permission checks)
-3. REST (or GraphQL, decide once frontend needs are clearer) endpoints
-4. Frontend "widgets" that a role's dashboard composes automatically based
-   on that user's permissions — this is what makes it feel like one product:
-   the dashboard doesn't know about "the LMS" or "the ERP", it just asks
-   "what widgets is this user authorized to see" and renders them.
+### AI Assessment Studio
+- Multi-step workflow: Select → Generate → Preview → Edit → Approve → Print A4 → Ingest & Auto-score objective questions → AI-suggested subjective scoring → Teacher final authority → Remedial feedback.
+- Supports English and Urdu (اردو), A/B/C/D question versions, answer keys, and marking schemes.
 
-Modules, in build order (each depends only on ones above it):
-1. **Identity & permissions** (this is step 1, non-negotiable)
-2. **Academics** — academic years, classes, sections, subjects, enrollment
-3. **Attendance**
-4. **LMS** — lessons, resources, assignments, quizzes, gradebook
-5. **Exams & results**
-6. **Timetable**
-7. **Communication & notifications**
-8. **Library**
-9. **Finance/fees**
-10. **Public website/CMS** (lowest technical risk, can be built anytime,
-    including in parallel by a different contributor)
-11. **AI assistant layer** — sits on top of everything, calls into the same
-    permission-checked service layer other modules use, so it can never see
-    more than the requesting user could see through the UI.
+### Document Engine & A4 Printing
+- School-branded document generation using authoritative school header metadata.
+- Outputs printable A4 payloads and CSV/PDF data for Result Cards, Report Cards, Transcripts, Fee Receipts, Transfer Certificates, Fee Statements, and Attendance Logs.
 
-## 5. Implementation & Verification Status
+### Encrypted Backups & Recovery
+- Complete database table JSON serialization.
+- AES-256-GCM encryption using secure scrypt key derivation.
+- Automated recovery drill verification to ensure off-host backups decrypt and parse with complete schema integrity.
 
-Current status: **Complete Production Build**. Tested via Vitest unit test suite, real PostgreSQL integration & concurrency test suite, standards-compliant OpenAPI validator, and frontend localization/accessibility scanner.
+### Secure Private File Storage
+- Storage directory isolated from public HTTP routes.
+- Strict MIME type and 10MB size validation.
+- Sanitized filenames with non-colliding random hashes.
+- Route authorization check before serving any private document file.
+
+### Correlation & Operational Logging
+- Express middleware injects `X-Request-ID` on all incoming requests for request tracing.
+- Structured morgan logging and PostgreSQL liveness health check at `/health`.

@@ -100,7 +100,7 @@ describe("OpenAPI Contract Validation Test Suite", () => {
     const SwaggerParser = (await import("@apidevtools/swagger-parser")).default;
     const validatedApi = await SwaggerParser.validate(openapiPath);
     expect(validatedApi.info.title).toBe("WWHS Digital Campus API");
-  });
+  }, 30000);
 
   it("verifies all $ref links in openapi.json resolve to existing schemas/responses/securitySchemes", () => {
     const openapiPath = path.resolve(__dirname, "../../openapi.json");

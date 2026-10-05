@@ -418,4 +418,83 @@ export const api = {
   unpublishCmsPage: (slug: string) => request(`/cms/pages/${slug}/unpublish`, { method: "POST" }),
 
   listCmsAdminPages: () => request<{ pages: { id: string; slug: string; title: string; isPublished: boolean }[] }>("/cms/admin/pages"),
+
+  // ---- Student Master Profiles & Search ----
+  searchStudents: (params: { query?: string; classId?: string; sectionId?: string; status?: string; gender?: string; page?: number; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params.query) q.set("query", params.query);
+    if (params.classId) q.set("classId", params.classId);
+    if (params.sectionId) q.set("sectionId", params.sectionId);
+    if (params.status) q.set("status", params.status);
+    if (params.gender) q.set("gender", params.gender);
+    if (params.page) q.set("page", params.page.toString());
+    if (params.limit) q.set("limit", params.limit.toString());
+    return request<{ students: unknown[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(`/users/students/search?${q.toString()}`);
+  },
+
+  getStudentProfile: (id: string) => request<{ profile: unknown }>(`/users/students/${id}`),
+
+  updateStudentProfile: (id: string, input: Record<string, unknown>) =>
+    request<{ profile: unknown }>(`/users/students/${id}`, { method: "PUT", body: JSON.stringify(input) }),
+
+  // ---- Staff Profiles ----
+  listStaff: () => request<{ staff: unknown[] }>("/users/staff"),
+
+  createStaff: (input: Record<string, unknown>) =>
+    request<{ staff: unknown }>("/users/staff", { method: "POST", body: JSON.stringify(input) }),
+
+  // ---- Funding & Fee Extensions ----
+  listFundingCategories: () => request<unknown[]>("/finance/funding-categories"),
+
+  createFundingCategory: (input: { name: string; code: string; description?: string; isDefault?: boolean }) =>
+    request("/finance/funding-categories", { method: "POST", body: JSON.stringify(input) }),
+
+  assignStudentFunding: (input: Record<string, unknown>) =>
+    request("/finance/student-funding", { method: "POST", body: JSON.stringify(input) }),
+
+  applyFeeWaiver: (input: { invoiceId: string; studentProfileId: string; amount: number; reason: string }) =>
+    request("/finance/waivers", { method: "POST", body: JSON.stringify(input) }),
+
+  getFinancialSummary: () => request<unknown>("/finance/summary-report"),
+
+  // ---- Document Engine ----
+  listDocuments: (docType?: string) =>
+    request<{ documents: unknown[] }>(`/documents${docType ? `?docType=${docType}` : ""}`),
+
+  createDocumentRecord: (input: { docType: string; studentProfileId?: string; staffProfileId?: string; metadataJson?: unknown }) =>
+    request<{ document: unknown }>("/documents", { method: "POST", body: JSON.stringify(input) }),
+
+  getDocumentPayload: (docType: string, referenceId: string) =>
+    request<{ payload: unknown }>(`/documents/payload/${docType}/${referenceId}`),
+
+  // ---- AI Assessment Studio ----
+  listAiAssessmentTests: (params?: { classId?: string; subjectId?: string; status?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.classId) q.set("classId", params.classId);
+    if (params?.subjectId) q.set("subjectId", params.subjectId);
+    if (params?.status) q.set("status", params.status);
+    return request<{ tests: unknown[] }>(`/ai/assessment/tests?${q.toString()}`);
+  },
+
+  createAiAssessmentTest: (input: Record<string, unknown>) =>
+    request<{ test: unknown }>("/ai/assessment/tests", { method: "POST", body: JSON.stringify(input) }),
+
+  generateAiAssessmentQuestions: (testId: string, numQuestions = 5) =>
+    request<{ test: unknown }>(`/ai/assessment/tests/${testId}/generate`, { method: "POST", body: JSON.stringify({ numQuestions }) }),
+
+  approveAiAssessmentTest: (testId: string) =>
+    request<{ test: unknown }>(`/ai/assessment/tests/${testId}/approve`, { method: "POST" }),
+
+  submitAiAnswerSheet: (input: Record<string, unknown>) =>
+    request<{ answerSheet: unknown }>("/ai/assessment/answer-sheets", { method: "POST", body: JSON.stringify(input) }),
+
+  gradeAiAnswerSheet: (sheetId: string, input: { finalScore: number; teacherFeedback?: string }) =>
+    request<{ answerSheet: unknown }>(`/ai/assessment/answer-sheets/${sheetId}/grade`, { method: "POST", body: JSON.stringify(input) }),
+
+  // ---- Backups ----
+  listBackups: () => request<{ backups: unknown[] }>("/backup"),
+
+  createBackup: () => request<{ backup: unknown }>("/backup/create", { method: "POST" }),
+
+  verifyBackup: (filename: string) => request<{ verification: unknown }>(`/backup/verify/${filename}`, { method: "POST" }),
 };

@@ -17,10 +17,20 @@ import { notificationsRouter } from "./modules/notifications/notifications.route
 import { libraryRouter } from "./modules/library/library.routes.js";
 import { financeRouter } from "./modules/finance/finance.routes.js";
 import { cmsRouter } from "./modules/cms/cms.routes.js";
+import crypto from "node:crypto";
 import { aiRouter } from "./modules/ai/ai.routes.js";
+import { aiAssessmentRouter } from "./modules/ai/ai-assessment.routes.js";
 import { documentsRouter } from "./modules/documents/documents.routes.js";
+import { backupRouter } from "./modules/backup/backup.routes.js";
+import { storageRouter } from "./modules/storage/storage.routes.js";
 
 const app = express();
+
+app.use((req, res, next) => {
+  const reqId = (req.headers["x-request-id"] as string) || crypto.randomUUID();
+  res.setHeader("X-Request-ID", reqId);
+  next();
+});
 
 // The API normally sits behind the web container (nginx) or a hosting
 // platform's proxy. Without this, every request appears to come from the
@@ -119,7 +129,10 @@ app.use("/api/library", libraryRouter);
 app.use("/api/finance", financeRouter);
 app.use("/api/cms", cmsRouter);
 app.use("/api/ai", aiRouter);
+app.use("/api/ai/assessment", aiAssessmentRouter);
 app.use("/api/documents", documentsRouter);
+app.use("/api/backup", backupRouter);
+app.use("/api/storage", storageRouter);
 
 // Central error handler: never leak stack traces to the client, always log
 // server-side, so a bug in one module can't turn into an information leak.
