@@ -3,13 +3,21 @@ import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate.js";
 import { authorize } from "../../middleware/authorize.js";
 import { prisma } from "../../db/client.js";
-import { createExam, listExams, recordExamResults, getStudentExamResults, ExamValidationError } from "./exams.service.js";
+import {
+  createExam,
+  listExams,
+  configureExamSubject,
+  listExamSubjects,
+  recordExamResults,
+  getStudentExamResults,
+  getClassExamResults,
+  getStudentReportCard,
+  ExamValidationError,
+} from "./exams.service.js";
 
 export const examsRouter = Router();
 examsRouter.use(authenticate);
 
-// Creating the exam itself (dates, name) is a school-wide structural
-// decision — Admin/Principal only, unscoped.
 const examSchema = z.object({
   name: z.string().min(1),
   academicYearId: z.string().uuid(),
@@ -19,16 +27,39 @@ const examSchema = z.object({
 examsRouter.post("/", authorize("exams:manage"), async (req, res) => {
   const parsed = examSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  res.status(201).json(await createExam(parsed.data));
+  try {
+    res.status(201).json(await createExam(parsed.data));
+  } catch (e) {
+    if (e instanceof ExamValidationError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
 });
 
-examsRouter.get("/", authorize("exams:manage"), async (_req, res) => {
-  res.json({ exams: await listExams() });
+examsRouter.get("/", authorize("academics:view"), async (req, res) => {
+  const academicYearId = typeof req.query.academicYearId === "string" ? req.query.academicYearId : undefined;
+  res.json({ exams: await listExams(academicYearId) });
 });
 
-// Recording marks reuses "grades:enter" scoped to the real subject being
-// graded — the same permission and pattern LMS submissions use, so a
-// teacher's authority is defined once, not redefined per module.
+const configureSubjectSchema = z.object({
+  examId: z.string().uuid(),
+  subjectId: z.string().uuid(),
+  maxMarks: z.number().positive(),
+});
+examsRouter.post("/subjects", authorize("exams:manage"), async (req, res) => {
+  const parsed = configureSubjectSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  try {
+    res.status(201).json(await configureExamSubject(parsed.data, req.userId));
+  } catch (e) {
+    if (e instanceof ExamValidationError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
+});
+
+examsRouter.get("/:examId/subjects", authorize("academics:view"), async (req, res) => {
+  res.json({ examSubjects: await listExamSubjects(req.params.examId) });
+});
+
 const recordSchema = z.object({
   examId: z.string().uuid(),
   subjectId: z.string().uuid(),
@@ -40,31 +71,31 @@ const recordSchema = z.object({
       grade: z.string().optional(),
       remarks: z.string().optional(),
     })
-  ),
+  ).min(1),
 });
 examsRouter.post(
   "/results",
   authorize("grades:enter", async (req) => {
     const body = req.body || {};
-    const { examId, subjectId, results } = body;
-    if (!examId || !subjectId) return {};
+    const { subjectId, results } = body;
+    if (!subjectId || !Array.isArray(results) || results.length === 0) return {};
 
-    let classId: string | undefined;
-    let sectionId: string | undefined;
+    const studentIds = results
+      .map((r: { studentProfileId?: string }) => r?.studentProfileId)
+      .filter((id): id is string => typeof id === "string" && Boolean(id));
 
-    if (Array.isArray(results) && results.length > 0) {
-      const firstStudentId = results[0]?.studentProfileId;
-      if (firstStudentId && typeof firstStudentId === "string") {
-        const student = await prisma.studentProfile.findUnique({
-          where: { id: firstStudentId },
-          select: { classId: true, sectionId: true },
-        });
-        if (student) {
-          classId = student.classId ?? undefined;
-          sectionId = student.sectionId ?? undefined;
-        }
-      }
-    }
+    if (studentIds.length === 0) return {};
+
+    const students = await prisma.studentProfile.findMany({
+      where: { id: { in: studentIds } },
+      select: { classId: true, sectionId: true },
+    });
+
+    const classIds = new Set(students.map((s) => s.classId).filter(Boolean));
+    const sectionIds = new Set(students.map((s) => s.sectionId).filter(Boolean));
+
+    const classId = classIds.size === 1 ? Array.from(classIds)[0]! : undefined;
+    const sectionId = sectionIds.size === 1 ? Array.from(sectionIds)[0]! : undefined;
 
     return { subjectId, classId, sectionId };
   }),
@@ -84,13 +115,47 @@ examsRouter.post(
   }
 );
 
-// A student's own report card, or a parent's linked child's — same
-// self/guardian relationship check used everywhere else, not a new rule.
 examsRouter.get(
   "/results/student/:studentProfileId",
   authorize("exams:view:own", (req) => ({ studentId: req.params.studentProfileId })),
   async (req, res) => {
     const results = await getStudentExamResults(req.params.studentProfileId, req.query.examId as string | undefined);
+    res.json({ results });
+  }
+);
+
+examsRouter.get(
+  "/results/student/:studentProfileId/report-card",
+  authorize("exams:view:own", (req) => ({ studentId: req.params.studentProfileId })),
+  async (req, res) => {
+    const examId = req.query.examId as string;
+    if (!examId) return res.status(400).json({ error: "examId query parameter is required" });
+    try {
+      const reportCard = await getStudentReportCard(req.params.studentProfileId, examId);
+      res.json(reportCard);
+    } catch (e) {
+      if (e instanceof ExamValidationError) return res.status(400).json({ error: e.message });
+      throw e;
+    }
+  }
+);
+
+examsRouter.get(
+  "/class-results",
+  authorize("grades:enter", (req) => ({
+    classId: req.query.classId as string,
+    sectionId: req.query.sectionId as string,
+    subjectId: req.query.subjectId as string,
+  })),
+  async (req, res) => {
+    const examId = req.query.examId as string;
+    const classId = req.query.classId as string;
+    if (!examId || !classId) {
+      return res.status(400).json({ error: "examId and classId parameters are required" });
+    }
+    const sectionId = typeof req.query.sectionId === "string" ? req.query.sectionId : undefined;
+    const subjectId = typeof req.query.subjectId === "string" ? req.query.subjectId : undefined;
+    const results = await getClassExamResults(examId, classId, sectionId, subjectId);
     res.json({ results });
   }
 );

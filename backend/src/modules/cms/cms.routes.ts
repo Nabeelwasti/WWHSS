@@ -35,9 +35,15 @@ cmsRouter.get("/notices", async (req, res) => {
   if (authHeader?.startsWith("Bearer ")) {
     try {
       const payload = verifyAccessToken(authHeader.slice("Bearer ".length));
-      userId = payload.sub;
+      const user = await prisma.user.findUnique({
+        where: { id: payload.sub },
+        select: { id: true, isActive: true, tokenVersion: true },
+      });
+      if (user && user.isActive && (typeof payload.tokenVersion !== "number" || user.tokenVersion === payload.tokenVersion)) {
+        userId = payload.sub;
+      }
     } catch {
-      // Invalid/expired token treats requester as unauthenticated
+      // Invalid/expired/deactivated token treats requester as unauthenticated
       userId = null;
     }
   }
