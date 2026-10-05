@@ -46,6 +46,25 @@ export async function recordExamResults(
   });
   const studentMap = new Map(students.map((s) => [s.id, s]));
 
+  const existingExamSubject = await prisma.examSubject.findUnique({
+    where: { examId_subjectId: { examId: input.examId, subjectId: input.subjectId } },
+  });
+
+  const authoritativeMaxMarks = existingExamSubject
+    ? existingExamSubject.maxMarks
+    : input.results.length > 0
+    ? new Prisma.Decimal(input.results[0].maxMarks)
+    : new Prisma.Decimal(100);
+
+  if (!existingExamSubject && input.results.length > 1) {
+    const firstMax = input.results[0].maxMarks;
+    for (const r of input.results) {
+      if (r.maxMarks !== firstMax) {
+        throw new ExamValidationError(`Inconsistent maxMarks values in batch submission for subject ${input.subjectId}`);
+      }
+    }
+  }
+
   for (const r of input.results) {
     const student = studentMap.get(r.studentProfileId);
     if (!student) {
@@ -58,14 +77,19 @@ export async function recordExamResults(
       throw new ExamValidationError("Marks must be numbers");
     }
     const marksObtainedDec = new Prisma.Decimal(r.marksObtained);
-    const maxMarksDec = new Prisma.Decimal(r.maxMarks);
+    const itemMaxDec = new Prisma.Decimal(r.maxMarks);
 
-    if (maxMarksDec.lte(0)) {
+    if (existingExamSubject && !itemMaxDec.equals(existingExamSubject.maxMarks)) {
+      throw new ExamValidationError(
+        `Inconsistent maxMarks: Exam subject maxMarks is set to ${existingExamSubject.maxMarks} but received ${r.maxMarks}`
+      );
+    }
+    if (itemMaxDec.lte(0)) {
       throw new ExamValidationError("Maximum marks must be greater than 0");
     }
-    if (marksObtainedDec.lt(0) || marksObtainedDec.gt(maxMarksDec)) {
+    if (marksObtainedDec.lt(0) || marksObtainedDec.gt(authoritativeMaxMarks)) {
       throw new ExamValidationError(
-        `Marks obtained (${r.marksObtained}) must be between 0 and maximum marks (${r.maxMarks})`
+        `Marks obtained (${r.marksObtained}) must be between 0 and maximum marks (${authoritativeMaxMarks.toString()})`
       );
     }
   }
@@ -104,11 +128,10 @@ export async function recordExamResults(
   }
 
   return prisma.$transaction(async (tx) => {
-    const maxMarksForSubject = input.results.length > 0 ? new Prisma.Decimal(input.results[0].maxMarks) : new Prisma.Decimal(100);
     const examSubject = await tx.examSubject.upsert({
       where: { examId_subjectId: { examId: input.examId, subjectId: input.subjectId } },
-      update: { maxMarks: maxMarksForSubject },
-      create: { examId: input.examId, subjectId: input.subjectId, maxMarks: maxMarksForSubject },
+      update: { maxMarks: authoritativeMaxMarks },
+      create: { examId: input.examId, subjectId: input.subjectId, maxMarks: authoritativeMaxMarks },
     });
 
     const upserts = await Promise.all(
@@ -123,7 +146,7 @@ export async function recordExamResults(
           },
           update: {
             marksObtained: new Prisma.Decimal(r.marksObtained),
-            maxMarks: new Prisma.Decimal(r.maxMarks),
+            maxMarks: authoritativeMaxMarks,
             grade: r.grade,
             remarks: r.remarks,
             examSubjectId: examSubject.id,
@@ -133,7 +156,7 @@ export async function recordExamResults(
             subjectId: input.subjectId,
             studentProfileId: r.studentProfileId,
             marksObtained: new Prisma.Decimal(r.marksObtained),
-            maxMarks: new Prisma.Decimal(r.maxMarks),
+            maxMarks: authoritativeMaxMarks,
             grade: r.grade,
             remarks: r.remarks,
             examSubjectId: examSubject.id,

@@ -1,6 +1,5 @@
-// WWHS Digital Campus — core schema, Phase 1: Identity & Permissions
-// Academic/attendance tables included as the minimum needed to make
-// scoped permissions (e.g. "subject teacher for Grade 10 Physics") real.
+// WWHS Digital Campus — core schema
+// Includes Identity, Academics, Staff, Student Profiles, Funding/Fees, LMS, AI Assessment Studio, Documents, Timetable, Library, CMS, Notifications.
 
 generator client {
   provider = "prisma-client-js"
@@ -20,12 +19,6 @@ model User {
   fullName                 String
   phone                    String?
   photoUrl                 String?
-  // Explicit, real opt-in consent — OFF by default. Only when true may the
-  // AI assistant include this person's own real school data (their own
-  // attendance/results, never anyone else's) in what it sends to an AI
-  // provider. Required because sending real personal data to a third-party
-  // AI API is a genuine privacy decision, not something to default to
-  // silently just because it would make responses more personalized.
   aiPersonalizationConsent Boolean  @default(false)
   isActive                 Boolean  @default(true)
   tokenVersion             Int      @default(0)
@@ -34,19 +27,23 @@ model User {
 
   userRoles               UserRole[]
   studentProfile          StudentProfile?
-  guardianOf              ParentStudentLink[] @relation("Guardian")
+  staffProfile            StaffProfile?
+  guardianOf              ParentStudentLink[]    @relation("Guardian")
   refreshTokens           RefreshToken[]
   auditLogs               AuditLog[]
   bookLoans               BookLoan[]
   notifications           Notification[]
-  timetableSlots          TimetableSlot[]     @relation("TeacherSlots")
+  timetableSlots          TimetableSlot[]        @relation("TeacherSlots")
   aiUsageRecords          AiUsageRecord[]
-  markedAttendanceRecords AttendanceRecord[]  @relation("MarkedAttendanceRecords")
-  uploadedResources       Resource[]          @relation("UploadedResources")
-  gradedSubmissions       Submission[]        @relation("GradedSubmissions")
-  receivedPayments        Payment[]           @relation("ReceivedPayments")
-  updatedCmsPages         CmsPage[]           @relation("UpdatedCmsPages")
-  publishedNotices        Notice[]            @relation("PublishedNotices")
+  markedAttendanceRecords AttendanceRecord[]     @relation("MarkedAttendanceRecords")
+  uploadedResources       Resource[]             @relation("UploadedResources")
+  gradedSubmissions       Submission[]           @relation("GradedSubmissions")
+  receivedPayments        Payment[]              @relation("ReceivedPayments")
+  updatedCmsPages         CmsPage[]              @relation("UpdatedCmsPages")
+  publishedNotices        Notice[]               @relation("PublishedNotices")
+  createdAiTests          AiAssessmentTest[]     @relation("CreatedAiTests")
+  gradedAiAnswerSheets    AiAnswerSheet[]        @relation("GradedAiAnswerSheets")
+  createdDocuments        DocumentRecord[]       @relation("CreatedDocuments")
 
   @@map("users")
 }
@@ -64,11 +61,9 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 
-// Extensible role catalog — NOT a hardcoded enum, so a school can add
-// roles (e.g. "Transport Coordinator") without a code change.
 model Role {
   id          String  @id @default(uuid())
-  key         String  @unique // e.g. "teacher", "class_teacher", "principal"
+  key         String  @unique
   name        String
   description String?
 
@@ -80,7 +75,7 @@ model Role {
 
 model Permission {
   id          String  @id @default(uuid())
-  key         String  @unique // e.g. "attendance:mark", "finance:view"
+  key         String  @unique
   description String?
 
   rolePermissions RolePermission[]
@@ -105,14 +100,12 @@ model Department {
   description String?
   createdAt   DateTime @default(now())
 
-  userRoles UserRole[]
+  userRoles     UserRole[]
+  staffProfiles StaffProfile[]
 
   @@map("departments")
 }
 
-// A user can hold a role scoped to a specific class/section/subject/department.
-// Scope columns are all optional: an unscoped row (all null) means the role
-// applies school-wide (e.g. Principal).
 model UserRole {
   id           String   @id @default(uuid())
   userId       String
@@ -134,13 +127,11 @@ model UserRole {
   @@map("user_roles")
 }
 
-// Explicit parent<->student relationship — this, not "role", is what
-// authorizes a parent to view a specific child's data.
 model ParentStudentLink {
   id        String @id @default(uuid())
   parentId  String
   studentId String
-  relation  String // "father", "mother", "guardian", etc.
+  relation  String
 
   parent  User           @relation("Guardian", fields: [parentId], references: [id], onDelete: Cascade)
   student StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
@@ -149,34 +140,36 @@ model ParentStudentLink {
   @@map("parent_student_links")
 }
 
-// ---------- ACADEMICS (minimum viable, expanded in Phase 2) ----------
+// ---------- ACADEMICS & PROFILES ----------
 
 model AcademicYear {
   id        String   @id @default(uuid())
-  label     String // "2026-2027"
+  label     String
   startDate DateTime
   endDate   DateTime
   isActive  Boolean  @default(false)
 
-  classes       Class[]
-  exams         Exam[]
-  feeStructures FeeStructure[]
+  classes         Class[]
+  exams           Exam[]
+  feeStructures   FeeStructure[]
+  documentRecords DocumentRecord[]
 
   @@map("academic_years")
 }
 
 model Class {
   id             String @id @default(uuid())
-  name           String // "Grade 10"
+  name           String
   academicYearId String
 
-  academicYear   AcademicYear     @relation(fields: [academicYearId], references: [id])
-  sections       Section[]
-  userRoles      UserRole[]
-  students       StudentProfile[]
-  courses        Course[]
-  timetableSlots TimetableSlot[]
-  feeStructures  FeeStructure[]
+  academicYear      AcademicYear       @relation(fields: [academicYearId], references: [id])
+  sections          Section[]
+  userRoles         UserRole[]
+  students          StudentProfile[]
+  courses           Course[]
+  timetableSlots    TimetableSlot[]
+  feeStructures     FeeStructure[]
+  aiAssessmentTests AiAssessmentTest[]
 
   @@unique([name, academicYearId])
   @@unique([id, academicYearId])
@@ -185,7 +178,7 @@ model Class {
 
 model Section {
   id      String @id @default(uuid())
-  name    String // "A"
+  name    String
   classId String
 
   class             Class              @relation(fields: [classId], references: [id])
@@ -204,47 +197,191 @@ model Subject {
   name String
   code String? @unique
 
-  userRoles      UserRole[]
-  courses        Course[]
-  examResults    ExamResult[]
-  examSubjects   ExamSubject[]
-  timetableSlots TimetableSlot[]
+  userRoles         UserRole[]
+  courses           Course[]
+  examResults       ExamResult[]
+  examSubjects      ExamSubject[]
+  timetableSlots    TimetableSlot[]
+  aiAssessmentTests AiAssessmentTest[]
 
   @@map("subjects")
 }
 
 model StudentProfile {
-  id            String    @id @default(uuid())
-  userId        String    @unique
-  admissionNo   String    @unique
-  classId       String?
-  sectionId     String?
-  rollNumber    String?
-  dateOfBirth   DateTime?
-  admissionDate DateTime?
+  id                String    @id @default(uuid())
+  userId            String    @unique
+  admissionNo       String    @unique
+  classId           String?
+  sectionId         String?
+  rollNumber        String?
+  registrationNo    String?   @unique
+  dateOfBirth       DateTime?
+  admissionDate     DateTime?
+  fatherName        String?
+  motherName        String?
+  guardianName      String?
+  guardianRelation  String?
+  guardianPhone     String?
+  emergencyContact  String?
+  address           String?
+  city              String?
+  bloodGroup        String?
+  medicalNotes      String?
+  status            String    @default("ACTIVE") // ACTIVE | PROMOTED | TRANSFERRED | WITHDRAWN | SUSPENDED
+  withdrawalReason  String?
+  transferDate      DateTime?
+  fundingCategoryId String?
 
-  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  class             Class?              @relation(fields: [classId], references: [id])
-  section           Section?            @relation(fields: [sectionId, classId], references: [id, classId])
+  user              User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  class             Class?                 @relation(fields: [classId], references: [id])
+  section           Section?               @relation(fields: [sectionId, classId], references: [id, classId])
+  fundingCategory   FundingCategory?       @relation(fields: [fundingCategoryId], references: [id])
   guardians         ParentStudentLink[]
   attendanceRecords AttendanceRecord[]
   submissions       Submission[]
   quizAttempts      QuizAttempt[]
   examResults       ExamResult[]
   feeInvoices       FeeInvoice[]
+  feeWaivers        FeeWaiver[]
+  fundingRecords    StudentFundingRecord[]
+  aiAnswerSheets    AiAnswerSheet[]
+  documentRecords   DocumentRecord[]
 
+  @@index([classId, sectionId])
+  @@index([status])
   @@map("student_profiles")
+}
+
+model StaffProfile {
+  id               String    @id @default(uuid())
+  userId           String    @unique
+  employeeId       String    @unique
+  designation      String
+  qualification    String?
+  departmentId     String?
+  joiningDate      DateTime?
+  status           String    @default("ACTIVE") // ACTIVE | ON_LEAVE | RESIGNED | RETIRED
+  emergencyContact String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department      Department?      @relation(fields: [departmentId], references: [id])
+  documentRecords DocumentRecord[]
+
+  @@map("staff_profiles")
+}
+
+// ---------- FUNDING & FEES ----------
+
+model FundingCategory {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  code        String   @unique
+  description String?
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  students       StudentProfile[]
+  fundingRecords StudentFundingRecord[]
+  feeStructures  FeeStructure[]
+
+  @@map("funding_categories")
+}
+
+model StudentFundingRecord {
+  id                String    @id @default(uuid())
+  studentProfileId  String
+  fundingCategoryId String
+  programName       String?
+  startDate         DateTime
+  endDate           DateTime?
+  evidenceRef       String?
+  approvalAuthority String?
+  feePolicy         String    @default("FULLY_WAIVED") // FULLY_WAIVED | PARTIALLY_WAIVED | STANDARD | CUSTOM
+  waiverPercentage  Decimal?  @db.Decimal(5, 2)
+  customFeeAmount   Decimal?  @db.Decimal(10, 2)
+  notes             String?
+  createdAt         DateTime  @default(now())
+
+  student         StudentProfile  @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  fundingCategory FundingCategory @relation(fields: [fundingCategoryId], references: [id])
+
+  @@index([studentProfileId])
+  @@map("student_funding_records")
+}
+
+model FeeStructure {
+  id                String   @id @default(uuid())
+  classId           String
+  academicYearId    String
+  fundingCategoryId String?
+  feeType           String   @default("TUITION") // TUITION | ADMISSION | EXAM | LAB | LIBRARY | TRANSPORT | OTHER
+  name              String
+  amount            Decimal  @db.Decimal(10, 2)
+
+  class           Class            @relation(fields: [classId, academicYearId], references: [id, academicYearId])
+  academicYear    AcademicYear     @relation(fields: [academicYearId], references: [id])
+  fundingCategory FundingCategory? @relation(fields: [fundingCategoryId], references: [id])
+  invoices        FeeInvoice[]
+
+  @@map("fee_structures")
+}
+
+model FeeInvoice {
+  id               String   @id @default(uuid())
+  feeStructureId   String
+  studentProfileId String
+  amountDue        Decimal  @db.Decimal(10, 2)
+  dueDate          DateTime
+  status           String   @default("pending") // pending | paid | overdue | waived
+  createdAt        DateTime @default(now())
+
+  feeStructure FeeStructure   @relation(fields: [feeStructureId], references: [id])
+  student      StudentProfile @relation(fields: [studentProfileId], references: [id])
+  payments     Payment[]
+  feeWaivers   FeeWaiver[]
+
+  @@unique([feeStructureId, studentProfileId])
+  @@map("fee_invoices")
+}
+
+model FeeWaiver {
+  id               String   @id @default(uuid())
+  invoiceId        String
+  studentProfileId String
+  amount           Decimal  @db.Decimal(10, 2)
+  reason           String
+  approvedByUserId String?
+  createdAt        DateTime @default(now())
+
+  invoice FeeInvoice     @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  student StudentProfile @relation(fields: [studentProfileId], references: [id])
+
+  @@map("fee_waivers")
+}
+
+model Payment {
+  id               String   @id @default(uuid())
+  invoiceId        String
+  amount           Decimal  @db.Decimal(10, 2)
+  method           String
+  paidAt           DateTime @default(now())
+  receivedByUserId String?
+
+  invoice        FeeInvoice @relation(fields: [invoiceId], references: [id])
+  receivedByUser User?      @relation("ReceivedPayments", fields: [receivedByUserId], references: [id])
+
+  @@map("payments")
 }
 
 // ---------- AUDIT ----------
 
-// Every sensitive action is logged: who, what, when. This is not optional
-// for a system holding student records.
 model AuditLog {
   id        String   @id @default(uuid())
   userId    String?
-  action    String // e.g. "attendance:mark", "grades:update"
-  resource  String? // e.g. "student:1234"
+  action    String
+  resource  String?
   metadata  Json?
   createdAt DateTime @default(now())
 
@@ -255,7 +392,7 @@ model AuditLog {
   @@map("audit_logs")
 }
 
-// ---------- ATTENDANCE (Phase 2) ----------
+// ---------- ATTENDANCE ----------
 
 model AttendanceRecord {
   id               String   @id @default(uuid())
@@ -263,7 +400,7 @@ model AttendanceRecord {
   classId          String
   sectionId        String
   date             DateTime
-  status           String // present | absent | late | excused
+  status           String
   markedByUserId   String
   createdAt        DateTime @default(now())
 
@@ -282,7 +419,7 @@ model Course {
   id        String @id @default(uuid())
   subjectId String
   classId   String
-  title     String // e.g. "Grade 10 Physics"
+  title     String
 
   subject     Subject      @relation(fields: [subjectId], references: [id])
   class       Class        @relation(fields: [classId], references: [id])
@@ -297,7 +434,7 @@ model Lesson {
   id         String   @id @default(uuid())
   courseId   String
   title      String
-  content    String? // rich text / markdown
+  content    String?
   orderIndex Int      @default(0)
   createdAt  DateTime @default(now())
 
@@ -312,7 +449,7 @@ model Resource {
   lessonId         String?
   title            String
   fileUrl          String
-  fileType         String // pdf | video | image | doc | link
+  fileType         String
   uploadedByUserId String
 
   lesson         Lesson? @relation(fields: [lessonId], references: [id])
@@ -372,7 +509,7 @@ model QuizQuestion {
   id           String @id @default(uuid())
   quizId       String
   prompt       String
-  choices      Json // ["A","B","C","D"]
+  choices      Json
   correctIndex Int
 
   quiz Quiz @relation(fields: [quizId], references: [id])
@@ -398,7 +535,7 @@ model QuizAttempt {
 
 model Exam {
   id             String   @id @default(uuid())
-  name           String // "Mid-Term 2026"
+  name           String
   academicYearId String
   startDate      DateTime
   endDate        DateTime
@@ -448,10 +585,12 @@ model ExamResult {
   @@map("exam_results")
 }
 
+// ---------- AI & ASSESSMENT STUDIO ----------
+
 model AiUsageRecord {
   id        String   @id @default(uuid())
   userId    String
-  date      String // Format: "YYYY-MM-DD"
+  date      String
   count     Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -463,7 +602,91 @@ model AiUsageRecord {
   @@map("ai_usage_records")
 }
 
-// ---------- TIMETABLE ----------
+model AiAssessmentTest {
+  id              String   @id @default(uuid())
+  title           String
+  classId         String
+  sectionId       String?
+  subjectId       String
+  topic           String
+  difficulty      String   @default("MEDIUM")
+  durationMin     Int      @default(60)
+  totalMarks      Decimal  @db.Decimal(5, 2)
+  language        String   @default("en")
+  createdByUserId String
+  status          String   @default("DRAFT")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  class        Class                  @relation(fields: [classId], references: [id])
+  subject      Subject                @relation(fields: [subjectId], references: [id])
+  createdBy    User                   @relation("CreatedAiTests", fields: [createdByUserId], references: [id])
+  questions    AiAssessmentQuestion[]
+  answerSheets AiAnswerSheet[]
+
+  @@map("ai_assessment_tests")
+}
+
+model AiAssessmentQuestion {
+  id               String   @id @default(uuid())
+  testId           String
+  version          String   @default("A")
+  questionType     String
+  questionText     String
+  questionTextUrdu String?
+  optionsJson      Json?
+  correctAnswer    String
+  markingScheme    String?
+  marks            Decimal  @db.Decimal(5, 2)
+  orderIndex       Int      @default(0)
+
+  test AiAssessmentTest @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@map("ai_assessment_questions")
+}
+
+model AiAnswerSheet {
+  id               String    @id @default(uuid())
+  testId           String
+  studentProfileId String
+  submittedAt      DateTime  @default(now())
+  fileUrl          String?
+  autoScore        Decimal?  @db.Decimal(5, 2)
+  suggestedScore   Decimal?  @db.Decimal(5, 2)
+  finalScore       Decimal?  @db.Decimal(5, 2)
+  teacherFeedback  String?
+  gradedByUserId   String?
+  gradedAt         DateTime?
+
+  test     AiAssessmentTest @relation(fields: [testId], references: [id], onDelete: Cascade)
+  student  StudentProfile   @relation(fields: [studentProfileId], references: [id])
+  gradedBy User?            @relation("GradedAiAnswerSheets", fields: [gradedByUserId], references: [id])
+
+  @@map("ai_answer_sheets")
+}
+
+// ---------- DOCUMENTS & PRINTING ----------
+
+model DocumentRecord {
+  id               String   @id @default(uuid())
+  docType          String
+  docNumber        String   @unique
+  studentProfileId String?
+  staffProfileId   String?
+  academicYearId   String?
+  metadataJson     Json?
+  createdByUserId  String?
+  createdAt        DateTime @default(now())
+
+  student      StudentProfile? @relation(fields: [studentProfileId], references: [id])
+  staff        StaffProfile?   @relation(fields: [staffProfileId], references: [id])
+  academicYear AcademicYear?   @relation(fields: [academicYearId], references: [id])
+  createdBy    User?           @relation("CreatedDocuments", fields: [createdByUserId], references: [id])
+
+  @@map("document_records")
+}
+
+// ---------- TIMETABLE & ROOMS ----------
 
 model Room {
   id   String @id @default(uuid())
@@ -479,11 +702,11 @@ model TimetableSlot {
   classId   String
   sectionId String
   subjectId String
-  teacherId String // Users.id
+  teacherId String
   roomId    String?
-  dayOfWeek Int // 0=Sunday .. 6=Saturday
-  startTime String // "09:00"
-  endTime   String // "09:45"
+  dayOfWeek Int
+  startTime String
+  endTime   String
 
   class   Class   @relation(fields: [classId], references: [id])
   section Section @relation(fields: [sectionId, classId], references: [id, classId])
@@ -537,63 +760,13 @@ model BookLoan {
   @@map("book_loans")
 }
 
-// ---------- FINANCE / FEES ----------
-
-model FeeStructure {
-  id             String  @id @default(uuid())
-  classId        String
-  academicYearId String
-  name           String // "Tuition Term 1"
-  amount         Decimal @db.Decimal(10, 2)
-
-  class        Class        @relation(fields: [classId, academicYearId], references: [id, academicYearId])
-  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
-  invoices     FeeInvoice[]
-
-  @@map("fee_structures")
-}
-
-model FeeInvoice {
-  id               String   @id @default(uuid())
-  feeStructureId   String
-  studentProfileId String
-  amountDue        Decimal  @db.Decimal(10, 2)
-  dueDate          DateTime
-  status           String   @default("pending") // pending | paid | overdue | waived
-  createdAt        DateTime @default(now())
-
-  feeStructure FeeStructure   @relation(fields: [feeStructureId], references: [id])
-  student      StudentProfile @relation(fields: [studentProfileId], references: [id])
-  payments     Payment[]
-
-  // One invoice per student per fee structure — this is what makes
-  // "generate invoices for a class" a safe, real upsert instead of a
-  // workaround: running it twice corrects/no-ops rather than duplicating.
-  @@unique([feeStructureId, studentProfileId])
-  @@map("fee_invoices")
-}
-
-model Payment {
-  id               String   @id @default(uuid())
-  invoiceId        String
-  amount           Decimal  @db.Decimal(10, 2)
-  method           String // cash | bank_transfer | card | online
-  paidAt           DateTime @default(now())
-  receivedByUserId String?
-
-  invoice        FeeInvoice @relation(fields: [invoiceId], references: [id])
-  receivedByUser User?      @relation("ReceivedPayments", fields: [receivedByUserId], references: [id])
-
-  @@map("payments")
-}
-
 // ---------- PUBLIC WEBSITE / CMS ----------
 
 model CmsPage {
   id              String   @id @default(uuid())
-  slug            String   @unique // "admissions", "about"
+  slug            String   @unique
   title           String
-  content         String // rich text / markdown
+  content         String
   isPublished     Boolean  @default(false)
   updatedByUserId String
   updatedAt       DateTime @updatedAt
@@ -607,7 +780,7 @@ model Notice {
   id                String   @id @default(uuid())
   title             String
   body              String
-  audience          String // "public" | "students" | "teachers" | "parents" | "staff"
+  audience          String
   publishedAt       DateTime @default(now())
   publishedByUserId String
 
@@ -644,7 +817,7 @@ model Notification {
   userId    String
   title     String
   body      String
-  type      String // "assignment" | "attendance" | "announcement" | "fee" | "system"
+  type      String
   isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
 

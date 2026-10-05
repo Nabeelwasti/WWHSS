@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const {
   mockExamFind,
   mockSubjectFind,
+  mockExamSubjectFind,
   mockStudentFind,
   mockUserRoleFind,
   mockResultUpsert,
@@ -10,6 +11,7 @@ const {
 } = vi.hoisted(() => ({
   mockExamFind: vi.fn(),
   mockSubjectFind: vi.fn(),
+  mockExamSubjectFind: vi.fn(),
   mockStudentFind: vi.fn(),
   mockUserRoleFind: vi.fn(),
   mockResultUpsert: vi.fn(),
@@ -27,6 +29,7 @@ vi.mock("../../../db/client.js", () => ({
     ),
     exam: { findUnique: mockExamFind },
     subject: { findUnique: mockSubjectFind },
+    examSubject: { findUnique: mockExamSubjectFind, upsert: vi.fn().mockResolvedValue({ id: "es-1" }) },
     studentProfile: { findMany: mockStudentFind },
     userRole: { findMany: mockUserRoleFind },
     examResult: { upsert: mockResultUpsert },
@@ -41,6 +44,7 @@ describe("Exam Results Hardening and Validation", () => {
   beforeEach(() => {
     mockExamFind.mockReset();
     mockSubjectFind.mockReset();
+    mockExamSubjectFind.mockReset();
     mockStudentFind.mockReset();
     mockUserRoleFind.mockReset();
     mockResultUpsert.mockReset();

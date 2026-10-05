@@ -96,13 +96,38 @@ export async function userHasPermission(
 
   // 2. Relationship-based access (parents, and students viewing their own
   // record) that doesn't run through the role table at all. This is the
-  // ONLY path that can satisfy a self-only permission.
+  // ONLY path that can satisfy a self-only permission for non-staff.
   if (scope.studentId) {
     const isSelf = await isStudentSelf(userId, scope.studentId);
     if (isSelf && SELF_ACCESS_PERMISSIONS.has(permissionKey)) return true;
 
     const isGuardian = await isGuardianOfStudent(userId, scope.studentId);
     if (isGuardian && GUARDIAN_ACCESS_PERMISSIONS.has(permissionKey)) return true;
+
+    // Staff role check for student-scoped endpoints (e.g. Admin or Teacher viewing a student's record)
+    const studentProfile = await prisma.studentProfile.findUnique({
+      where: { id: scope.studentId },
+      select: { classId: true, sectionId: true },
+    });
+    if (studentProfile) {
+      const staffKeys = ["exams:manage", "grades:enter", "grades:view", "students:manage", "attendance:mark"];
+      const userRoles = await prisma.userRole.findMany({
+        where: { userId },
+        include: { role: { include: { rolePermissions: { include: { permission: true } } } } },
+      });
+      for (const ur of userRoles) {
+        const grantedKeys = ur.role.rolePermissions.map((rp) => rp.permission.key);
+        const hasStaffKey = staffKeys.some((k) => grantedKeys.includes(k));
+        if (!hasStaffKey) continue;
+
+        const roleIsUnscoped = !ur.classId && !ur.sectionId && !ur.subjectId && !ur.departmentId;
+        if (roleIsUnscoped) return true;
+
+        const classOk = !ur.classId || !studentProfile.classId || ur.classId === studentProfile.classId;
+        const sectionOk = !ur.sectionId || !studentProfile.sectionId || ur.sectionId === studentProfile.sectionId;
+        if (classOk && sectionOk) return true;
+      }
+    }
   }
 
   return false;

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate.js";
 import { authorize } from "../../middleware/authorize.js";
+import { prisma } from "../../db/client.js";
 import { createExam, listExams, recordExamResults, getStudentExamResults, ExamValidationError } from "./exams.service.js";
 
 export const examsRouter = Router();
@@ -43,7 +44,30 @@ const recordSchema = z.object({
 });
 examsRouter.post(
   "/results",
-  authorize("grades:enter", (req) => ({ subjectId: req.body?.subjectId })),
+  authorize("grades:enter", async (req) => {
+    const body = req.body || {};
+    const { examId, subjectId, results } = body;
+    if (!examId || !subjectId) return {};
+
+    let classId: string | undefined;
+    let sectionId: string | undefined;
+
+    if (Array.isArray(results) && results.length > 0) {
+      const firstStudentId = results[0]?.studentProfileId;
+      if (firstStudentId && typeof firstStudentId === "string") {
+        const student = await prisma.studentProfile.findUnique({
+          where: { id: firstStudentId },
+          select: { classId: true, sectionId: true },
+        });
+        if (student) {
+          classId = student.classId ?? undefined;
+          sectionId = student.sectionId ?? undefined;
+        }
+      }
+    }
+
+    return { subjectId, classId, sectionId };
+  }),
   async (req, res) => {
     if (!req.userId) {
       return res.status(401).json({ error: "Unauthenticated" });
