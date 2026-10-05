@@ -5,11 +5,13 @@ vi.mock("../../../db/client.js", () => ({
     feeStructure: { create: vi.fn(), findUnique: vi.fn() },
     feeInvoice: { findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn(), upsert: vi.fn() },
     payment: { create: vi.fn(), findMany: vi.fn() },
+    feeWaiver: { create: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
     auditLog: { create: vi.fn() },
     $transaction: vi.fn((cb: (tx: unknown) => unknown) =>
       cb({
         feeInvoice: { findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
         payment: { create: vi.fn(), findMany: vi.fn() },
+        feeWaiver: { create: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
         auditLog: { create: vi.fn() },
       })
     ),
@@ -40,6 +42,7 @@ describe("Finance Hardening and Validation", () => {
     const mockTx = {
       feeInvoice: { findUnique: vi.fn().mockResolvedValue({ id: "inv-1", status: "waived", amountDue: 1000 }) },
       payment: { findMany: vi.fn().mockResolvedValue([]) },
+      feeWaiver: { findMany: vi.fn().mockResolvedValue([]) },
     };
     (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementationOnce((cb) => cb(mockTx));
 
@@ -52,6 +55,7 @@ describe("Finance Hardening and Validation", () => {
     const mockTx = {
       feeInvoice: { findUnique: vi.fn().mockResolvedValue({ id: "inv-1", status: "pending", amountDue: 500 }) },
       payment: { findMany: vi.fn().mockResolvedValue([{ amount: 400 }]) }, // $100 remaining
+      feeWaiver: { findMany: vi.fn().mockResolvedValue([]) },
     };
     (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementationOnce((cb) => cb(mockTx));
 
@@ -74,6 +78,7 @@ describe("Finance Hardening and Validation", () => {
         findMany: vi.fn().mockResolvedValue([{ amount: 400 }]),
         create: mockPaymentCreate,
       },
+      feeWaiver: { findMany: vi.fn().mockResolvedValue([]) },
       auditLog: { create: mockAuditCreate },
     };
     (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementationOnce((cb) => cb(mockTx));

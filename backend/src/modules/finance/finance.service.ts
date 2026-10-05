@@ -372,11 +372,11 @@ export async function recordPayment(input: { invoiceId: string; amount: number; 
     }
 
     const previousPayments = await tx.payment.findMany({ where: { invoiceId: input.invoiceId } });
-    const previousPaidTotal = previousPayments.reduce((sum, p) => sum.add(p.amount), new Prisma.Decimal(0));
+    const previousPaidTotal = previousPayments.reduce((sum, p) => sum.add(new Prisma.Decimal(p.amount)), new Prisma.Decimal(0));
     const waivers = await tx.feeWaiver.findMany({ where: { invoiceId: input.invoiceId } });
-    const waivedTotal = waivers.reduce((sum, w) => sum.add(w.amount), new Prisma.Decimal(0));
+    const waivedTotal = waivers.reduce((sum, w) => sum.add(new Prisma.Decimal(w.amount)), new Prisma.Decimal(0));
 
-    const effectiveAmountDue = invoice.amountDue.sub(waivedTotal);
+    const effectiveAmountDue = new Prisma.Decimal(invoice.amountDue).sub(waivedTotal);
     const remainingBalance = effectiveAmountDue.sub(previousPaidTotal);
 
     if (paymentAmount.gt(remainingBalance)) {

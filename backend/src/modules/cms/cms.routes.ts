@@ -3,6 +3,7 @@ import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate.js";
 import { authorize } from "../../middleware/authorize.js";
 import { verifyAccessToken } from "../identity/tokens.js";
+import { prisma } from "../../db/client.js";
 import {
   upsertPage,
   setPagePublished,
