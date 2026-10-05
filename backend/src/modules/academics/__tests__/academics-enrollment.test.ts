@@ -2,22 +2,27 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../../../db/client.js", () => ({
   prisma: {
+    user: { findUnique: vi.fn() },
     section: { findUnique: vi.fn() },
     studentProfile: { create: vi.fn() },
     auditLog: { create: vi.fn() },
+    $transaction: vi.fn(async (cb: (tx: any) => Promise<unknown>) => cb(prisma)),
   },
 }));
 
 import { prisma } from "../../../db/client.js";
 import { enrollStudent, AcademicsValidationError } from "../academics.service.js";
 
+const mockUserFind = prisma.user.findUnique as unknown as ReturnType<typeof vi.fn>;
 const mockSectionFind = prisma.section.findUnique as unknown as ReturnType<typeof vi.fn>;
 const mockStudentCreate = prisma.studentProfile.create as unknown as ReturnType<typeof vi.fn>;
 
 describe("Academics Student Enrollment Validation", () => {
   beforeEach(() => {
+    mockUserFind.mockReset();
     mockSectionFind.mockReset();
     mockStudentCreate.mockReset();
+    mockUserFind.mockResolvedValue({ id: "user-1" });
     mockStudentCreate.mockImplementation(async ({ data }: { data: unknown }) => data);
   });
 
