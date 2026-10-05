@@ -68,28 +68,48 @@ const yearSchema = z.object({
 academicsRouter.post("/academic-years", authorize("academics:manage"), async (req, res) => {
   const parsed = yearSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  res.status(201).json(await createAcademicYear(parsed.data));
+  try {
+    res.status(201).json(await createAcademicYear(parsed.data, req.userId));
+  } catch (e) {
+    if (e instanceof AcademicsValidationError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
 });
 
 const classSchema = z.object({ name: z.string().min(1), academicYearId: z.string().uuid() });
 academicsRouter.post("/classes", authorize("academics:manage"), async (req, res) => {
   const parsed = classSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  res.status(201).json(await createClass(parsed.data));
+  try {
+    res.status(201).json(await createClass(parsed.data, req.userId));
+  } catch (e) {
+    if (e instanceof AcademicsValidationError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
 });
 
 const sectionSchema = z.object({ name: z.string().min(1), classId: z.string().uuid() });
 academicsRouter.post("/sections", authorize("academics:manage"), async (req, res) => {
   const parsed = sectionSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  res.status(201).json(await createSection(parsed.data));
+  try {
+    res.status(201).json(await createSection(parsed.data, req.userId));
+  } catch (e) {
+    if (e instanceof AcademicsValidationError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
 });
 
 const subjectSchema = z.object({ name: z.string().min(1), code: z.string().optional() });
 academicsRouter.post("/subjects", authorize("academics:manage"), async (req, res) => {
   const parsed = subjectSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  res.status(201).json(await createSubject(parsed.data));
+  try {
+    res.status(201).json(await createSubject(parsed.data, req.userId));
+  } catch (e) {
+    if (e instanceof AcademicsValidationError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
 });
 
 const enrollSchema = z.object({
@@ -107,7 +127,7 @@ academicsRouter.post("/enroll", authorize("student:view:full_profile"), async (r
   const parsed = enrollSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   try {
-    res.status(201).json(await enrollStudent(parsed.data));
+    res.status(201).json(await enrollStudent(parsed.data, req.userId));
   } catch (e) {
     if (e instanceof AcademicsValidationError) return res.status(400).json({ error: e.message });
     throw e;
@@ -122,5 +142,10 @@ const guardianSchema = z.object({
 academicsRouter.post("/link-guardian", authorize("student:view:full_profile"), async (req, res) => {
   const parsed = guardianSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  res.status(201).json(await linkGuardian(parsed.data));
+  try {
+    res.status(201).json(await linkGuardian(parsed.data, req.userId));
+  } catch (e) {
+    if (e instanceof AcademicsValidationError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
 });

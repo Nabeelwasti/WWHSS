@@ -28,19 +28,42 @@ async function runSerializableTransaction<T>(
   }
 }
 
-export async function createFeeStructure(input: { classId: string; academicYearId: string; name: string; amount: number }) {
+export async function createFeeStructure(
+  input: { classId: string; academicYearId: string; name: string; amount: number },
+  actorId?: string
+) {
   if (typeof input.amount !== "number" || input.amount <= 0) {
     throw new FinanceValidationError("Fee structure amount must be a positive number");
   }
-  return prisma.feeStructure.create({ data: input });
+
+  const [cls, year] = await Promise.all([
+    prisma.class.findUnique({ where: { id: input.classId } }),
+    prisma.academicYear.findUnique({ where: { id: input.academicYearId } }),
+  ]);
+
+  if (!cls) throw new FinanceValidationError(`Class ${input.classId} not found`);
+  if (!year) throw new FinanceValidationError(`Academic year ${input.academicYearId} not found`);
+  if (cls.academicYearId !== input.academicYearId) {
+    throw new FinanceValidationError(`Class ${input.classId} does not belong to specified academic year ${input.academicYearId}`);
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const fs = await tx.feeStructure.create({ data: input });
+    if (actorId) {
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: "finance:create_fee_structure",
+          resource: `fee_structure:${fs.id}`,
+          metadata: { classId: input.classId, academicYearId: input.academicYearId, amount: input.amount },
+        },
+      });
+    }
+    return fs;
+  });
 }
 
-// Generates one real invoice per student currently enrolled in the class —
-// queries actual enrollment, never assumes a headcount or invents rows.
-// Upserts on the real (feeStructureId, studentProfileId) unique constraint,
-// so running this twice is safe: it corrects due dates rather than
-// duplicating invoices.
-export async function generateInvoicesForClass(feeStructureId: string, dueDate: string) {
+export async function generateInvoicesForClass(feeStructureId: string, dueDate: string, actorId?: string) {
   const feeStructure = await prisma.feeStructure.findUnique({
     where: { id: feeStructureId },
     include: { class: { include: { students: true } } },
@@ -65,6 +88,18 @@ export async function generateInvoicesForClass(feeStructureId: string, dueDate: 
         })
       )
     );
+
+    if (actorId) {
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: "finance:generate_invoices",
+          resource: `fee_structure:${feeStructureId}`,
+          metadata: { generated: invoices.length, dueDate },
+        },
+      });
+    }
+
     return invoices;
   });
 }

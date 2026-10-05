@@ -50,39 +50,89 @@ export async function getMyScopedClasses(userId: string) {
 
 // ---------- WRITES (admin/principal only, enforced at the route layer) ----------
 
-export async function createAcademicYear(input: { label: string; startDate: string; endDate: string }) {
-  return prisma.academicYear.create({
-    data: { label: input.label, startDate: new Date(input.startDate), endDate: new Date(input.endDate) },
+// ---------- WRITES (admin/principal only, enforced at the route layer) ----------
+
+export async function createAcademicYear(input: { label: string; startDate: string; endDate: string }, actorId?: string) {
+  const start = new Date(input.startDate);
+  const end = new Date(input.endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    throw new AcademicsValidationError("Invalid start or end date format");
+  }
+  if (start >= end) {
+    throw new AcademicsValidationError("Academic year startDate must be before endDate");
+  }
+  return prisma.$transaction(async (tx) => {
+    const year = await tx.academicYear.create({
+      data: { label: input.label, startDate: start, endDate: end },
+    });
+    if (actorId) {
+      await tx.auditLog.create({
+        data: { userId: actorId, action: "academics:create_academic_year", resource: `academic_year:${year.id}`, metadata: { label: input.label } },
+      });
+    }
+    return year;
   });
 }
 
-export async function createClass(input: { name: string; academicYearId: string }) {
-  return prisma.class.create({ data: input });
+export async function createClass(input: { name: string; academicYearId: string }, actorId?: string) {
+  const year = await prisma.academicYear.findUnique({ where: { id: input.academicYearId } });
+  if (!year) throw new AcademicsValidationError(`Academic year ${input.academicYearId} not found`);
+
+  return prisma.$transaction(async (tx) => {
+    const cls = await tx.class.create({ data: input });
+    if (actorId) {
+      await tx.auditLog.create({
+        data: { userId: actorId, action: "academics:create_class", resource: `class:${cls.id}`, metadata: { name: input.name } },
+      });
+    }
+    return cls;
+  });
 }
 
-export async function createSection(input: { name: string; classId: string }) {
-  return prisma.section.create({ data: input });
+export async function createSection(input: { name: string; classId: string }, actorId?: string) {
+  const cls = await prisma.class.findUnique({ where: { id: input.classId } });
+  if (!cls) throw new AcademicsValidationError(`Class ${input.classId} not found`);
+
+  return prisma.$transaction(async (tx) => {
+    const sec = await tx.section.create({ data: input });
+    if (actorId) {
+      await tx.auditLog.create({
+        data: { userId: actorId, action: "academics:create_section", resource: `section:${sec.id}`, metadata: { name: input.name } },
+      });
+    }
+    return sec;
+  });
 }
 
-export async function createSubject(input: { name: string; code?: string }) {
-  return prisma.subject.create({ data: input });
+export async function createSubject(input: { name: string; code?: string }, actorId?: string) {
+  return prisma.$transaction(async (tx) => {
+    const subj = await tx.subject.create({ data: input });
+    if (actorId) {
+      await tx.auditLog.create({
+        data: { userId: actorId, action: "academics:create_subject", resource: `subject:${subj.id}`, metadata: { name: input.name, code: input.code } },
+      });
+    }
+    return subj;
+  });
 }
 
 export class AcademicsValidationError extends Error {}
 
-// Enrolling a student means: the person already has a User account (created
-// via the admin/user-management routes), and now gets a StudentProfile
-// linking them to a class/section with a real admission number — this is
-// what actually makes them show up in attendance, exams, etc.
-export async function enrollStudent(input: {
-  userId: string;
-  admissionNo: string;
-  classId?: string;
-  sectionId?: string;
-  rollNumber?: string;
-  dateOfBirth?: string;
-  admissionDate?: string;
-}) {
+export async function enrollStudent(
+  input: {
+    userId: string;
+    admissionNo: string;
+    classId?: string;
+    sectionId?: string;
+    rollNumber?: string;
+    dateOfBirth?: string;
+    admissionDate?: string;
+  },
+  actorId?: string
+) {
+  const user = await prisma.user.findUnique({ where: { id: input.userId } });
+  if (!user) throw new AcademicsValidationError(`User ${input.userId} not found`);
+
   if (input.sectionId) {
     const section = await prisma.section.findUnique({
       where: { id: input.sectionId },
@@ -96,34 +146,46 @@ export async function enrollStudent(input: {
         `Section ${input.sectionId} does not belong to specified class ${input.classId}`
       );
     }
+  } else if (input.classId) {
+    const cls = await prisma.class.findUnique({ where: { id: input.classId } });
+    if (!cls) throw new AcademicsValidationError(`Class ${input.classId} not found`);
   }
 
-  const profile = await prisma.studentProfile.create({
-    data: {
-      userId: input.userId,
-      admissionNo: input.admissionNo,
-      classId: input.classId,
-      sectionId: input.sectionId,
-      rollNumber: input.rollNumber,
-      dateOfBirth: input.dateOfBirth ? new Date(input.dateOfBirth) : undefined,
-      admissionDate: input.admissionDate ? new Date(input.admissionDate) : undefined,
-    },
+  const dob = input.dateOfBirth ? new Date(input.dateOfBirth) : undefined;
+  const adm = input.admissionDate ? new Date(input.admissionDate) : undefined;
+  if (dob && Number.isNaN(dob.getTime())) throw new AcademicsValidationError("Invalid dateOfBirth format");
+  if (adm && Number.isNaN(adm.getTime())) throw new AcademicsValidationError("Invalid admissionDate format");
+
+  return prisma.$transaction(async (tx) => {
+    const profile = await tx.studentProfile.create({
+      data: {
+        userId: input.userId,
+        admissionNo: input.admissionNo,
+        classId: input.classId,
+        sectionId: input.sectionId,
+        rollNumber: input.rollNumber,
+        dateOfBirth: dob,
+        admissionDate: adm,
+      },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        userId: actorId ?? input.userId,
+        action: "academics:enroll_student",
+        resource: `student:${profile.id}`,
+        metadata: { admissionNo: input.admissionNo, classId: input.classId, sectionId: input.sectionId },
+      },
+    });
+
+    return profile;
   });
-
-  await prisma.auditLog.create({
-    data: {
-      userId: input.userId,
-      action: "academics:enroll_student",
-      resource: `student:${profile.id}`,
-      metadata: { admissionNo: input.admissionNo, classId: input.classId, sectionId: input.sectionId },
-    },
-  });
-
-  return profile;
-
 }
 
-export async function linkGuardian(input: { parentUserId: string; studentProfileId: string; relation: string }) {
+export async function linkGuardian(
+  input: { parentUserId: string; studentProfileId: string; relation: string },
+  actorId?: string
+) {
   const [parent, student] = await Promise.all([
     prisma.user.findUnique({ where: { id: input.parentUserId }, select: { id: true } }),
     prisma.studentProfile.findUnique({ where: { id: input.studentProfileId }, select: { id: true, userId: true } }),
@@ -139,20 +201,22 @@ export async function linkGuardian(input: { parentUserId: string; studentProfile
     throw new AcademicsValidationError("A student cannot be linked as their own guardian");
   }
 
-  const link = await prisma.parentStudentLink.create({
-    data: { parentId: input.parentUserId, studentId: input.studentProfileId, relation: input.relation },
-  });
+  return prisma.$transaction(async (tx) => {
+    const link = await tx.parentStudentLink.create({
+      data: { parentId: input.parentUserId, studentId: input.studentProfileId, relation: input.relation },
+    });
 
-  await prisma.auditLog.create({
-    data: {
-      userId: input.parentUserId,
-      action: "academics:link_guardian",
-      resource: `student:${input.studentProfileId}:guardian:${input.parentUserId}`,
-      metadata: { relation: input.relation },
-    },
-  });
+    await tx.auditLog.create({
+      data: {
+        userId: actorId ?? input.parentUserId,
+        action: "academics:link_guardian",
+        resource: `student:${input.studentProfileId}:guardian:${input.parentUserId}`,
+        metadata: { relation: input.relation },
+      },
+    });
 
-  return link;
+    return link;
+  });
 }
 
 

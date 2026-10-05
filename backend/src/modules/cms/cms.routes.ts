@@ -15,6 +15,7 @@ import {
   listUpcomingEvents,
   addGalleryItem,
   listGallery,
+  CmsValidationError,
 } from "./cms.service.js";
 
 export const cmsRouter = Router();
@@ -119,12 +120,17 @@ const eventSchema = z.object({
 cmsRouter.post("/events", authenticate, authorize("cms:manage"), async (req, res) => {
   const parsed = eventSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  res.status(201).json(await createEvent(parsed.data));
+  try {
+    res.status(201).json(await createEvent(parsed.data, req.userId));
+  } catch (e) {
+    if (e instanceof CmsValidationError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
 });
 
 const gallerySchema = z.object({ title: z.string().min(1), imageUrl: z.string().url(), albumName: z.string().optional() });
 cmsRouter.post("/gallery", authenticate, authorize("cms:manage"), async (req, res) => {
   const parsed = gallerySchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  res.status(201).json(await addGalleryItem(parsed.data));
+  res.status(201).json(await addGalleryItem(parsed.data, req.userId));
 });

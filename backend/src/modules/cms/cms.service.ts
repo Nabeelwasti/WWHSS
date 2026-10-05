@@ -1,27 +1,43 @@
 import { prisma } from "../../db/client.js";
 
+export class CmsValidationError extends Error {}
+
 // ---------- PAGES ----------
 
 export async function upsertPage(input: { slug: string; title: string; content: string; updatedByUserId: string }) {
-  return prisma.cmsPage.upsert({
-    where: { slug: input.slug },
-    update: { title: input.title, content: input.content, updatedByUserId: input.updatedByUserId },
-    create: { ...input, isPublished: false },
+  return prisma.$transaction(async (tx) => {
+    const page = await tx.cmsPage.upsert({
+      where: { slug: input.slug },
+      update: { title: input.title, content: input.content, updatedByUserId: input.updatedByUserId },
+      create: { ...input, isPublished: false },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        userId: input.updatedByUserId,
+        action: "cms:upsert_page",
+        resource: `cms_page:${input.slug}`,
+        metadata: { title: input.title },
+      },
+    });
+
+    return page;
   });
 }
 
 export async function setPagePublished(slug: string, isPublished: boolean, updatedByUserId: string) {
-  const page = await prisma.cmsPage.update({ where: { slug }, data: { isPublished } });
-  await prisma.auditLog.create({
-    data: {
-      userId: updatedByUserId,
-      action: isPublished ? "cms:publish_page" : "cms:unpublish_page",
-      resource: `cms_page:${slug}`,
-    },
+  return prisma.$transaction(async (tx) => {
+    const page = await tx.cmsPage.update({ where: { slug }, data: { isPublished } });
+    await tx.auditLog.create({
+      data: {
+        userId: updatedByUserId,
+        action: isPublished ? "cms:publish_page" : "cms:unpublish_page",
+        resource: `cms_page:${slug}`,
+      },
+    });
+    return page;
   });
-  return page;
 }
-
 
 // Public read — only ever returns pages that are actually marked
 // published. A draft is genuinely invisible here, not just hidden by the
@@ -39,18 +55,19 @@ export async function listAllPages() {
 // ---------- NOTICES ----------
 
 export async function createNotice(input: { title: string; body: string; audience: string; publishedByUserId: string }) {
-  const notice = await prisma.notice.create({ data: input });
-  await prisma.auditLog.create({
-    data: {
-      userId: input.publishedByUserId,
-      action: "cms:create_notice",
-      resource: `notice:${notice.id}`,
-      metadata: { audience: input.audience },
-    },
+  return prisma.$transaction(async (tx) => {
+    const notice = await tx.notice.create({ data: input });
+    await tx.auditLog.create({
+      data: {
+        userId: input.publishedByUserId,
+        action: "cms:create_notice",
+        resource: `notice:${notice.id}`,
+        metadata: { audience: input.audience },
+      },
+    });
+    return notice;
   });
-  return notice;
 }
-
 
 export async function getUserPermittedAudiences(userId: string): Promise<Set<string>> {
   const permitted = new Set<string>(["public"]);
@@ -108,15 +125,43 @@ export async function listNoticesForAudiences(audiences: string[]) {
 
 // ---------- EVENTS ----------
 
-export async function createEvent(input: { title: string; description?: string; startAt: string; endAt?: string; location?: string }) {
-  return prisma.eventItem.create({
-    data: {
-      title: input.title,
-      description: input.description,
-      startAt: new Date(input.startAt),
-      endAt: input.endAt ? new Date(input.endAt) : undefined,
-      location: input.location,
-    },
+export async function createEvent(
+  input: { title: string; description?: string; startAt: string; endAt?: string; location?: string },
+  actorId?: string
+) {
+  const start = new Date(input.startAt);
+  if (Number.isNaN(start.getTime())) throw new CmsValidationError("Invalid event startAt date");
+
+  let end: Date | undefined;
+  if (input.endAt) {
+    end = new Date(input.endAt);
+    if (Number.isNaN(end.getTime())) throw new CmsValidationError("Invalid event endAt date");
+    if (start >= end) throw new CmsValidationError("Event startAt must be before endAt");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const event = await tx.eventItem.create({
+      data: {
+        title: input.title,
+        description: input.description,
+        startAt: start,
+        endAt: end,
+        location: input.location,
+      },
+    });
+
+    if (actorId) {
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: "cms:create_event",
+          resource: `event:${event.id}`,
+          metadata: { title: input.title, startAt: input.startAt },
+        },
+      });
+    }
+
+    return event;
   });
 }
 
@@ -130,8 +175,21 @@ export async function listUpcomingEvents() {
 
 // ---------- GALLERY ----------
 
-export async function addGalleryItem(input: { title: string; imageUrl: string; albumName?: string }) {
-  return prisma.galleryItem.create({ data: input });
+export async function addGalleryItem(input: { title: string; imageUrl: string; albumName?: string }, actorId?: string) {
+  return prisma.$transaction(async (tx) => {
+    const item = await tx.galleryItem.create({ data: input });
+    if (actorId) {
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: "cms:add_gallery_item",
+          resource: `gallery:${item.id}`,
+          metadata: { title: input.title, albumName: input.albumName },
+        },
+      });
+    }
+    return item;
+  });
 }
 
 export async function listGallery(albumName?: string) {

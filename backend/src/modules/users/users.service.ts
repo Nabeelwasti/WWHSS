@@ -68,6 +68,11 @@ export async function assignRole(input: {
     if (!subj) throw new Error(`Subject not found: ${input.subjectId}`);
   }
 
+  if (input.departmentId) {
+    const dept = await prisma.department.findUnique({ where: { id: input.departmentId }, select: { id: true } });
+    if (!dept) throw new Error(`Department not found: ${input.departmentId}`);
+  }
+
   return prisma.userRole.create({
     data: {
       userId: input.userId,
@@ -88,14 +93,12 @@ export async function removeRoleAssignment(userRoleId: string) {
 export async function deactivateUser(userId: string) {
   // Soft delete only — never hard-delete a person's account, since that
   // would silently orphan their real attendance/grade/finance history.
-  const user = await prisma.user.update({ where: { id: userId }, data: { isActive: false } });
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: { isActive: false, tokenVersion: { increment: 1 } },
+  });
 
-  // Defense in depth: the refresh endpoint already re-checks isActive and
-  // would reject this person's next refresh regardless, but revoking their
-  // outstanding refresh tokens immediately — rather than waiting for that
-  // check to matter — means a leaked or shared refresh token stops working
-  // the moment an admin deactivates the account, not up to its natural
-  // expiry (default 30 days) later.
+  // Defense in depth: revoke outstanding refresh tokens immediately
   await prisma.refreshToken.updateMany({ where: { userId, revoked: false }, data: { revoked: true } });
 
   return user;
@@ -105,14 +108,14 @@ export async function listRoles() {
   return prisma.role.findMany({ orderBy: { name: "asc" } });
 }
 
-// For the very common "I forgot my password" case. An administrator
-// generates a fresh one-time password and relays it in person or by phone.
-// Every existing session for that person is ended immediately.
 export async function resetPassword(userId: string) {
   const temporaryPassword = crypto.randomBytes(9).toString("base64url");
   const passwordHash = await argon2.hash(temporaryPassword);
 
-  await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+  await prisma.user.update({
+    where: { id: userId },
+    data: { passwordHash, tokenVersion: { increment: 1 } },
+  });
   await prisma.refreshToken.updateMany({ where: { userId, revoked: false }, data: { revoked: true } });
 
   return { temporaryPassword };

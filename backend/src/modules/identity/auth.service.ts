@@ -12,7 +12,7 @@ export async function login(email: string, password: string) {
   const valid = await argon2.verify(user.passwordHash, password);
   if (!valid) throw new AuthError("Invalid credentials");
 
-  const accessToken = signAccessToken({ sub: user.id, email: user.email });
+  const accessToken = signAccessToken({ sub: user.id, email: user.email, tokenVersion: user.tokenVersion });
   const { token: refreshToken, hash } = newRefreshTokenValue();
 
   const expiresAt = new Date(Date.now() + env.refreshTokenTtlDays * 24 * 60 * 60 * 1000);
@@ -59,7 +59,7 @@ export async function refresh(presentedToken: string) {
     const user = await tx.user.findUnique({ where: { id: record.userId } });
     if (!user || !user.isActive) throw new AuthError("Account inactive");
 
-    const accessToken = signAccessToken({ sub: user.id, email: user.email });
+    const accessToken = signAccessToken({ sub: user.id, email: user.email, tokenVersion: user.tokenVersion });
     const { token: newRefresh, hash: newHash } = newRefreshTokenValue();
     const expiresAt = new Date(Date.now() + env.refreshTokenTtlDays * 24 * 60 * 60 * 1000);
     await tx.refreshToken.create({ data: { userId: user.id, tokenHash: newHash, expiresAt } });
@@ -91,12 +91,16 @@ export async function changePassword(userId: string, currentPassword: string, ne
   }
 
   const passwordHash = await argon2.hash(newPassword);
-  await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
 
-  // Sign out every other session: if the old password was known to someone
-  // else (a temporary password relayed by an admin, say), their existing
-  // logins must stop working the moment it changes.
-  await prisma.refreshToken.updateMany({ where: { userId, revoked: false }, data: { revoked: true } });
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: userId },
+      data: { passwordHash, tokenVersion: { increment: 1 } },
+    });
 
-  await prisma.auditLog.create({ data: { userId, action: "auth:change_password" } });
+    // Sign out every other session
+    await tx.refreshToken.updateMany({ where: { userId, revoked: false }, data: { revoked: true } });
+
+    await tx.auditLog.create({ data: { userId, action: "auth:change_password" } });
+  });
 }

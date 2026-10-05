@@ -2,7 +2,7 @@ import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
 import { env } from "../../config/env.js";
 
-export type AccessTokenPayload = { sub: string; email: string };
+export type AccessTokenPayload = { sub: string; email: string; tokenVersion?: number };
 
 export function signAccessToken(payload: AccessTokenPayload): string {
   return jwt.sign(payload, env.jwtAccessSecret, {
