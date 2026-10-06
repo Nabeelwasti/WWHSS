@@ -19,10 +19,33 @@ storageRouter.post("/upload", authorize("academics:view"), async (req, res) => {
   const filename = (req.headers["x-filename"] as string) || `upload_${Date.now()}.bin`;
   const mimeType = (req.headers["x-mimetype"] as string) || contentType || "application/octet-stream";
 
+  const maxUploadBytes = 10 * 1024 * 1024;
+  const declaredLength = Number(req.headers["content-length"] || 0);
+  if (declaredLength > maxUploadBytes) {
+    return res.status(413).json({ error: "File size exceeds maximum allowed size of 10MB" });
+  }
   const chunks: Buffer[] = [];
-  req.on("data", (chunk) => chunks.push(chunk));
+  let receivedBytes = 0;
+  let rejected = false;
+  req.on("data", (chunk: Buffer) => {
+    receivedBytes += chunk.length;
+    if (receivedBytes > maxUploadBytes) {
+      rejected = true;
+      req.destroy();
+      return;
+    }
+    chunks.push(chunk);
+  });
+
+  req.on("error", () => {
+    if (!res.headersSent) res.status(413).json({ error: "Upload exceeded the 10MB request limit" });
+  });
 
   req.on("end", async () => {
+    if (rejected || receivedBytes > maxUploadBytes) {
+      if (!res.headersSent) res.status(413).json({ error: "File size exceeds maximum allowed size of 10MB" });
+      return;
+    }
     try {
       const buffer = Buffer.concat(chunks);
       if (buffer.length === 0) {
