@@ -1,0 +1,37 @@
+name: Refresh backend lockfile
+
+on:
+  push:
+    paths:
+      - backend/package.json
+      - .github/workflows/lockfile-refresh.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Refresh lockfile with npm 11
+        working-directory: backend
+        run: |
+          npm --version
+          npm install --package-lock-only --ignore-scripts
+          npm ci --ignore-scripts
+      - name: Commit generated lockfile and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/package-lock.json .github/workflows/lockfile-refresh.yml
+          git diff --cached --quiet || git commit -m "chore(deps): regenerate backend lockfile with Node 24 npm 11"
+          git rm .github/workflows/lockfile-refresh.yml
+          git commit -m "chore(ci): remove temporary lockfile refresh workflow"
+          git push
