@@ -868,59 +868,16 @@
       }
     },
     "/api/academics/academic-years": {
-      "post": {
-        "summary": "Create academic year",
+      "get": {
+        "summary": "List academic years",
         "security": [
           {
             "bearerAuth": []
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "label": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "startDate": {
-                    "type": "string"
-                  },
-                  "endDate": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "label",
-                  "startDate",
-                  "endDate"
-                ]
-              }
-            }
-          }
-        },
         "responses": {
-          "201": {
-            "description": "Academic year created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AcademicYear"
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error400"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error401"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error403"
+          "200": {
+            "description": "Academic years"
           }
         }
       }
@@ -5866,6 +5823,21 @@
           },
           "400": {
             "description": "Validation error"
+          }
+        }
+      }
+    },
+    "/api/users/departments": {
+      "get": {
+        "summary": "List departments for administration",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Departments"
           }
         }
       }
