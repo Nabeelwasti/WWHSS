@@ -9,10 +9,10 @@ const { prismaMock, askCampusAIMock } = vi.hoisted(() => ({
   askCampusAIMock: vi.fn(),
 }));
 
-vi.mock("../db/client.js", () => ({ prisma: prismaMock }));
-vi.mock("../modules/ai/ai.service.js", () => ({ askCampusAI: askCampusAIMock }));
+vi.mock("../../../db/client.js", () => ({ prisma: prismaMock }));
+vi.mock("../ai.service.js", () => ({ askCampusAI: askCampusAIMock }));
 
-const { generateTestQuestionsWithAi } = await import("../modules/ai/ai-assessment.service.js");
+const { generateTestQuestionsWithAi } = await import("../ai-assessment.service.js");
 
 describe("AI assessment generation safety", () => {
   beforeEach(() => {
@@ -57,7 +57,7 @@ describe("AI assessment generation safety", () => {
     ]));
 
     await expect(generateTestQuestionsWithAi("test-id", 1, "teacher-id"))
-      .rejects.toThrow("correct answer is not one of its options");
+      .rejects.toThrow(/correct answer.*not one of its options/i);
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 });
