@@ -7,9 +7,7 @@ export class DocumentValidationError extends Error {}
 const UPLOAD_DIR = path.resolve(process.cwd(), "uploads");
 
 export function ensureUploadDirExists() {
-  if (!fs.existsSync(UPLOAD_DIR)) {
-    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-  }
+  if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
 export interface DocumentHeaderInfo {
@@ -22,14 +20,55 @@ export interface DocumentHeaderInfo {
   logoUrl?: string;
 }
 
-export const DEFAULT_SCHOOL_HEADER: DocumentHeaderInfo = {
-  schoolName: "Workers Welfare Higher Secondary School (WWHSS)",
-  schoolUrduName: "ورکرز ویلفیئر ہائر سیکنڈری سکول",
-  boardRegistration: "BISE Registered | WWHSS Digital Campus",
-  address: "Workers Welfare Complex, Industrial Area, Sector 5",
-  phone: "+92 51 9200000",
-  email: "info@wwhss.edu.pk",
-};
+async function getSchoolHeader(): Promise<DocumentHeaderInfo> {
+  const profile = await prisma.schoolProfile.findUnique({ where: { id: "default" } });
+  if (!profile) throw new DocumentValidationError("School profile is not configured. Configure the institution profile before generating official documents.");
+  return {
+    schoolName: profile.schoolName,
+    schoolUrduName: profile.schoolUrduName || profile.schoolName,
+    boardRegistration: profile.boardRegistration || "",
+    address: profile.address,
+    phone: profile.phone,
+    email: profile.email,
+    logoUrl: profile.logoUrl || undefined,
+  };
+}
+
+async function getCurrentAcademicYearLabel() {
+  const profile = await prisma.schoolProfile.findUnique({ where: { id: "default" }, select: { currentAcademicYear: true } });
+  return profile?.currentAcademicYear || new Date().getUTCFullYear().toString();
+}
+
+async function allocateDocumentNumber(docType: string, academicYear: string, campus = "MAIN"): Promise<string> {
+  const profile = await prisma.schoolProfile.findUnique({ where: { id: "default" }, select: { documentPrefix: true } });
+  const prefix = (profile?.documentPrefix || "DOC").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 24) || "DOC";
+  const normalizedType = docType.replace(/[^A-Za-z0-9_-]/g, "_").toUpperCase().slice(0, 32) || "DOCUMENT";
+  const normalizedYear = academicYear.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 32) || "CURRENT";
+  const normalizedCampus = campus.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 32) || "MAIN";
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const existing = await prisma.documentSequence.findUnique({
+      where: { docType_academicYear_campus: { docType: normalizedType, academicYear: normalizedYear, campus: normalizedCampus } },
+    });
+    if (!existing) {
+      try {
+        await prisma.documentSequence.create({
+          data: { docType: normalizedType, academicYear: normalizedYear, campus: normalizedCampus, nextVal: 2 },
+        });
+        return `${prefix}-${normalizedType}-${normalizedYear}-000001`;
+      } catch (error: any) {
+        if (error?.code === "P2002") continue;
+        throw error;
+      }
+    }
+    const updated = await prisma.documentSequence.update({
+      where: { id: existing.id },
+      data: { nextVal: { increment: 1 } },
+    });
+    return `${prefix}-${normalizedType}-${normalizedYear}-${String(updated.nextVal - 1).padStart(6, "0")}`;
+  }
+  throw new DocumentValidationError("Could not allocate a unique document number after concurrent retries.");
+}
 
 export async function createDocumentRecord(
   input: {
@@ -41,7 +80,11 @@ export async function createDocumentRecord(
   },
   createdByUserId?: string
 ) {
-  const docNumber = `DOC-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const academicYearLabel = input.academicYearId
+    ? (await prisma.academicYear.findUnique({ where: { id: input.academicYearId }, select: { name: true } }))?.name
+    : await getCurrentAcademicYearLabel();
+  if (!academicYearLabel) throw new DocumentValidationError("Academic year is required for document numbering.");
+  const docNumber = await allocateDocumentNumber(input.docType, academicYearLabel);
 
   return prisma.$transaction(async (tx) => {
     const doc = await tx.documentRecord.create({
@@ -95,9 +138,10 @@ export async function listDocumentRecords(filters: {
 }
 
 export async function generatePrintableDocumentPayload(docType: string, referenceId: string) {
-  const header = DEFAULT_SCHOOL_HEADER;
+  const header = await getSchoolHeader();
   const issueDate = new Date().toISOString().slice(0, 10);
-  const docNumber = `WWHSS-${docType.toUpperCase()}-${Date.now().toString().slice(-6)}`;
+  const prefix = header.schoolName.replace(/[^A-Za-z0-9]/g, "").slice(0, 12) || "DOC";
+  const docNumber = `${prefix}-${docType.toUpperCase().replace(/[^A-Z0-9_-]/g, "_")}-${referenceId.slice(0, 8)}`;
 
   switch (docType) {
     case "result_card":
@@ -160,7 +204,7 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
 
       return {
         docType: "fee_receipt",
-        docNumber: `RCPT-${payment.id.slice(0, 8)}`,
+        docNumber: `${header.schoolName.replace(/[^A-Za-z0-9]/g, "").slice(0, 12) || "DOC"}-RCPT-${payment.id.slice(0, 8)}`,
         issueDate: payment.paidAt.toISOString().slice(0, 10),
         header,
         title: "Official Fee Payment Receipt / فيس وصولى رسيد",
@@ -197,7 +241,7 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
 
       return {
         docType: "transfer_certificate",
-        docNumber: `TC-${student.id.slice(0, 8)}`,
+        docNumber: `${header.schoolName.replace(/[^A-Za-z0-9]/g, "").slice(0, 12) || "DOC"}-TC-${student.id.slice(0, 8)}`,
         issueDate,
         header,
         title: "School Leaving / Transfer Certificate (سکول چھوڑنے کا سرٹیفکیٹ)",
@@ -235,7 +279,7 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
 
       return {
         docType: "fee_statement",
-        docNumber: `STMT-${student.id.slice(0, 8)}`,
+        docNumber: `${header.schoolName.replace(/[^A-Za-z0-9]/g, "").slice(0, 12) || "DOC"}-STMT-${student.id.slice(0, 8)}`,
         issueDate,
         header,
         title: "Student Fee Account Statement / فيس والى تفصيل",
@@ -271,7 +315,7 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
 
       return {
         docType: "attendance_report",
-        docNumber: `ATT-${student.id.slice(0, 8)}`,
+        docNumber: `${header.schoolName.replace(/[^A-Za-z0-9]/g, "").slice(0, 12) || "DOC"}-ATT-${student.id.slice(0, 8)}`,
         issueDate,
         header,
         title: "Student Attendance Log & Report / حاضرى رپورٹ",

@@ -52,6 +52,9 @@ aiAssessmentRouter.post("/tests", authorize("academics:manage"), async (req, res
 aiAssessmentRouter.post("/tests/:testId/generate", authorize("academics:manage"), async (req, res) => {
   if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
   const numQuestions = typeof req.body.numQuestions === "number" ? req.body.numQuestions : 5;
+  if (!Number.isInteger(numQuestions) || numQuestions < 1 || numQuestions > 50) {
+    return res.status(400).json({ error: "numQuestions must be an integer between 1 and 50" });
+  }
 
   try {
     const updated = await generateTestQuestionsWithAi(req.params.testId, numQuestions, req.userId);
@@ -77,7 +80,7 @@ const submitSheetSchema = z.object({
   testId: z.string().uuid(),
   studentProfileId: z.string().uuid(),
   studentAnswers: z.record(z.string()),
-  fileUrl: z.string().optional(),
+  fileUrl: z.string().max(2048).optional(),
 });
 
 aiAssessmentRouter.post("/answer-sheets", authorize("grades:enter"), async (req, res) => {
@@ -94,7 +97,7 @@ aiAssessmentRouter.post("/answer-sheets", authorize("grades:enter"), async (req,
 });
 
 const gradeSheetSchema = z.object({
-  finalScore: z.number().min(0),
+  finalScore: z.number().finite().min(0),
   teacherFeedback: z.string().optional(),
 });
 
