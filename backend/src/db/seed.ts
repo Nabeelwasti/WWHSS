@@ -29,10 +29,21 @@ const PERMISSIONS = [
   "library:view",
   "library:manage",
   "cms:manage",
+  "backup:view",
+  "backup:create",
+  "backup:download",
+  "backup:restore",
+  "backup:delete",
+  "documents:view",
+  "documents:create",
+  "documents:print",
+  "documents:view:own",
 ];
 
 const ROLES: Record<string, string[]> = {
-  super_admin: PERMISSIONS, // everything, unscoped
+  // System backup permissions are deliberately explicit and are not granted
+  // through users:manage. Only the dedicated system role receives them.
+  super_admin: PERMISSIONS,
   principal: [
     "attendance:view:class",
     "grades:view:own",
@@ -45,6 +56,9 @@ const ROLES: Record<string, string[]> = {
     "users:manage",
     "exams:manage",
     "cms:manage",
+    "documents:view",
+    "documents:create",
+    "documents:print",
   ],
   teacher: [
     "attendance:mark",
@@ -53,6 +67,8 @@ const ROLES: Record<string, string[]> = {
     "assignments:create",
     "course:manage",
     "timetable:view:own",
+    "documents:view",
+    "documents:print",
   ],
   class_teacher: [
     "attendance:mark",
@@ -62,8 +78,10 @@ const ROLES: Record<string, string[]> = {
     "student:view:basic",
     "course:manage",
     "timetable:view:own",
+    "documents:view",
+    "documents:print",
   ],
-  accountant: ["finance:view", "finance:manage"],
+  accountant: ["finance:view", "finance:manage", "documents:view", "documents:print"],
   librarian: ["library:view", "library:manage"],
   student: [
     "attendance:view:own",
@@ -72,6 +90,7 @@ const ROLES: Record<string, string[]> = {
     "timetable:view:own",
     "finance:view:own",
     "exams:view:own",
+    "documents:view:own",
   ],
   parent: [
     "attendance:view:own",
@@ -80,6 +99,7 @@ const ROLES: Record<string, string[]> = {
     "announcements:view:own",
     "finance:view:own",
     "exams:view:own",
+    "documents:view:own",
   ],
 };
 
@@ -135,7 +155,7 @@ async function main() {
   const passwordHash = await argon2.hash(adminPassword);
   const admin = await prisma.user.upsert({
     where: { email: adminEmail },
-    update: {}, // never overwrites an existing account's password on re-runs
+    update: {},
     create: { email: adminEmail, passwordHash, fullName: "Super Admin" },
   });
   const adminRole = await prisma.role.findUniqueOrThrow({ where: { key: "super_admin" } });
