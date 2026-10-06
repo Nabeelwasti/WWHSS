@@ -557,10 +557,13 @@ model Exam {
   academicYearId String
   startDate      DateTime
   endDate        DateTime
-
+  status         String   @default("DRAFT") // DRAFT | PUBLISHED | LOCKED | FINALIZED | ARCHIVED
+  publishedAt    DateTime?
+  lockedAt       DateTime?
   publishedByUserId String?
+
   academicYear AcademicYear  @relation(fields: [academicYearId], references: [id])
-  publishedBy User? @relation("PublishedExams", fields: [publishedByUserId], references: [id])
+  publishedBy User? @relation("PublishedExams", fields: [publishedByUserId], references: [id], onDelete: NoAction)
   examSubjects ExamSubject[]
   results      ExamResult[]
 
@@ -682,7 +685,7 @@ model AiAnswerSheet {
   test     AiAssessmentTest @relation(fields: [testId], references: [id], onDelete: Cascade)
   student  StudentProfile   @relation(fields: [studentProfileId], references: [id])
   gradedBy User?            @relation("GradedAiAnswerSheets", fields: [gradedByUserId], references: [id])
-  scoreFinalizedBy User?    @relation("FinalizedAiAnswerSheets", fields: [scoreFinalizedByUserId], references: [id])
+  scoreFinalizedBy User?    @relation("FinalizedAiAnswerSheets", fields: [scoreFinalizedByUserId], references: [id], onDelete: NoAction)
 
   @@map("ai_answer_sheets")
 }
@@ -701,10 +704,10 @@ model StudentEnrollmentHistory {
   createdAt        DateTime @default(now())
 
   student     StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
-  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
-  class       Class @relation(fields: [classId], references: [id])
-  section     Section? @relation(fields: [sectionId], references: [id])
-  changedBy   User? @relation("EnrollmentChangedBy", fields: [changedByUserId], references: [id])
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: NoAction)
+  class       Class @relation(fields: [classId], references: [id], onDelete: NoAction)
+  section     Section? @relation(fields: [sectionId], references: [id], onDelete: NoAction)
+  changedBy   User? @relation("EnrollmentChangedBy", fields: [changedByUserId], references: [id], onDelete: NoAction)
 
   @@index([studentProfileId, startDate])
   @@index([academicYearId, classId, sectionId])
@@ -722,8 +725,8 @@ model CourseTeacherAssignment {
   createdAt       DateTime @default(now())
 
   course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  teacher User @relation("CourseTeachers", fields: [teacherId], references: [id])
-  assignedBy User? @relation("CourseTeacherAssignedBy", fields: [assignedByUserId], references: [id])
+  teacher User @relation("CourseTeachers", fields: [teacherId], references: [id], onDelete: NoAction)
+  assignedBy User? @relation("CourseTeacherAssignedBy", fields: [assignedByUserId], references: [id], onDelete: NoAction)
 
   @@unique([courseId, teacherId, startDate])
   @@index([teacherId, startDate, endDate])
@@ -741,7 +744,7 @@ model PaymentAdjustment {
   createdAt       DateTime @default(now())
 
   payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  adjustedBy User @relation("AdjustedPayments", fields: [adjustedByUserId], references: [id])
+  adjustedBy User @relation("AdjustedPayments", fields: [adjustedByUserId], references: [id], onDelete: NoAction)
 
   @@index([paymentId])
   @@index([kind, createdAt])
@@ -967,4 +970,3 @@ model StorageFile {
   @@index([entityType, entityId])
   @@map("storage_files")
 }
-
