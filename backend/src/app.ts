@@ -23,6 +23,7 @@ import { aiAssessmentRouter } from "./modules/ai/ai-assessment.routes.js";
 import { documentsRouter } from "./modules/documents/documents.routes.js";
 import { backupRouter } from "./modules/backup/backup.routes.js";
 import { storageRouter } from "./modules/storage/storage.routes.js";
+import { parentRouter } from "./modules/parent/parent.routes.js";
 
 export const app = express();
 
@@ -109,6 +110,7 @@ app.use("/api/ai/assessment", aiAssessmentRouter);
 app.use("/api/documents", documentsRouter);
 app.use("/api/backup", backupRouter);
 app.use("/api/storage", storageRouter);
+app.use("/api/parent", parentRouter);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);
