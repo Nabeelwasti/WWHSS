@@ -132,3 +132,6 @@ DO $$ BEGIN
       tsrange("startDate", COALESCE("endDate", 'infinity'::timestamp), '[)') WITH &&
     );
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+ALTER TABLE "document_records" ADD COLUMN IF NOT EXISTS "referenceId" TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS "document_records_docType_referenceId_key" ON "document_records" ("docType","referenceId");
