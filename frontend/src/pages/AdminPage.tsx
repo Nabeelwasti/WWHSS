@@ -7,8 +7,10 @@ import { AiAssessmentStudioSection } from "../components/AiAssessmentStudioSecti
 import { DocumentEngineSection } from "../components/DocumentEngineSection";
 import { CmsManagementSection } from "../components/CmsManagementSection";
 import { BackupManagementSection } from "../components/BackupManagementSection";
+import { LibraryManagementSection } from "../components/LibraryManagementSection";
+import { StaffManagementSection } from "../components/StaffManagementSection";
 
-type AdminTab = "users" | "students" | "finance" | "assessment" | "documents" | "cms" | "backups";
+type AdminTab = "users" | "staff" | "students" | "finance" | "library" | "assessment" | "documents" | "cms" | "backups";
 
 export function AdminPage() {
   const { t } = useLanguage();
@@ -16,15 +18,21 @@ export function AdminPage() {
   const [users, setUsers] = useState<UserSummary[] | null>(null);
   const [roles, setRoles] = useState<RoleSummary[] | null>(null);
   const [classes, setClasses] = useState<ClassSummary[] | null>(null);
+  const [subjects, setSubjects] = useState<{ id: string; name: string; code: string | null }[]>([]);
+  const [departments, setDepartments] = useState<{ id: string; name: string; code: string | null }[]>([]);
+  const [academicYears, setAcademicYears] = useState<{ id: string; label: string; startDate: string; endDate: string; isActive: boolean }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   async function refresh() {
     try {
-      const [u, r, c] = await Promise.all([api.listUsers(), api.listRoles(), api.listClasses()]);
+      const [u, r, c, s, d, y] = await Promise.all([api.listUsers(), api.listRoles(), api.listClasses(), api.listSubjects(), api.listDepartments(), api.listAcademicYears()]);
       setUsers(u.users);
       setRoles(r.roles);
       setClasses(c.classes);
+      setSubjects(s.subjects);
+      setDepartments(d.departments);
+      setAcademicYears(y.academicYears);
       setError(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not load admin data.");
@@ -73,8 +81,11 @@ export function AdminPage() {
     const userId = String(form.get("userId"));
     const roleKey = String(form.get("roleKey"));
     const classId = String(form.get("classId") || "") || undefined;
+    const sectionId = String(form.get("sectionId") || "") || undefined;
+    const subjectId = String(form.get("subjectId") || "") || undefined;
+    const departmentId = String(form.get("departmentId") || "") || undefined;
     try {
-      await api.assignRole(userId, { roleKey, classId });
+      await api.assignRole(userId, { roleKey, classId, sectionId, subjectId, departmentId });
       setNotice("Role assigned.");
       refresh();
     } catch (e) {
@@ -114,8 +125,10 @@ export function AdminPage() {
 
       <div className="flex gap-2 flex-wrap" style={{ marginBottom: 16 }}>
         {tabBtn("users", "Users & Roles")}
+        {tabBtn("staff", "Staff & Teachers")}
         {tabBtn("students", "Student Directory")}
         {tabBtn("finance", "Finance & Funding")}
+        {tabBtn("library", "Library")}
         {tabBtn("assessment", "AI Assessment Studio")}
         {tabBtn("documents", "Document Center")}
         {tabBtn("cms", "CMS & Announcements")}
@@ -139,6 +152,8 @@ export function AdminPage() {
       {tab === "documents" && <DocumentEngineSection />}
       {tab === "cms" && <CmsManagementSection />}
       {tab === "backups" && <BackupManagementSection />}
+      {tab === "staff" && <StaffManagementSection />}
+      {tab === "library" && <LibraryManagementSection />}
 
       {tab === "users" && (
         <>
@@ -178,11 +193,19 @@ export function AdminPage() {
               </select>
               <select className="input" name="classId" defaultValue="" aria-label="Class Scope">
                 <option value="">{t("admin.noScope")}</option>
-                {classes?.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
+                {classes?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <select className="input" name="sectionId" defaultValue="" aria-label="Section Scope">
+                <option value="">{t("admin.noScope")}</option>
+                {classes?.flatMap((c) => c.sections.map((s) => <option key={s.id} value={s.id}>{c.name} — {s.name}</option>))}
+              </select>
+              <select className="input" name="subjectId" defaultValue="" aria-label="Subject Scope">
+                <option value="">{t("admin.noScope")}</option>
+                {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}{s.code ? " (" + s.code + ")" : ""}</option>)}
+              </select>
+              <select className="input" name="departmentId" defaultValue="" aria-label="Department Scope">
+                <option value="">{t("admin.noScope")}</option>
+                {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
               <button type="submit" className="btn btn-primary">
                 {t("admin.assign")}
@@ -194,7 +217,10 @@ export function AdminPage() {
             <h2 className="card-title">{t("admin.createClass")}</h2>
             <form onSubmit={handleCreateClass} className="flex gap-2 flex-wrap">
               <input className="input" name="name" placeholder={t("admin.className")} aria-label={t("admin.className")} required />
-              <input className="input" name="academicYearId" placeholder={t("admin.academicYearId")} aria-label={t("admin.academicYearId")} required />
+              <select className="input" name="academicYearId" aria-label={t("admin.academicYearId")} required defaultValue="">
+                <option value="" disabled>{t("admin.academicYearId")}</option>
+                {academicYears.map((year) => <option key={year.id} value={year.id}>{year.label}{year.isActive ? " (active)" : ""}</option>)}
+              </select>
               <button type="submit" className="btn btn-primary">
                 {t("admin.create")}
               </button>
