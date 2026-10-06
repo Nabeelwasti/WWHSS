@@ -112,7 +112,7 @@ export class S3BackupProvider implements BackupProvider {
     this.client = new S3Client({ region: env.s3Region, credentials: env.s3AccessKeyId && env.s3SecretAccessKey ? { accessKeyId: env.s3AccessKeyId, secretAccessKey: env.s3SecretAccessKey } : undefined, ...(env.s3Endpoint ? { endpoint: env.s3Endpoint, forcePathStyle: true } : {}) });
   }
   private key(filename: string) { return BACKUP_PREFIX + safeBackupFilename(filename); }
-  async saveBackup(filename: string, payloadStr: string) { await this.client.send(new PutObjectCommand({ Bucket: env.s3Bucket!, Key: this.key(filename), Body: payloadStr, ContentType: "application/json", ServerSideEncryption: "AES256" })); }
+  async saveBackup(filename: string, payloadStr: string) { await this.client.send(new PutObjectCommand({ Bucket: env.s3Bucket!, Key: this.key(filename), Body: payloadStr, ContentType: "application/json" })); }
   async listBackups() {
     const out: BackupMetadata[] = []; let token: string | undefined;
     do { const page = await this.client.send(new ListObjectsV2Command({ Bucket: env.s3Bucket!, Prefix: BACKUP_PREFIX, ContinuationToken: token }));
