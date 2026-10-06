@@ -1,12 +1,27 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand, DeleteObjectCommand, NoSuchKey, S3Client, S3ServiceException } from "@aws-sdk/client-s3";
 import { prisma } from "../../db/client.js";
 import { env } from "../../config/env.js";
 
 export class BackupError extends Error {}
+export class BackupNotFoundError extends BackupError {}
 
 const BACKUP_DIR = path.resolve(process.cwd(), "backups");
+const BACKUP_PREFIX = "backups/";
+const BACKUP_SUFFIX = ".enc.json";
+function safeBackupFilename(filename: string): string {
+  const safe = path.basename(filename).replace(/[^a-zA-Z0-9._-]/g, "_");
+  if (!safe || safe !== filename || !safe.endsWith(BACKUP_SUFFIX) || safe.length > 180) throw new BackupError("Invalid backup filename");
+  return safe;
+}
+function envelopeMetadata(raw: string, filename: string): BackupMetadata {
+  let v: any;
+  try { v = JSON.parse(raw); } catch { throw new BackupError("Invalid backup envelope"); }
+  if (!v || v.encrypted !== true || !v.data?.ciphertext || !v.data?.iv || !v.data?.tag || typeof v.id !== "string" || typeof v.createdAt !== "string" || typeof v.version !== "string") throw new BackupError("Invalid encrypted backup envelope");
+  return { id: v.id, createdAt: v.createdAt, version: v.version, tables: v.tableCounts || {}, encrypted: true, filename };
+}
 
 export function ensureBackupDirExists() {
   if (!fs.existsSync(BACKUP_DIR)) {
@@ -44,7 +59,7 @@ export class LocalBackupProvider implements BackupProvider {
     if (!fs.existsSync(this.dir)) {
       fs.mkdirSync(this.dir, { recursive: true });
     }
-    const filePath = path.join(this.dir, filename);
+    const filePath = path.join(this.dir, safeBackupFilename(filename));
     await fs.promises.writeFile(filePath, payloadStr, "utf8");
   }
 
@@ -73,7 +88,7 @@ export class LocalBackupProvider implements BackupProvider {
   }
 
   async getBackupPayload(filename: string): Promise<string> {
-    const filePath = path.join(this.dir, filename);
+    const filePath = path.join(this.dir, safeBackupFilename(filename));
     if (!fs.existsSync(filePath)) {
       throw new BackupError(`Backup file ${filename} not found`);
     }
@@ -81,61 +96,38 @@ export class LocalBackupProvider implements BackupProvider {
   }
 
   async deleteBackup(filename: string): Promise<void> {
-    const filePath = path.join(this.dir, filename);
+    const filePath = path.join(this.dir, safeBackupFilename(filename));
     if (fs.existsSync(filePath)) {
       await fs.promises.unlink(filePath);
     }
   }
 }
 
-export class CloudBackupProvider implements BackupProvider {
-  private memoryBackups = new Map<string, string>();
-
-  async saveBackup(filename: string, payloadStr: string): Promise<void> {
-    // Private off-host cloud object storage.
-    // When S3 config is active, uploads backup blob to S3 bucket / backups directory.
-    // Fallback keeps in private server-side cloud backup map.
-    this.memoryBackups.set(filename, payloadStr);
+export class S3BackupProvider implements BackupProvider {
+  private readonly client: S3Client;
+  constructor() {
+    if (!env.s3Bucket) throw new BackupError("S3_BUCKET is required for S3 backups");
+    this.client = new S3Client({ region: env.s3Region, credentials: env.s3AccessKeyId && env.s3SecretAccessKey ? { accessKeyId: env.s3AccessKeyId, secretAccessKey: env.s3SecretAccessKey } : undefined, ...(env.s3Endpoint ? { endpoint: env.s3Endpoint, forcePathStyle: true } : {}) });
   }
-
-  async listBackups(): Promise<BackupMetadata[]> {
-    const list: BackupMetadata[] = [];
-    for (const [file, payloadStr] of this.memoryBackups.entries()) {
-      try {
-        const content = JSON.parse(payloadStr);
-        list.push({
-          id: content.id || file,
-          createdAt: content.createdAt || new Date().toISOString(),
-          version: content.version || "1.0.0",
-          tables: content.tableCounts || {},
-          encrypted: Boolean(content.encrypted),
-          filename: file,
-        });
-      } catch {
-        // skip
-      }
-    }
-    return list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  private key(filename: string) { return BACKUP_PREFIX + safeBackupFilename(filename); }
+  async saveBackup(filename: string, payloadStr: string) { await this.client.send(new PutObjectCommand({ Bucket: env.s3Bucket!, Key: this.key(filename), Body: payloadStr, ContentType: "application/json", ServerSideEncryption: "AES256" })); }
+  async listBackups() {
+    const out: BackupMetadata[] = []; let token: string | undefined;
+    do { const page = await this.client.send(new ListObjectsV2Command({ Bucket: env.s3Bucket!, Prefix: BACKUP_PREFIX, ContinuationToken: token }));
+      for (const obj of page.Contents ?? []) { const key=obj.Key; if (!key || !key.startsWith(BACKUP_PREFIX)) continue; const filename=key.slice(BACKUP_PREFIX.length); if (!filename.endsWith(BACKUP_SUFFIX)) continue; try { out.push(envelopeMetadata(await this.getBackupPayload(filename), filename)); } catch (e) { if (!(e instanceof BackupNotFoundError)) throw e; } }
+      token=page.IsTruncated ? page.NextContinuationToken : undefined;
+    } while(token); return out.sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
   }
-
-  async getBackupPayload(filename: string): Promise<string> {
-    const payload = this.memoryBackups.get(filename);
-    if (!payload) {
-      throw new BackupError(`Backup file ${filename} not found`);
-    }
-    return payload;
-  }
-
-  async deleteBackup(filename: string): Promise<void> {
-    this.memoryBackups.delete(filename);
-  }
+  async getBackupPayload(filename: string) { const safe=safeBackupFilename(filename); try { const r=await this.client.send(new GetObjectCommand({Bucket:env.s3Bucket!,Key:this.key(safe)})); if(!r.Body) throw new BackupNotFoundError("Backup not found"); return await r.Body.transformToString(); } catch(e) { if(e instanceof BackupNotFoundError || e instanceof NoSuchKey || (e instanceof S3ServiceException && e.$metadata.httpStatusCode===404)) throw new BackupNotFoundError(`Backup file ${safe} not found`); throw new BackupError(`Failed to retrieve backup: ${e instanceof Error?e.message:String(e)}`); } }
+  async deleteBackup(filename: string) { const safe=safeBackupFilename(filename); try { await this.client.send(new DeleteObjectCommand({Bucket:env.s3Bucket!,Key:this.key(safe)})); } catch(e) { throw new BackupError(`Failed to delete backup: ${e instanceof Error?e.message:String(e)}`); } }
 }
+export class CloudBackupProvider extends S3BackupProvider {}
 
 export class MemoryBackupProvider implements BackupProvider {
   private store = new Map<string, string>();
 
   async saveBackup(filename: string, payloadStr: string): Promise<void> {
-    this.store.set(filename, payloadStr);
+    this.store.set(safeBackupFilename(filename), payloadStr);
   }
 
   async listBackups(): Promise<BackupMetadata[]> {
@@ -159,7 +151,7 @@ export class MemoryBackupProvider implements BackupProvider {
   }
 
   async getBackupPayload(filename: string): Promise<string> {
-    const val = this.store.get(filename);
+    const val = this.store.get(safeBackupFilename(filename));
     if (!val) {
       throw new BackupError(`Backup file ${filename} not found`);
     }
@@ -167,7 +159,7 @@ export class MemoryBackupProvider implements BackupProvider {
   }
 
   async deleteBackup(filename: string): Promise<void> {
-    this.store.delete(filename);
+    this.store.delete(safeBackupFilename(filename));
   }
 }
 
@@ -177,8 +169,9 @@ export function getBackupProvider(): BackupProvider {
   if (!activeBackupProvider) {
     const type = env.backupProvider;
     if (type === "s3" || type === "cloud") {
-      activeBackupProvider = new CloudBackupProvider();
+      activeBackupProvider = new S3BackupProvider();
     } else if (type === "memory") {
+      if (env.nodeEnv !== "test") throw new BackupError("Memory backup provider is permitted only in NODE_ENV=test");
       activeBackupProvider = new MemoryBackupProvider();
     } else {
       activeBackupProvider = new LocalBackupProvider();
@@ -431,30 +424,24 @@ export async function verifyBackupRecovery(
   return { valid: true, summary };
 }
 
-export async function restoreFromBackup(
-  filename: string,
-  encryptionSecret?: string
-): Promise<{ success: boolean; summary: Record<string, number> }> {
-  const provider = getBackupProvider();
-  const rawPayload = await provider.getBackupPayload(filename);
-
-  const fileContent = JSON.parse(rawPayload);
-  const secret = encryptionSecret || env.backupEncryptionKey;
-
-  if (!fileContent.encrypted || !fileContent.data) {
-    throw new BackupError("Invalid backup format or unencrypted file");
-  }
-
-  const decryptedJson = decryptData(fileContent.data, secret);
-  const parsed = JSON.parse(decryptedJson);
-
-  if (!parsed.meta || !parsed.tables) {
-    throw new BackupError("Decrypted backup payload is missing required schema sections");
-  }
-
-  const summary = Object.fromEntries(
-    Object.entries(parsed.tables).map(([k, v]) => [k, Array.isArray(v) ? v.length : typeof v === "number" ? v : 0])
-  );
-
-  return { success: true, summary };
+export async function restoreFromBackup(filename: string, encryptionSecret?: string, restoredByUserId?: string): Promise<{ success: boolean; summary: Record<string, number> }> {
+  if (!restoredByUserId) throw new BackupError("A privileged restoring user is required");
+  const raw = await getBackupProvider().getBackupPayload(filename);
+  let envelope: any; try { envelope=JSON.parse(raw); } catch { throw new BackupError("Invalid backup envelope"); }
+  if (!envelope.encrypted || !envelope.data) throw new BackupError("Invalid backup format or unencrypted file");
+  let parsed: any; try { parsed=JSON.parse(decryptData(envelope.data, encryptionSecret || env.backupEncryptionKey)); } catch(e) { if(e instanceof BackupError) throw e; throw new BackupError("Backup decryption or JSON validation failed"); }
+  if (!parsed.meta || !parsed.tables || typeof parsed.tables !== "object") throw new BackupError("Decrypted backup payload is missing required schema sections");
+  const tables=parsed.tables as Record<string, unknown>;
+  const tableMap: Record<string,string> = { users:"users", roles:"roles", permissions:"permissions", rolePermissions:"role_permissions", departments:"departments", userRoles:"user_roles", refreshTokens:"refresh_tokens", auditLogs:"audit_logs", academicYears:"academic_years", classes:"classes", sections:"sections", subjects:"subjects", studentProfiles:"student_profiles", staffProfiles:"staff_profiles", parentStudentLinks:"parent_student_links", fundingCategories:"funding_categories", studentFundingRecords:"student_funding_records", feeStructures:"fee_structures", feeInvoices:"fee_invoices", feeWaivers:"fee_waivers", payments:"payments", attendanceRecords:"attendance_records", courses:"courses", lessons:"lessons", resources:"resources", assignments:"assignments", submissions:"submissions", quizzes:"quizzes", quizQuestions:"quiz_questions", quizAttempts:"quiz_attempts", exams:"exams", examSubjects:"exam_subjects", examResults:"exam_results", aiUsageRecords:"ai_usage_records", aiAssessmentTests:"ai_assessment_tests", aiAssessmentQuestions:"ai_assessment_questions", aiAnswerSheets:"ai_answer_sheets", documentRecords:"document_records", rooms:"rooms", timetableSlots:"timetable_slots", books:"books", bookCopies:"book_copies", bookLoans:"book_loans", cmsPages:"cms_pages", notices:"notices", events:"events", galleryItems:"gallery_items", notifications:"notifications", schoolProfiles:"school_profiles", documentSequences:"document_sequences", storageFiles:"storage_files" };
+  const keys=Object.keys(tables); for(const k of keys) { if(!tableMap[k] || !Array.isArray(tables[k])) throw new BackupError(`Invalid or unsupported backup table: ${k}`); }
+  const result=await prisma.$transaction(async tx=>{
+    const fk=await tx.$queryRaw<Array<{childTable:string,parentTable:string}>>`SELECT child.relname AS "childTable", parent.relname AS "parentTable" FROM pg_constraint c JOIN pg_class child ON child.oid=c.conrelid JOIN pg_class parent ON parent.oid=c.confrelid JOIN pg_namespace n ON n.oid=child.relnamespace WHERE c.contype='f' AND n.nspname='public'`;
+    const selected=new Set(Object.values(tableMap)); const deps=new Map<string,Set<string>>(); const children=new Map<string,Set<string>>(); for(const t of selected){deps.set(t,new Set());children.set(t,new Set());} for(const f of fk){if(selected.has(f.childTable)&&selected.has(f.parentTable)&&f.childTable!==f.parentTable){deps.get(f.childTable)!.add(f.parentTable);children.get(f.parentTable)!.add(f.childTable);}}
+    const ready=[...selected].filter(t=>deps.get(t)!.size===0).sort(); const order:string[]=[]; while(ready.length){const t=ready.shift()!;order.push(t);for(const c of [...children.get(t)!].sort()){deps.get(c)!.delete(t);if(deps.get(c)!.size===0){ready.push(c);ready.sort();}}} if(order.length!==selected.size) throw new BackupError("Backup restore dependency graph contains a foreign-key cycle");
+    const reverse=new Map(Object.entries(tableMap).map(([k,v])=>[v,k])); const counts:Record<string,number>={};
+    for(const table of order){const key=reverse.get(table)!;const rows=tables[key] as Record<string,unknown>[]; if(!rows.length){counts[key]=0;continue;} const cols=await tx.$queryRaw<Array<{columnName:string}>>`SELECT column_name AS "columnName" FROM information_schema.columns WHERE table_schema='public' AND table_name=${table} ORDER BY ordinal_position`; const allowed=new Set(cols.map(c=>c.columnName)); const pk=await tx.$queryRaw<Array<{columnName:string}>>`SELECT kcu.column_name AS "columnName" FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name=kcu.constraint_name AND tc.table_name=kcu.table_name WHERE tc.table_schema='public' AND tc.constraint_type='PRIMARY KEY' AND tc.table_name=${table} ORDER BY kcu.ordinal_position`; if(!pk.length) throw new BackupError(`Table ${table} has no primary key`); let affected=0;
+      for(const row of rows){const names=Object.keys(row);if(names.some(n=>!allowed.has(n))) throw new BackupError(`Backup contains unknown column in ${key}`);const values=names.map(n=>row[n]===undefined?null:row[n]);const placeholders=values.map((_,i)=>`$${i+1}`).join(",");const qcols=names.map(n=>`"${n.replace(/"/g,'""')}"`).join(",");const conflict=pk.map(x=>`"${x.columnName.replace(/"/g,'""')}"`).join(",");const updates=names.filter(n=>!pk.some(x=>x.columnName===n)).map(n=>`"${n.replace(/"/g,'""')}"=EXCLUDED."${n.replace(/"/g,'""')}"`).join(",");const sql=`INSERT INTO "public"."${table}" (${qcols}) VALUES (${placeholders}) ON CONFLICT (${conflict}) DO ${updates?"UPDATE SET "+updates:"NOTHING"}`; affected+=await tx.$executeRawUnsafe(sql,...values); } counts[key]=affected; if(affected!==rows.length) throw new BackupError(`Restore count mismatch for ${key}`); }
+    await tx.auditLog.create({data:{userId:restoredByUserId,action:"backup:restore",resource:`backup:${safeBackupFilename(filename)}`,metadata:{version:envelope.version,tableCounts:envelope.tableCounts,restoredTables:order}}}); return counts;
+  },{maxWait:10000,timeout:120000});
+  return {success:true,summary:result};
 }

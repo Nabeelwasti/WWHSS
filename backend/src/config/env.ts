@@ -4,7 +4,8 @@ import { z } from "zod";
 const isVercelPreview = process.env.VERCEL_ENV === "preview";
 const isVercelProduction = process.env.VERCEL_ENV === "production";
 const isNodeProduction = process.env.NODE_ENV === "production";
-const isVercelDeployment = isVercelPreview || isVercelProduction;\nconst isProductionOrPreview = isNodeProduction || isVercelDeployment;
+const isVercelDeployment = isVercelPreview || isVercelProduction;
+const isProductionOrPreview = isNodeProduction || isVercelDeployment;
 
 const envSchema = z
   .object({
@@ -29,7 +30,7 @@ const envSchema = z
       : z.string().min(16).default("dev-backup-encryption-key-must-be-at-least-32-bytes!"),
 
     STORAGE_PROVIDER: z.enum(["local", "s3", "cloud"]).default("local"),
-    BACKUP_PROVIDER: z.enum(["local", "s3", "cloud"]).default("local"),
+    BACKUP_PROVIDER: z.enum(["local", "s3", "cloud", "memory"]).default("local"),
 
     S3_BUCKET: z.string().optional(),
     S3_REGION: z.string().default("us-east-1"),
@@ -59,32 +60,16 @@ const envSchema = z
     },
     { message: "Default/development secrets cannot be used in production or preview deployments" }
   )
-  .refine(
-    (data) => {
-      if (isProductionOrPreview) {
-        if ((data.STORAGE_PROVIDER === "s3" || data.STORAGE_PROVIDER === "cloud") && !data.S3_BUCKET) {
-          return false;
-        }
-      }
-      return true;
-    },
-    {
-      message: "S3_BUCKET is required when STORAGE_PROVIDER is s3 or cloud in production/preview",
-    }
-  )
-  .refine(
-    (data) => {
-      if (isProductionOrPreview) {
-        if ((data.BACKUP_PROVIDER === "s3" || data.BACKUP_PROVIDER === "cloud") && !data.S3_BUCKET) {
-          return false;
-        }
-      }
-      return true;
-    },
-    {
-      message: "S3_BUCKET is required when BACKUP_PROVIDER is s3 or cloud in production/preview",
-    }
-  );
+  .refine((data) => {
+    if (!isProductionOrPreview) return true;
+    if (data.STORAGE_PROVIDER === "local" || data.BACKUP_PROVIDER === "local" || data.BACKUP_PROVIDER === "memory") return false;
+    if (!data.S3_BUCKET || !data.S3_ACCESS_KEY_ID || !data.S3_SECRET_ACCESS_KEY) return false;
+    if (/localhost|127\.0\.0\.1/i.test(data.CORS_ORIGIN)) return false;
+    if (!["true", "1"].includes(data.TRUST_PROXY)) return false;
+    return true;
+  }, {
+    message: "Preview/production requires durable S3-compatible storage/backups, complete S3 credentials, non-localhost CORS, and TRUST_PROXY=true/1",
+  });
 
 const parsed = envSchema.safeParse(process.env);
 if (!parsed.success) {
