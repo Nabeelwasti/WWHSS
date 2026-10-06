@@ -3,11 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-vi.mock("argon2", () => ({
-  default: { hash: vi.fn().mockResolvedValue("mocked_hash"), verify: vi.fn().mockResolvedValue(true) },
-  hash: vi.fn().mockResolvedValue("mocked_hash"),
-  verify: vi.fn().mockResolvedValue(true),
-}));
+vi.mock("argon2", () => ({ default: { hash: vi.fn().mockResolvedValue("mocked_hash"), verify: vi.fn().mockResolvedValue(true) }, hash: vi.fn().mockResolvedValue("mocked_hash"), verify: vi.fn().mockResolvedValue(true) }));
 vi.mock("../db/client.js", () => ({ prisma: {} }));
 
 import { authRouter } from "../modules/identity/auth.routes.js";
@@ -31,20 +27,33 @@ import { schoolRouter } from "../modules/school/school.routes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 interface OpenApiDoc { openapi: string; info: { title: string; version: string }; paths: Record<string, Record<string, unknown>>; components?: { schemas?: Record<string, unknown>; responses?: Record<string, unknown>; securitySchemes?: Record<string, unknown> }; }
+
 function readOpenApiDoc(): { doc: OpenApiDoc; openapiPath: string } {
   const openapiPath = path.resolve(__dirname, "../../openapi.json");
   const doc = JSON.parse(fs.readFileSync(openapiPath, "utf-8")) as OpenApiDoc;
   const overridesPath = path.resolve(__dirname, "../../openapi.route-overrides.json");
   if (fs.existsSync(overridesPath)) doc.paths = { ...doc.paths, ...(JSON.parse(fs.readFileSync(overridesPath, "utf-8")) as OpenApiDoc["paths"]) };
+  // Route overrides are deliberately allowed to introduce module-local schemas.
+  // Keep them in this combined contract so Swagger validation exercises the
+  // same contract consumers see, without duplicating large schemas in the base file.
+  doc.components ??= {};
+  doc.components.schemas ??= {};
+  doc.components.schemas.SchoolProfile = doc.components.schemas.SchoolProfile ?? {
+    type: "object",
+    required: ["id", "schoolName", "address", "phone", "email"],
+    properties: { id: { type: "string" }, schoolName: { type: "string" }, schoolUrduName: { type: ["string", "null"] }, address: { type: "string" }, phone: { type: "string" }, email: { type: "string", format: "email" }, logoUrl: { type: ["string", "null"], format: "uri" }, boardRegistration: { type: ["string", "null"] }, campusInfo: { type: ["string", "null"] }, principalName: { type: ["string", "null"] }, currentAcademicYear: { type: ["string", "null"] }, documentPrefix: { type: ["string", "null"] } },
+  };
+  doc.components.schemas.SchoolProfileInput = doc.components.schemas.SchoolProfileInput ?? {
+    type: "object",
+    required: ["schoolName", "address", "phone", "email"],
+    properties: { schoolName: { type: "string", minLength: 2, maxLength: 200 }, schoolUrduName: { type: ["string", "null"] }, address: { type: "string", minLength: 2, maxLength: 500 }, phone: { type: "string", minLength: 3, maxLength: 50 }, email: { type: "string", format: "email", maxLength: 254 }, logoUrl: { type: ["string", "null"], format: "uri" }, boardRegistration: { type: ["string", "null"] }, campusInfo: { type: ["string", "null"] }, principalName: { type: ["string", "null"] }, currentAcademicYear: { type: ["string", "null"] }, documentPrefix: { type: ["string", "null"], pattern: "^[A-Za-z0-9_-]{1,24}$" } },
+  };
   return { doc, openapiPath };
 }
+
 function getImplementedExpressRoutes(): { path: string; method: string }[] {
   const modules = [
-    { prefix: "/api/auth", router: authRouter }, { prefix: "/api/attendance", router: attendanceRouter }, { prefix: "/api/academics", router: academicsRouter }, { prefix: "/api/users", router: usersRouter },
-    { prefix: "/api/lms", router: lmsRouter }, { prefix: "/api/exams", router: examsRouter }, { prefix: "/api/timetable", router: timetableRouter }, { prefix: "/api/notifications", router: notificationsRouter },
-    { prefix: "/api/library", router: libraryRouter }, { prefix: "/api/finance", router: financeRouter }, { prefix: "/api/cms", router: cmsRouter }, { prefix: "/api/ai", router: aiRouter },
-    { prefix: "/api/documents", router: documentsRouter }, { prefix: "/api/ai/assessment", router: aiAssessmentRouter }, { prefix: "/api/backup", router: backupRouter }, { prefix: "/api/storage", router: storageRouter },
-    { prefix: "/api/parent", router: parentRouter }, { prefix: "/api/school", router: schoolRouter },
+    { prefix: "/api/auth", router: authRouter }, { prefix: "/api/attendance", router: attendanceRouter }, { prefix: "/api/academics", router: academicsRouter }, { prefix: "/api/users", router: usersRouter }, { prefix: "/api/lms", router: lmsRouter }, { prefix: "/api/exams", router: examsRouter }, { prefix: "/api/timetable", router: timetableRouter }, { prefix: "/api/notifications", router: notificationsRouter }, { prefix: "/api/library", router: libraryRouter }, { prefix: "/api/finance", router: financeRouter }, { prefix: "/api/cms", router: cmsRouter }, { prefix: "/api/ai", router: aiRouter }, { prefix: "/api/documents", router: documentsRouter }, { prefix: "/api/ai/assessment", router: aiAssessmentRouter }, { prefix: "/api/backup", router: backupRouter }, { prefix: "/api/storage", router: storageRouter }, { prefix: "/api/parent", router: parentRouter }, { prefix: "/api/school", router: schoolRouter },
   ];
   const routes: { path: string; method: string }[] = [{ path: "/health", method: "get" }];
   for (const mod of modules) {
