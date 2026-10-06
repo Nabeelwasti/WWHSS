@@ -741,7 +741,7 @@ model PaymentAdjustment {
   createdAt       DateTime @default(now())
 
   payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  adjustedBy User @relation(fields: [adjustedByUserId], references: [id])
+  adjustedBy User @relation("AdjustedPayments", fields: [adjustedByUserId], references: [id])
 
   @@index([paymentId])
   @@index([kind, createdAt])
