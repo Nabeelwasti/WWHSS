@@ -248,7 +248,7 @@ export const api = {
 
   assignRole: (
     userId: string,
-    input: { roleKey: string; classId?: string; sectionId?: string; subjectId?: string }
+    input: { roleKey: string; classId?: string; sectionId?: string; subjectId?: string; departmentId?: string }
   ) =>
     request(`/users/${userId}/roles`, { method: "POST", body: JSON.stringify(input) }),
 
