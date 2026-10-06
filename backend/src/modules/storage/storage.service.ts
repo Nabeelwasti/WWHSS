@@ -242,7 +242,7 @@ export async function savePrivateFile(
   if (input.studentProfileId) {
     const student = await prisma.studentProfile.findUnique({ where: { id: input.studentProfileId }, select: { userId: true, classId: true, sectionId: true } });
     if (!student) throw new StorageValidationError("Student profile not found");
-    const allowed = student.userId === uploadedByUserId || await userHasPermission(uploadedByUserId, "students:manage", { classId: student.classId, sectionId: student.sectionId });
+    const allowed = student.userId === uploadedByUserId || await userHasPermission(uploadedByUserId, "students:manage", { classId: student.classId ?? undefined, sectionId: student.sectionId ?? undefined });
     if (!allowed) throw new StorageAuthorizationError("You are not authorized to upload for this student");
   }
   if (input.staffProfileId) {
