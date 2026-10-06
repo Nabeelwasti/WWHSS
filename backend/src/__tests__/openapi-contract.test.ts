@@ -32,6 +32,7 @@ import { documentsRouter } from "../modules/documents/documents.routes.js";
 import { aiAssessmentRouter } from "../modules/ai/ai-assessment.routes.js";
 import { backupRouter } from "../modules/backup/backup.routes.js";
 import { storageRouter } from "../modules/storage/storage.routes.js";
+import { parentRouter } from "../modules/parent/parent.routes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -64,6 +65,7 @@ function getImplementedExpressRoutes(): { path: string; method: string }[] {
     { prefix: "/api/ai/assessment", router: aiAssessmentRouter },
     { prefix: "/api/backup", router: backupRouter },
     { prefix: "/api/storage", router: storageRouter },
+    { prefix: "/api/parent", router: parentRouter },
   ];
 
   const routes: { path: string; method: string }[] = [{ path: "/health", method: "get" }];
