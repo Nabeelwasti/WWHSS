@@ -7,23 +7,23 @@ import { AttendancePage } from "./pages/AttendancePage";
 import { TimetablePage } from "./pages/TimetablePage";
 import { QuizzesPage } from "./pages/QuizzesPage";
 import { ParentPage } from "./pages/ParentPage";
+import { TeacherPage } from "./pages/TeacherPage";
 import { PublicHomePage } from "./pages/PublicHomePage";
 import { useLanguage, LanguageToggle } from "./i18n";
 import { AssistantLauncher } from "./components/AssistantLauncher";
 import { UpdateToast } from "./components/UpdateToast";
 
-// These checks decide which nav links to SHOW — a UI convenience based on
-// real role data from /auth/me, NOT the security boundary. The backend
-// re-checks the real permission on every request regardless of what this
-// menu shows.
 function hasAdminRole(roleKeys: string[]) {
   return roleKeys.some((k) => k === "super_admin" || k === "principal");
 }
 function canMarkAttendance(roleKeys: string[]) {
   return roleKeys.some((k) => k === "teacher" || k === "class_teacher" || k === "super_admin");
 }
+function hasTeacherRole(roleKeys: string[]) {
+  return roleKeys.some((k) => k === "teacher" || k === "class_teacher");
+}
 
-type View = "dashboard" | "admin" | "attendance" | "timetable" | "quizzes" | "parent";
+type View = "dashboard" | "teacher" | "admin" | "attendance" | "timetable" | "quizzes" | "parent";
 
 export default function App() {
   const { user, booting } = useAuth();
@@ -40,16 +40,12 @@ export default function App() {
     );
   }
 
-  if (!user) {
-    // A real public school website for anonymous visitors, with a genuine
-    // login option — not a forced login wall for content that should be
-    // public (notices, events).
-    return showLogin ? <LoginPage /> : <PublicHomePage onLoginClick={() => setShowLogin(true)} />;
-  }
+  if (!user) return showLogin ? <LoginPage /> : <PublicHomePage onLoginClick={() => setShowLogin(true)} />;
 
   const roleKeys = user.userRoles.map((ur) => ur.role.key);
   const showAdminLink = hasAdminRole(roleKeys);
   const showAttendanceLink = canMarkAttendance(roleKeys);
+  const showTeacherLink = hasTeacherRole(roleKeys);
   const showQuizzesLink = Boolean(user.studentProfile);
   const showParentLink = roleKeys.some((k) => k === "parent" || k === "guardian");
 
@@ -65,6 +61,7 @@ export default function App() {
         <div className="app-header-row">
           <nav className="app-nav">
             {navItem("dashboard", t("nav.dashboard"))}
+            {showTeacherLink && navItem("teacher", "Teacher Portal")}
             {navItem("timetable", t("nav.timetable"))}
             {showQuizzesLink && navItem("quizzes", t("nav.quizzes"))}
             {showAttendanceLink && navItem("attendance", t("nav.attendance"))}
@@ -75,21 +72,19 @@ export default function App() {
         </div>
       </header>
 
+      {view === "teacher" && showTeacherLink && <TeacherPage />}
       {view === "admin" && showAdminLink && <AdminPage />}
       {view === "attendance" && showAttendanceLink && <AttendancePage />}
       {view === "timetable" && <TimetablePage />}
       {view === "parent" && showParentLink && <ParentPage />}
-      {view === "quizzes" && showQuizzesLink && user.studentProfile && (
-        <QuizzesPage studentProfileId={user.studentProfile.id} />
-      )}
+      {view === "quizzes" && showQuizzesLink && user.studentProfile && <QuizzesPage studentProfileId={user.studentProfile.id} />}
       {(view === "dashboard" ||
+        (view === "teacher" && !showTeacherLink) ||
         (view === "admin" && !showAdminLink) ||
         (view === "attendance" && !showAttendanceLink) ||
         (view === "quizzes" && !showQuizzesLink) ||
         (view === "parent" && !showParentLink)) && <DashboardPage />}
 
-      {/* Available on every screen once logged in — a real, scoped
-          assistant launcher rather than an intrusive forced "tour". */}
       <AssistantLauncher />
       <UpdateToast />
     </div>
