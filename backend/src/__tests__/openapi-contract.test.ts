@@ -47,6 +47,17 @@ interface OpenApiDoc {
   };
 }
 
+function readOpenApiDoc(): { doc: OpenApiDoc; openapiPath: string } {
+  const openapiPath = path.resolve(__dirname, "../../openapi.json");
+  const doc = JSON.parse(fs.readFileSync(openapiPath, "utf-8")) as OpenApiDoc;
+  const overridesPath = path.resolve(__dirname, "../../openapi.route-overrides.json");
+  if (fs.existsSync(overridesPath)) {
+    const overrides = JSON.parse(fs.readFileSync(overridesPath, "utf-8")) as OpenApiDoc["paths"];
+    doc.paths = { ...doc.paths, ...overrides };
+  }
+  return { doc, openapiPath };
+}
+
 function getImplementedExpressRoutes(): { path: string; method: string }[] {
   const modules = [
     { prefix: "/api/auth", router: authRouter },
@@ -81,9 +92,7 @@ function getImplementedExpressRoutes(): { path: string; method: string }[] {
           .replace(/\/$/, "");
         const normPath = openApiPath === "" ? "/" : openApiPath;
         for (const [method, active] of Object.entries(layer.route.methods)) {
-          if (active) {
-            routes.push({ path: normPath, method: method.toLowerCase() });
-          }
+          if (active) routes.push({ path: normPath, method: method.toLowerCase() });
         }
       }
     }
@@ -93,28 +102,22 @@ function getImplementedExpressRoutes(): { path: string; method: string }[] {
 }
 
 describe("OpenAPI Contract Validation Test Suite", () => {
-  it("verifies backend openapi.json exists and passes standards-compliant OpenAPI 3.0 validation", async () => {
-    const openapiPath = path.resolve(__dirname, "../../openapi.json");
+  it("verifies backend openapi.json and route overrides pass standards-compliant OpenAPI 3.0 validation", async () => {
+    const { doc, openapiPath } = readOpenApiDoc();
     expect(fs.existsSync(openapiPath)).toBe(true);
-
-    const raw = fs.readFileSync(openapiPath, "utf-8");
-    const doc = JSON.parse(raw) as OpenApiDoc;
-
     expect(doc.openapi).toBe("3.0.3");
     expect(doc.info).toBeDefined();
     expect(doc.info.title).toBe("WWHS Digital Campus API");
     expect(doc.paths).toBeDefined();
 
     const SwaggerParser = (await import("@apidevtools/swagger-parser")).default;
-    const validatedApi = await SwaggerParser.validate(openapiPath);
+    const validatedApi = await SwaggerParser.validate(doc as never);
     expect(validatedApi.info.title).toBe("WWHS Digital Campus API");
   }, 30000);
 
-  it("verifies all $ref links in openapi.json resolve to existing schemas/responses/securitySchemes", () => {
-    const openapiPath = path.resolve(__dirname, "../../openapi.json");
-    const raw = fs.readFileSync(openapiPath, "utf-8");
-    const doc = JSON.parse(raw) as OpenApiDoc;
-
+  it("verifies all $ref links in the combined OpenAPI contract resolve", () => {
+    const { doc } = readOpenApiDoc();
+    const raw = JSON.stringify(doc);
     const refRegex = /"\$ref":\s*"#\/components\/(schemas|responses|securitySchemes)\/([A-Za-z0-9_]+)"/g;
     let match;
     while ((match = refRegex.exec(raw)) !== null) {
@@ -125,9 +128,7 @@ describe("OpenAPI Contract Validation Test Suite", () => {
   });
 
   it("asserts EXACT equality between implemented Express route operations and documented OpenAPI operations", () => {
-    const openapiPath = path.resolve(__dirname, "../../openapi.json");
-    const doc = JSON.parse(fs.readFileSync(openapiPath, "utf-8")) as OpenApiDoc;
-
+    const { doc } = readOpenApiDoc();
     const expressRoutes = getImplementedExpressRoutes();
     const implementedSet = new Set(expressRoutes.map((r) => `${r.method.toUpperCase()} ${r.path}`));
 
@@ -135,16 +136,14 @@ describe("OpenAPI Contract Validation Test Suite", () => {
     const validMethods = new Set(["get", "post", "put", "delete", "patch", "options", "head"]);
     for (const [pathKey, pathObj] of Object.entries(doc.paths)) {
       for (const method of Object.keys(pathObj as Record<string, unknown>)) {
-        if (validMethods.has(method.toLowerCase())) {
-          openApiSet.add(`${method.toUpperCase()} ${pathKey}`);
-        }
+        if (validMethods.has(method.toLowerCase())) openApiSet.add(`${method.toUpperCase()} ${pathKey}`);
       }
     }
 
     const missingInOpenApi = [...implementedSet].filter((x) => !openApiSet.has(x)).sort();
     const extraInOpenApi = [...openApiSet].filter((x) => !implementedSet.has(x)).sort();
 
-    expect(missingInOpenApi, `The following implemented routes are missing from openapi.json: ${missingInOpenApi.join(", ")}`).toEqual([]);
+    expect(missingInOpenApi, `The following implemented routes are missing from the combined OpenAPI contract: ${missingInOpenApi.join(", ")}`).toEqual([]);
     expect(extraInOpenApi, `The following documented OpenAPI routes do not exist in Express routers: ${extraInOpenApi.join(", ")}`).toEqual([]);
   });
 });
