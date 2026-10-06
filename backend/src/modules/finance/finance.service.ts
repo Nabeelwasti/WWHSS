@@ -102,6 +102,12 @@ export async function assignStudentFundingRecord(
   const endDate = input.endDate ? new Date(input.endDate) : undefined;
   if (endDate && Number.isNaN(endDate.getTime())) throw new FinanceValidationError("Invalid end date");
   if (endDate && endDate < startDate) throw new FinanceValidationError("Funding end date cannot be before start date");
+  if (input.waiverPercentage !== undefined && (!Number.isFinite(input.waiverPercentage) || input.waiverPercentage < 0 || input.waiverPercentage > 100)) {
+    throw new FinanceValidationError("Waiver percentage must be between 0 and 100");
+  }
+  if (input.customFeeAmount !== undefined && (!Number.isFinite(input.customFeeAmount) || input.customFeeAmount < 0)) {
+    throw new FinanceValidationError("Custom fee amount cannot be negative");
+  }
   if (input.feePolicy === "PARTIALLY_WAIVED" && input.waiverPercentage === undefined) throw new FinanceValidationError("Partial funding requires waiverPercentage");
   if (input.feePolicy === "CUSTOM" && input.customFeeAmount === undefined) throw new FinanceValidationError("Custom funding requires customFeeAmount");
 
@@ -233,10 +239,14 @@ export async function generateInvoicesForClass(feeStructureId: string, dueDate: 
 
   const baseAmount = feeStructure.amount;
 
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
     const invoices = await Promise.all(
       feeStructure.class.students.map(async (student) => {
-        const activeFunding = student.fundingRecords.find((r) => r.startDate <= feeStructure.academicYear.endDate && (!r.endDate || r.endDate >= feeStructure.academicYear.startDate));
+        // Funding is effective for the invoice's actual billing/due date, not
+        // merely because the funding record overlaps the academic year.
+        const activeFunding = student.fundingRecords.find((r) =>
+          r.startDate <= parsedDueDate && (!r.endDate || r.endDate >= parsedDueDate)
+        );
         let calculatedAmountDue = baseAmount;
         let initialStatus = "pending";
 
@@ -398,7 +408,9 @@ export async function recordPayment(input: { invoiceId: string; amount: number; 
     }
 
     const previousPayments = await tx.payment.findMany({ where: { invoiceId: input.invoiceId } });
-    const previousPaidTotal = previousPayments.reduce((sum, p) => sum.add(new Prisma.Decimal(p.amount)), new Prisma.Decimal(0));
+    const previousPaidTotal = previousPayments
+      .filter((p) => p.status !== "reversed")
+      .reduce((sum, p) => sum.add(new Prisma.Decimal(p.amount)), new Prisma.Decimal(0));
     const waivers = await tx.feeWaiver.findMany({ where: { invoiceId: input.invoiceId } });
     const waivedTotal = waivers.reduce((sum, w) => sum.add(new Prisma.Decimal(w.amount)), new Prisma.Decimal(0));
 
@@ -426,6 +438,8 @@ export async function recordPayment(input: { invoiceId: string; amount: number; 
       await tx.feeInvoice.update({ where: { id: input.invoiceId }, data: { status: "paid" } });
     } else if (newTotalPaid.gt(new Prisma.Decimal(0))) {
       await tx.feeInvoice.update({ where: { id: input.invoiceId }, data: { status: "partial" } });
+    } else {
+      await tx.feeInvoice.update({ where: { id: input.invoiceId }, data: { status: "issued" } });
     }
 
     await tx.auditLog.create({
@@ -477,7 +491,7 @@ export async function getStudentFeeStatement(studentProfileId: string) {
 
   for (const inv of invoices) {
     totalBilled = totalBilled.add(inv.amountDue);
-    const paid = inv.payments.reduce((sum, p) => sum.add(p.amount), new Prisma.Decimal(0));
+    const paid = inv.payments.filter((p) => p.status !== "reversed").reduce((sum, p) => sum.add(p.amount), new Prisma.Decimal(0));
     const waived = inv.feeWaivers.reduce((sum, w) => sum.add(w.amount), new Prisma.Decimal(0));
     totalPaid = totalPaid.add(paid);
     totalWaived = totalWaived.add(waived);
@@ -498,10 +512,13 @@ export async function getStudentFeeStatement(studentProfileId: string) {
 }
 
 export async function adjustPayment(input: { paymentId: string; kind: "REFUND" | "REVERSAL" | "ADJUSTMENT"; amount: number; reason: string; reference?: string; adjustedByUserId: string }) {
-  if (input.amount <= 0) throw new FinanceValidationError("Adjustment amount must be greater than zero");
+  if (typeof input.amount !== "number" || !Number.isFinite(input.amount) || input.amount <= 0) {
+    throw new FinanceValidationError("Adjustment amount must be greater than zero");
+  }
   return runSerializableTransaction(async (tx) => {
     const payment = await tx.payment.findUnique({ where: { id: input.paymentId }, include: { invoice: true, adjustments: true } });
     if (!payment) throw new FinanceValidationError("Payment not found");
+    if (payment.status === "reversed") throw new FinanceValidationError("Cannot adjust a reversed payment");
     const adjusted = payment.adjustments.reduce((s, a) => s.add(a.amount), new Prisma.Decimal(0));
     const available = payment.amount.sub(adjusted);
     const amount = new Prisma.Decimal(input.amount);
@@ -518,7 +535,7 @@ export async function refreshInvoiceStatus(invoiceId: string, actorId?: string) 
   return runSerializableTransaction(async (tx) => {
     const invoice = await tx.feeInvoice.findUnique({ where: { id: invoiceId }, include: { payments: { include: { adjustments: true } }, feeWaivers: true } });
     if (!invoice) throw new FinanceValidationError("Invoice not found");
-    const paid = invoice.payments.filter(p => p.status !== "reversed").reduce((s,p) => s.add(p.amount.sub(p.adjustments.reduce((a,x)=>a.add(x.amount),new Prisma.Decimal(0)))),new Prisma.Decimal(0));
+    const paid = invoice.payments.filter(p => p.status !== "reversed").reduce((s,p)=>s.add(p.amount.sub(p.adjustments.reduce((a,x)=>a.add(x.amount),new Prisma.Decimal(0)))),new Prisma.Decimal(0));
     const waived = invoice.feeWaivers.reduce((s,w)=>s.add(w.amount),new Prisma.Decimal(0));
     const remaining = invoice.amountDue.sub(paid).sub(waived);
     const status = remaining.lte(0) ? (paid.gt(0) ? "paid" : "waived") : paid.gt(0) ? "partial" : invoice.dueDate < new Date() ? "overdue" : "issued";
@@ -571,7 +588,7 @@ export async function getFinancialSummaryReport() {
 
   for (const inv of invoices) {
     totalBilled = totalBilled.add(inv.amountDue);
-    const isFunded = inv.student.fundingRecords.some((r) => r.startDate <= inv.feeStructure.academicYear.endDate && (!r.endDate || r.endDate >= inv.feeStructure.academicYear.startDate));
+    const isFunded = inv.student.fundingRecords.some((r) => r.startDate <= inv.dueDate && (!r.endDate || r.endDate >= inv.dueDate));
     if (isFunded) {
       fundedBilled = fundedBilled.add(inv.amountDue);
     } else {
