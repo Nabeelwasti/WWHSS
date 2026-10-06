@@ -47,6 +47,9 @@ jobs:
       - name: Validate Prisma schema
         working-directory: backend
         run: npx prisma validate
+      - name: Verify Prisma schema and migration history are equivalent
+        working-directory: backend
+        run: npx prisma migrate diff --from-migrations ./prisma/migrations --to-schema-datamodel ./prisma/schema.prisma --exit-code
       - name: Verify migration directory presence
         working-directory: backend
         run: test -d prisma/migrations && test -f prisma/migrations/migration_lock.toml
