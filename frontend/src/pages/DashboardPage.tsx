@@ -44,8 +44,8 @@ export function DashboardPage() {
   if (!user) return null;
 
   return (
-    <div className="page">
-      <header className="flex justify-between items-center">
+    <main className="page">
+      <div className="flex justify-between items-center">
         <div>
           <h1 style={{ fontSize: 20, margin: 0 }}>
             {t("dash.welcome")}, {user.fullName.split(" ")[0]}
@@ -62,7 +62,7 @@ export function DashboardPage() {
             {t("common.signOut")}
           </button>
         </div>
-      </header>
+      </div>
 
       <section className="card">
         <h2 className="card-title">{t("dash.myClasses")}</h2>
@@ -119,6 +119,6 @@ export function DashboardPage() {
       <ChangePasswordSection />
 
 
-    </div>
+    </main>
   );
 }
