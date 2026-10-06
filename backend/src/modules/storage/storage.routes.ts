@@ -76,6 +76,9 @@ storageRouter.post("/upload", authorize("academics:view"), async (req, res) => {
 storageRouter.get("/files/:filename", authorize("academics:view"), async (req, res) => {
   try {
     const fileData = await getPrivateFileContent(req.params.filename, req.userId!);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Disposition", `attachment; filename="${req.params.filename.replace(/[^A-Za-z0-9._-]/g, "_")}"`);
     if (fileData.filePath) {
       return res.sendFile(fileData.filePath);
     }
