@@ -197,8 +197,8 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
           remarks: r.remarks || "",
         })),
         signatures: [
-          { title: "Class Teacher", name: "____________________" },
-          { title: "Principal / Headmaster", name: "____________________" },
+          { title: "Class Teacher", name: null, status: "PENDING_SIGNATURE" },
+          { title: "Principal / Headmaster", name: null, status: "PENDING_SIGNATURE" },
         ],
       };
     }
@@ -274,8 +274,8 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
         },
         statement: `This is to certify that ${student.user.fullName}, son/daughter of ${student.fatherName || "the guardian"}, was a bona fide student of this institution. All school dues have been cleared.`,
         signatures: [
-          { title: "Exam Incharge", name: "____________________" },
-          { title: "Principal", name: "____________________" },
+          { title: "Exam Incharge", name: null, status: "PENDING_SIGNATURE" },
+          { title: "Principal", name: null, status: "PENDING_SIGNATURE" },
         ],
       };
     }
@@ -313,7 +313,7 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
           waived: inv.feeWaivers.reduce((sum, w) => sum + w.amount.toNumber(), 0),
           status: inv.status.toUpperCase(),
         })),
-        signatures: [{ title: "Accounts Officer", name: "____________________" }],
+        signatures: [{ title: "Accounts Officer", name: null, status: "PENDING_SIGNATURE" }],
       };
     }
 
@@ -345,7 +345,7 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
           date: a.date.toISOString().slice(0, 10),
           status: a.status.toUpperCase(),
         })),
-        signatures: [{ title: "Class Teacher", name: "____________________" }],
+        signatures: [{ title: "Class Teacher", name: null, status: "PENDING_SIGNATURE" }],
       };
     }
 
