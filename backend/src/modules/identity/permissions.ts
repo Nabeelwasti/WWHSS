@@ -82,8 +82,8 @@ export async function userHasPermission(
         if (roleIsUnscoped) return true;
 
         if (scopeMatches(ur, {
-          classId: studentProfile.classId,
-          sectionId: studentProfile.sectionId,
+          classId: studentProfile.classId ?? undefined,
+          sectionId: studentProfile.sectionId ?? undefined,
           subjectId: undefined,
           departmentId: undefined,
         })) return true;
