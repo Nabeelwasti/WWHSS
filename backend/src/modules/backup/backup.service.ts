@@ -199,6 +199,7 @@ export async function exportDatabaseData() {
     sections,
     subjects,
     studentProfiles,
+    studentEnrollmentHistory,
     staffProfiles,
     parentStudentLinks,
     fundingCategories,
@@ -207,8 +208,10 @@ export async function exportDatabaseData() {
     feeInvoices,
     feeWaivers,
     payments,
+    paymentAdjustments,
     attendanceRecords,
     courses,
+    courseTeacherAssignments,
     lessons,
     resources,
     assignments,
@@ -251,6 +254,7 @@ export async function exportDatabaseData() {
     prisma.section.findMany(),
     prisma.subject.findMany(),
     prisma.studentProfile.findMany(),
+    prisma.studentEnrollmentHistory.findMany(),
     prisma.staffProfile.findMany(),
     prisma.parentStudentLink.findMany(),
     prisma.fundingCategory.findMany(),
@@ -259,8 +263,10 @@ export async function exportDatabaseData() {
     prisma.feeInvoice.findMany(),
     prisma.feeWaiver.findMany(),
     prisma.payment.findMany(),
+    prisma.paymentAdjustment.findMany(),
     prisma.attendanceRecord.findMany(),
     prisma.course.findMany(),
+    prisma.courseTeacherAssignment.findMany(),
     prisma.lesson.findMany(),
     prisma.resource.findMany(),
     prisma.assignment.findMany(),
@@ -311,6 +317,7 @@ export async function exportDatabaseData() {
       sections,
       subjects,
       studentProfiles,
+      studentEnrollmentHistory,
       staffProfiles,
       parentStudentLinks,
       fundingCategories,
@@ -319,8 +326,10 @@ export async function exportDatabaseData() {
       feeInvoices,
       feeWaivers,
       payments,
+      paymentAdjustments,
       attendanceRecords,
       courses,
+      courseTeacherAssignments,
       lessons,
       resources,
       assignments,
@@ -447,7 +456,7 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
   let parsed: any; try { parsed=JSON.parse(decryptData(envelope.data, encryptionSecret || env.backupEncryptionKey)); } catch(e) { if(e instanceof BackupError) throw e; throw new BackupError("Backup decryption or JSON validation failed"); }
   if (!parsed.meta || !parsed.tables || typeof parsed.tables !== "object") throw new BackupError("Decrypted backup payload is missing required schema sections");
   const tables=parsed.tables as Record<string, unknown>;
-  const tableMap: Record<string,string> = { users:"users", roles:"roles", permissions:"permissions", rolePermissions:"role_permissions", departments:"departments", userRoles:"user_roles", refreshTokens:"refresh_tokens", auditLogs:"audit_logs", academicYears:"academic_years", classes:"classes", sections:"sections", subjects:"subjects", studentProfiles:"student_profiles", staffProfiles:"staff_profiles", parentStudentLinks:"parent_student_links", fundingCategories:"funding_categories", studentFundingRecords:"student_funding_records", feeStructures:"fee_structures", feeInvoices:"fee_invoices", feeWaivers:"fee_waivers", payments:"payments", attendanceRecords:"attendance_records", courses:"courses", lessons:"lessons", resources:"resources", assignments:"assignments", submissions:"submissions", quizzes:"quizzes", quizQuestions:"quiz_questions", quizAttempts:"quiz_attempts", exams:"exams", examSubjects:"exam_subjects", examResults:"exam_results", aiUsageRecords:"ai_usage_records", aiAssessmentTests:"ai_assessment_tests", aiAssessmentQuestions:"ai_assessment_questions", aiAnswerSheets:"ai_answer_sheets", documentRecords:"document_records", rooms:"rooms", timetableSlots:"timetable_slots", books:"books", bookCopies:"book_copies", bookLoans:"book_loans", cmsPages:"cms_pages", notices:"notices", events:"events", galleryItems:"gallery_items", notifications:"notifications", schoolProfiles:"school_profiles", documentSequences:"document_sequences", storageFiles:"storage_files" };
+  const tableMap: Record<string,string> = { users:"users", roles:"roles", permissions:"permissions", rolePermissions:"role_permissions", departments:"departments", userRoles:"user_roles", refreshTokens:"refresh_tokens", auditLogs:"audit_logs", academicYears:"academic_years", classes:"classes", sections:"sections", subjects:"subjects", studentProfiles:"student_profiles", studentEnrollmentHistory:"student_enrollment_history", staffProfiles:"staff_profiles", parentStudentLinks:"parent_student_links", fundingCategories:"funding_categories", studentFundingRecords:"student_funding_records", feeStructures:"fee_structures", feeInvoices:"fee_invoices", feeWaivers:"fee_waivers", payments:"payments", paymentAdjustments:"payment_adjustments", attendanceRecords:"attendance_records", courses:"courses", courseTeacherAssignments:"course_teacher_assignments", lessons:"lessons", resources:"resources", assignments:"assignments", submissions:"submissions", quizzes:"quizzes", quizQuestions:"quiz_questions", quizAttempts:"quiz_attempts", exams:"exams", examSubjects:"exam_subjects", examResults:"exam_results", aiUsageRecords:"ai_usage_records", aiAssessmentTests:"ai_assessment_tests", aiAssessmentQuestions:"ai_assessment_questions", aiAnswerSheets:"ai_answer_sheets", documentRecords:"document_records", rooms:"rooms", timetableSlots:"timetable_slots", books:"books", bookCopies:"book_copies", bookLoans:"book_loans", cmsPages:"cms_pages", notices:"notices", events:"events", galleryItems:"gallery_items", notifications:"notifications", schoolProfiles:"school_profiles", documentSequences:"document_sequences", storageFiles:"storage_files" };
   const requiredKeys = Object.keys(tableMap);
   const keys=Object.keys(tables);
   for(const k of keys) { if(!tableMap[k] || !Array.isArray(tables[k])) throw new BackupError(`Invalid or unsupported backup table: ${k}`); }
