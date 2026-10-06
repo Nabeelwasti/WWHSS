@@ -351,6 +351,6 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
 
     default: {
       throw new DocumentValidationError("Unsupported document type: " + docType);
-
+    }
   }
 }
