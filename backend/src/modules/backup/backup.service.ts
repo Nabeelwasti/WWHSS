@@ -11,6 +11,7 @@ export class BackupNotFoundError extends BackupError {}
 const BACKUP_DIR = path.resolve(process.cwd(), "backups");
 const BACKUP_PREFIX = "backups/";
 const BACKUP_SUFFIX = ".enc.json";
+const BACKUP_SCHEMA_VERSION = "1.1.0";
 function safeBackupFilename(filename: string): string {
   const safe = path.basename(filename).replace(/[^a-zA-Z0-9._-]/g, "_");
   if (!safe || safe !== filename || !safe.endsWith(BACKUP_SUFFIX) || safe.length > 180) throw new BackupError("Invalid backup filename");
@@ -300,7 +301,7 @@ export async function exportDatabaseData() {
   return {
     meta: {
       exportedAt: new Date().toISOString(),
-      version: "1.0.0",
+      version: BACKUP_SCHEMA_VERSION,
       school: "Workers Welfare Higher Secondary School",
     },
     tables: {
@@ -448,7 +449,7 @@ export async function verifyBackupRecovery(
   return { valid: true, summary };
 }
 
-export async function restoreFromBackup(filename: string, encryptionSecret?: string, restoredByUserId?: string): Promise<{ success: boolean; summary: Record<string, number> }> {
+export async function restoreFromBackup(filename: string, encryptionSecret?: string, restoredByUserId?: string, dryRun = false): Promise<{ success: boolean; dryRun: boolean; summary: Record<string, number> }> {
   if (!restoredByUserId) throw new BackupError("A privileged restoring user is required");
   const raw = await getBackupProvider().getBackupPayload(filename);
   let envelope: any; try { envelope=JSON.parse(raw); } catch { throw new BackupError("Invalid backup envelope"); }
@@ -457,10 +458,25 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
   if (!parsed.meta || !parsed.tables || typeof parsed.tables !== "object") throw new BackupError("Decrypted backup payload is missing required schema sections");
   const tables=parsed.tables as Record<string, unknown>;
   const tableMap: Record<string,string> = { users:"users", roles:"roles", permissions:"permissions", rolePermissions:"role_permissions", departments:"departments", userRoles:"user_roles", refreshTokens:"refresh_tokens", auditLogs:"audit_logs", academicYears:"academic_years", classes:"classes", sections:"sections", subjects:"subjects", studentProfiles:"student_profiles", studentEnrollmentHistory:"student_enrollment_history", staffProfiles:"staff_profiles", parentStudentLinks:"parent_student_links", fundingCategories:"funding_categories", studentFundingRecords:"student_funding_records", feeStructures:"fee_structures", feeInvoices:"fee_invoices", feeWaivers:"fee_waivers", payments:"payments", paymentAdjustments:"payment_adjustments", attendanceRecords:"attendance_records", courses:"courses", courseTeacherAssignments:"course_teacher_assignments", lessons:"lessons", resources:"resources", assignments:"assignments", submissions:"submissions", quizzes:"quizzes", quizQuestions:"quiz_questions", quizAttempts:"quiz_attempts", exams:"exams", examSubjects:"exam_subjects", examResults:"exam_results", aiUsageRecords:"ai_usage_records", aiAssessmentTests:"ai_assessment_tests", aiAssessmentQuestions:"ai_assessment_questions", aiAnswerSheets:"ai_answer_sheets", documentRecords:"document_records", rooms:"rooms", timetableSlots:"timetable_slots", books:"books", bookCopies:"book_copies", bookLoans:"book_loans", cmsPages:"cms_pages", notices:"notices", events:"events", galleryItems:"gallery_items", notifications:"notifications", schoolProfiles:"school_profiles", documentSequences:"document_sequences", storageFiles:"storage_files" };
+  const backupVersion = typeof envelope.version === "string" ? envelope.version : "";
+  const [backupMajor] = backupVersion.split(".").map(Number);
+  const [currentMajor] = BACKUP_SCHEMA_VERSION.split(".").map(Number);
+  if (!Number.isInteger(backupMajor) || backupMajor !== currentMajor) throw new BackupError(`Unsupported backup schema version: ${backupVersion}`);
   const requiredKeys = Object.keys(tableMap);
   const keys=Object.keys(tables);
   for(const k of keys) { if(!tableMap[k] || !Array.isArray(tables[k])) throw new BackupError(`Invalid or unsupported backup table: ${k}`); }
   for(const k of requiredKeys) { if(!(k in tables)) throw new BackupError(`Backup is incomplete: missing table: ${k}`); }
+  if (dryRun) {
+    const summary: Record<string, number> = {};
+    for (const [key, table] of Object.entries(tableMap)) {
+      const rows = tables[key] as Record<string, unknown>[];
+      const columns = await prisma.$queryRaw<Array<{ columnName: string }>>`SELECT column_name AS "columnName" FROM information_schema.columns WHERE table_schema='public' AND table_name=${table}`;
+      const allowed = new Set(columns.map((column) => column.columnName));
+      for (const row of rows) if (Object.keys(row).some((name) => !allowed.has(name))) throw new BackupError(`Backup contains unknown column in ${key}`);
+      summary[key] = rows.length;
+    }
+    return { success: true, dryRun: true, summary };
+  }
   const result=await prisma.$transaction(async tx=>{
     const fk=await tx.$queryRaw<Array<{childTable:string,parentTable:string}>>`SELECT child.relname AS "childTable", parent.relname AS "parentTable" FROM pg_constraint c JOIN pg_class child ON child.oid=c.conrelid JOIN pg_class parent ON parent.oid=c.confrelid JOIN pg_namespace n ON n.oid=child.relnamespace WHERE c.contype='f' AND n.nspname='public'`;
     const selected=new Set(Object.values(tableMap)); const deps=new Map<string,Set<string>>(); const children=new Map<string,Set<string>>(); for(const t of selected){deps.set(t,new Set());children.set(t,new Set());} for(const f of fk){if(selected.has(f.childTable)&&selected.has(f.parentTable)&&f.childTable!==f.parentTable){deps.get(f.childTable)!.add(f.parentTable);children.get(f.parentTable)!.add(f.childTable);}}
@@ -484,5 +500,5 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
 
     await tx.auditLog.create({data:{userId:restoredByUserId,action:"backup:restore",resource:`backup:${safeBackupFilename(filename)}`,metadata:{version:envelope.version,tableCounts:envelope.tableCounts,restoredTables:order}}}); return counts;
   },{maxWait:10000,timeout:120000});
-  return {success:true,summary:result};
+  return {success:true,dryRun:false,summary:result};
 }
