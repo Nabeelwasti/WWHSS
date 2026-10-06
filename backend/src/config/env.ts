@@ -64,11 +64,12 @@ const envSchema = z
     if (!isProductionOrPreview) return true;
     if (data.STORAGE_PROVIDER === "local" || data.BACKUP_PROVIDER === "local" || data.BACKUP_PROVIDER === "memory") return false;
     if (!data.S3_BUCKET || !data.S3_ACCESS_KEY_ID || !data.S3_SECRET_ACCESS_KEY) return false;
+    if (!/^https:\/\//i.test(data.CORS_ORIGIN)) return false;
     if (/localhost|127\.0\.0\.1/i.test(data.CORS_ORIGIN)) return false;
     if (!["true", "1"].includes(data.TRUST_PROXY)) return false;
     return true;
   }, {
-    message: "Preview/production requires durable S3-compatible storage/backups, complete S3 credentials, non-localhost CORS, and TRUST_PROXY=true/1",
+    message: "Preview/production requires durable S3-compatible storage/backups, complete S3 credentials, HTTPS CORS, and TRUST_PROXY=true/1",
   });
 
 const parsed = envSchema.safeParse(process.env);
