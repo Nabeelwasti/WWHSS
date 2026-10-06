@@ -16,7 +16,10 @@ import {
 export const aiAssessmentRouter = Router();
 aiAssessmentRouter.use(authenticate);
 
-aiAssessmentRouter.get("/tests", authorize("academics:view"), async (req, res) => {
+aiAssessmentRouter.get("/tests", authorize("academics:view", (req) => ({
+  classId: typeof req.query.classId === "string" ? req.query.classId : undefined,
+  subjectId: typeof req.query.subjectId === "string" ? req.query.subjectId : undefined,
+})), async (req, res) => {
   const classId = typeof req.query.classId === "string" ? req.query.classId : undefined;
   const subjectId = typeof req.query.subjectId === "string" ? req.query.subjectId : undefined;
   const status = typeof req.query.status === "string" ? req.query.status : undefined;
