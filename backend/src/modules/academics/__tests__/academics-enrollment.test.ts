@@ -4,6 +4,8 @@ vi.mock("../../../db/client.js", () => ({
   prisma: {
     user: { findUnique: vi.fn() },
     section: { findUnique: vi.fn() },
+    class: { findUnique: vi.fn() },
+    studentEnrollmentHistory: { create: vi.fn(), findFirst: vi.fn(), update: vi.fn(), findMany: vi.fn() },
     studentProfile: { create: vi.fn() },
     auditLog: { create: vi.fn() },
     $transaction: vi.fn(async (cb: (tx: any) => Promise<unknown>) => cb(prisma)),
@@ -16,12 +18,17 @@ import { enrollStudent, AcademicsValidationError } from "../academics.service.js
 const mockUserFind = prisma.user.findUnique as unknown as ReturnType<typeof vi.fn>;
 const mockSectionFind = prisma.section.findUnique as unknown as ReturnType<typeof vi.fn>;
 const mockStudentCreate = prisma.studentProfile.create as unknown as ReturnType<typeof vi.fn>;
+const mockClassFind = prisma.class.findUnique as unknown as ReturnType<typeof vi.fn>;
 
 describe("Academics Student Enrollment Validation", () => {
   beforeEach(() => {
     mockUserFind.mockReset();
     mockSectionFind.mockReset();
     mockStudentCreate.mockReset();
+    mockClassFind.mockReset();
+    (prisma.studentEnrollmentHistory.create as unknown as ReturnType<typeof vi.fn>).mockReset();
+    mockClassFind.mockResolvedValue({ id: "grade-10", academicYearId: "year-1" });
+    (prisma.studentEnrollmentHistory.create as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "history-1" });
     mockUserFind.mockResolvedValue({ id: "user-1" });
     mockStudentCreate.mockImplementation(async ({ data }: { data: unknown }) => data);
   });
