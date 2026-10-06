@@ -116,15 +116,17 @@ jobs:
     needs: [backend-test, frontend-build, docker-build]
     env:
       DATABASE_URL: "postgresql://ci_user:ci_password_12345@localhost:5432/ci_wwhs_e2e?schema=public"
-      E2E_BASE_URL: "http://127.0.0.1:4173"
+      E2E_BASE_URL: "http://127.0.0.1:5173"
       E2E_ADMIN_EMAIL: "admin@wwhs.local"
       E2E_ADMIN_PASSWORD: "ChangeMe!123"
+      ADMIN_EMAIL: "admin@wwhs.local"
+      ADMIN_PASSWORD: "ChangeMe!123"
       JWT_ACCESS_SECRET: "ci-access-secret-at-least-32-characters-long"
       JWT_REFRESH_SECRET: "ci-refresh-secret-at-least-32-characters-long"
       BACKUP_ENCRYPTION_KEY: "ci-backup-secret-at-least-32-characters-long"
       STORAGE_PROVIDER: local
       BACKUP_PROVIDER: local
-      CORS_ORIGIN: "http://127.0.0.1:4173"
+      CORS_ORIGIN: "http://127.0.0.1:5173"
       TRUST_PROXY: "0"
       WEB_RESEARCH_ENABLED: "false"
       NODE_ENV: test
