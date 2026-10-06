@@ -166,6 +166,7 @@ export async function recordExamResults(
       !ur.classId &&
       !ur.sectionId &&
       !ur.subjectId &&
+      !ur.departmentId &&
       ur.role.rolePermissions.some((rp) => rp.permission.key === "grades:enter" || rp.permission.key === "exams:manage")
   );
 
@@ -175,10 +176,15 @@ export async function recordExamResults(
       const matchingRole = userRoles.find((ur) => {
         const grantsGrading = ur.role.rolePermissions.some((rp) => rp.permission.key === "grades:enter");
         if (!grantsGrading) return false;
-        const classOk = !ur.classId || ur.classId === student.classId;
-        const sectionOk = !ur.sectionId || ur.sectionId === student.sectionId;
-        const subjectOk = !ur.subjectId || ur.subjectId === input.subjectId;
-        return classOk && sectionOk && subjectOk;
+        const classOk = !ur.classId ? true : Boolean(student.classId) && ur.classId === student.classId;
+        const sectionOk = !ur.sectionId ? true : Boolean(student.sectionId) && ur.sectionId === student.sectionId;
+        const subjectOk = !ur.subjectId ? true : ur.subjectId === input.subjectId;
+        // A department-scoped role cannot be treated as unscoped here because
+        // student/exam targets currently carry no department relationship.
+        // It must therefore be resolved through the centralized authorization
+        // boundary rather than bypassed by this service-level shortcut.
+        const departmentOk = !ur.departmentId;
+        return classOk && sectionOk && subjectOk && departmentOk;
       });
 
       if (!matchingRole) {
