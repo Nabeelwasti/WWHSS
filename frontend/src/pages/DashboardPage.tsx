@@ -118,17 +118,7 @@ export function DashboardPage() {
       <AiChatWidget />
       <ChangePasswordSection />
 
-      <section className="card" style={{ background: "var(--surface-2)" }}>
-        <h2 className="card-title" style={{ textTransform: "none", letterSpacing: 0 }}>
-          Not built yet
-        </h2>
-        <p className="text-sm text-muted mt-0">
-          Admin screens for library cataloging, fee structure setup, and CMS content editing (creating
-          books/invoices/notices) still need a UI — reading and using them as a student/parent/teacher
-          is done above; the administrative "create/manage" side for these three still goes through the
-          API directly for now.
-        </p>
-      </section>
+
     </div>
   );
 }
