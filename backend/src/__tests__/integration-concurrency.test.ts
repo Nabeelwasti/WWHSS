@@ -18,6 +18,8 @@ function getIntegrationTestDbUrl(): string {
 
 let prisma: PrismaClient;
 let recordPayment: typeof import("../modules/finance/finance.service.js").recordPayment;
+let generateInvoicesForClass: typeof import("../modules/finance/finance.service.js").generateInvoicesForClass;
+let createDocumentRecord: typeof import("../modules/documents/documents.service.js").createDocumentRecord;
 let issueBook: typeof import("../modules/library/library.service.js").issueBook;
 let createTimetableSlot: typeof import("../modules/timetable/timetable.service.js").createTimetableSlot;
 let refresh: typeof import("../modules/identity/auth.service.js").refresh;
@@ -40,6 +42,8 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
 
     prisma = dbModule.prisma;
     recordPayment = financeModule.recordPayment;
+    generateInvoicesForClass = financeModule.generateInvoicesForClass;
+    createDocumentRecord = (await import("../modules/documents/documents.service.js")).createDocumentRecord;
     issueBook = libraryModule.issueBook;
     createTimetableSlot = timetableModule.createTimetableSlot;
     refresh = authModule.refresh;
@@ -421,4 +425,91 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
     expect(fulfilled.length).toBe(1);
     expect(rejected.length).toBe(1);
   });
+
+  it("proves invoice generation is idempotent for automatic funding waivers", async () => {
+    const ay = await prisma.academicYear.create({
+      data: { label: "2026-2027", startDate: new Date("2026-09-01"), endDate: new Date("2027-06-30") },
+    });
+    const cls = await prisma.class.create({ data: { name: `Funding Class ${Date.now()}`, academicYearId: ay.id } });
+    const user = await prisma.user.create({
+      data: { email: `funding-${Date.now()}@school.edu`, passwordHash: "hash", fullName: "Funding Student" },
+    });
+    const student = await prisma.studentProfile.create({
+      data: { userId: user.id, admissionNo: `ADM-FUND-${Date.now()}`, classId: cls.id },
+    });
+    const category = await prisma.fundingCategory.create({
+      data: { name: `Welfare ${Date.now()}`, code: `WEL-${Date.now()}` },
+    });
+    await prisma.studentFundingRecord.create({
+      data: {
+        studentProfileId: student.id,
+        fundingCategoryId: category.id,
+        startDate: new Date("2026-09-01"),
+        feePolicy: "FULLY_WAIVED",
+      },
+    });
+    const fee = await prisma.feeStructure.create({
+      data: { classId: cls.id, academicYearId: ay.id, name: "Tuition", amount: new Prisma.Decimal("1000.00") },
+    });
+
+    await generateInvoicesForClass(fee.id, "2026-10-31");
+    await generateInvoicesForClass(fee.id, "2026-10-31");
+
+    const invoice = await prisma.feeInvoice.findUnique({ where: { feeStructureId_studentProfileId: { feeStructureId: fee.id, studentProfileId: student.id } }, include: { feeWaivers: true } });
+    expect(invoice?.feeWaivers.filter((w) => w.reason.startsWith("Automatic Workers Welfare Funding Waiver (")).length).toBe(1);
+    expect(invoice?.feeWaivers[0]?.amount.toString()).toBe("1000");
+  });
+
+  it("proves encrypted backup restore round-trips real relational records atomically", async () => {
+    const backupModule = await import("../modules/backup/backup.service.js");
+    const secret = "integration-backup-secret-2026";
+    backupModule.setBackupProvider(new backupModule.MemoryBackupProvider());
+
+    const ay = await prisma.academicYear.create({
+      data: { label: "2026-2027", startDate: new Date("2026-09-01"), endDate: new Date("2027-06-30") },
+    });
+    const cls = await prisma.class.create({ data: { name: `Restore Class ${Date.now()}`, academicYearId: ay.id } });
+    const section = await prisma.section.create({ data: { name: "A", classId: cls.id } });
+    const role = await prisma.role.create({ data: { key: `restore-role-${Date.now()}`, name: `Restore Role ${Date.now()}` } });
+    const user = await prisma.user.create({
+      data: { email: `restore-${Date.now()}@school.edu`, passwordHash: "hash", fullName: "Before Restore" },
+    });
+    await prisma.userRole.create({ data: { userId: user.id, roleId: role.id, classId: cls.id, sectionId: section.id } });
+    const student = await prisma.studentProfile.create({
+      data: { userId: user.id, admissionNo: `ADM-RESTORE-${Date.now()}`, classId: cls.id, sectionId: section.id },
+    });
+
+    const backup = await backupModule.createEncryptedBackup(secret);
+    await prisma.user.update({ where: { id: user.id }, data: { fullName: "Mutated After Backup" } });
+    await prisma.studentProfile.delete({ where: { id: student.id } });
+
+    const result = await backupModule.restoreFromBackup(backup.filename, secret, user.id);
+    expect(result.success).toBe(true);
+
+    const restoredUser = await prisma.user.findUnique({ where: { id: user.id } });
+    const restoredStudent = await prisma.studentProfile.findUnique({ where: { id: student.id } });
+    expect(restoredUser?.fullName).toBe("Before Restore");
+    expect(restoredStudent?.classId).toBe(cls.id);
+    expect(restoredStudent?.sectionId).toBe(section.id);
+    expect(result.summary.users).toBeGreaterThanOrEqual(1);
+    expect(result.summary.studentProfiles).toBeGreaterThanOrEqual(1);
+  });
+
+  it("proves official document numbering uses the persisted sequence without random IDs", async () => {
+    const school = await prisma.schoolProfile.upsert({
+      where: { id: "default" },
+      update: { schoolName: "Integration School", address: "Test Address", phone: "000", email: "test@example.edu", currentAcademicYear: "2026-2027", documentPrefix: "TEST" },
+      create: { id: "default", schoolName: "Integration School", address: "Test Address", phone: "000", email: "test@example.edu", currentAcademicYear: "2026-2027", documentPrefix: "TEST" },
+    });
+    const ay = await prisma.academicYear.create({
+      data: { label: `2026-2027-${Date.now()}`, startDate: new Date("2026-09-01"), endDate: new Date("2027-06-30") },
+    });
+    const first = await createDocumentRecord({ docType: "integration_certificate", academicYearId: ay.id });
+    const second = await createDocumentRecord({ docType: "integration_certificate", academicYearId: ay.id });
+    expect(first.docNumber).not.toBe(second.docNumber);
+    expect(first.docNumber).toMatch(/^TEST-INTEGRATION_CERTIFICATE-/);
+    expect(second.docNumber).toMatch(/^TEST-INTEGRATION_CERTIFICATE-/);
+    expect(school.id).toBe("default");
+  });
+
 });
