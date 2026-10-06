@@ -57,7 +57,7 @@ describe("AI assessment generation safety", () => {
     ]));
 
     await expect(generateTestQuestionsWithAi("test-id", 1, "teacher-id"))
-      .rejects.toThrow("correct answer is not one of its options");
+      .rejects.toThrow(/correct answer.*not one of its options/i);
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 });
