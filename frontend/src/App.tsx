@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { LoginPage } from "./pages/LoginPage";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -28,8 +28,27 @@ type View = "dashboard" | "teacher" | "admin" | "attendance" | "timetable" | "qu
 export default function App() {
   const { user, booting } = useAuth();
   const { t } = useLanguage();
-  const [view, setView] = useState<View>("dashboard");
+  const [view, setView] = useState<View>(() => {
+    const path = window.location.pathname.replace(/^\/+|\/+$/g, "");
+    const candidate = path.split("/")[0] as View;
+    return ["dashboard", "teacher", "admin", "attendance", "timetable", "quizzes", "parent"].includes(candidate) ? candidate : "dashboard";
+  });
   const [showLogin, setShowLogin] = useState(false);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const candidate = window.location.pathname.replace(/^\/+|\/+$/g, "").split("/")[0] as View;
+      setView(["dashboard", "teacher", "admin", "attendance", "timetable", "quizzes", "parent"].includes(candidate) ? candidate : "dashboard");
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  function navigate(next: View) {
+    setView(next);
+    const path = next === "dashboard" ? "/" : "/" + next;
+    window.history.pushState({}, "", path);
+  }
 
   if (booting) {
     return (
@@ -50,7 +69,7 @@ export default function App() {
   const showParentLink = roleKeys.some((k) => k === "parent" || k === "guardian");
 
   const navItem = (key: View, label: string) => (
-    <button className={`nav-link${view === key ? " active" : ""}`} onClick={() => setView(key)}>
+    <button className={`nav-link${view === key ? " active" : ""}`} onClick={() => navigate(key)}>
       {label}
     </button>
   );
