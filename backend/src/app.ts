@@ -25,6 +25,7 @@ import { documentsRouter } from "./modules/documents/documents.routes.js";
 import { backupRouter } from "./modules/backup/backup.routes.js";
 import { storageRouter } from "./modules/storage/storage.routes.js";
 import { parentRouter } from "./modules/parent/parent.routes.js";
+import { schoolRouter } from "./modules/school/school.routes.js";
 
 export const app = express();
 
@@ -45,10 +46,6 @@ app.set(
 );
 
 app.use(helmet());
-
-// Vercel Services can expose frontend and backend through the same ephemeral
-// deployment origin. Permit that same-origin case without requiring a new
-// CORS_ORIGIN value for every preview, while still rejecting arbitrary origins.
 app.use((req, _res, next) => {
   const origin = req.headers.origin;
   if (!origin) return next();
@@ -62,52 +59,17 @@ app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
 
-if (env.nodeEnv !== "test") {
-  app.use(morgan(env.nodeEnv === "production" ? "combined" : "dev"));
-}
+if (env.nodeEnv !== "test") app.use(morgan(env.nodeEnv === "production" ? "combined" : "dev"));
 
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "Too many attempts. Please try again later." },
-});
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: true, legacyHeaders: false, message: { error: "Too many attempts. Please try again later." } });
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/refresh", authLimiter);
-
-const aiLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  limit: 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "You've asked a lot of questions this hour. Please try again later." },
-});
+const aiLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false, message: { error: "You've asked a lot of questions this hour. Please try again later." } });
 app.use("/api/ai", aiLimiter);
-
-const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 600,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "Too many requests. Please slow down and try again shortly." },
-});
+const generalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 600, standardHeaders: true, legacyHeaders: false, message: { error: "Too many requests. Please slow down and try again shortly." } });
 app.use("/api", generalLimiter);
-
-const expensiveOperationLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 60,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "This operation is temporarily rate-limited. Please try again later." },
-});
-const backupOperationLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  limit: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "Backup operations are temporarily rate-limited. Please try again later." },
-});
+const expensiveOperationLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 60, standardHeaders: true, legacyHeaders: false, message: { error: "This operation is temporarily rate-limited. Please try again later." } });
+const backupOperationLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false, message: { error: "Backup operations are temporarily rate-limited. Please try again later." } });
 app.use("/api/storage/upload", expensiveOperationLimiter);
 app.use("/api/documents", expensiveOperationLimiter);
 app.use("/api/ai/assessment", expensiveOperationLimiter);
@@ -121,7 +83,6 @@ const healthHandler = async (_req: express.Request, res: express.Response) => {
     res.status(503).json({ status: "degraded", database: "unreachable" });
   }
 };
-
 app.get("/health", healthHandler);
 app.get("/api/health", healthHandler);
 
@@ -142,13 +103,15 @@ app.use("/api/documents", documentsRouter);
 app.use("/api/backup", backupRouter);
 app.use("/api/storage", storageRouter);
 app.use("/api/parent", parentRouter);
+app.use("/api/school", schoolRouter);
 
-app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+app.use((err: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   const status = typeof err === "object" && err && "status" in err && typeof (err as { status?: unknown }).status === "number"
     ? (err as { status: number }).status
     : 500;
-  if (status >= 500) console.error(err);
-  res.status(status).json({ error: status === 403 ? "CORS origin is not allowed" : "Internal server error" });
+  const requestId = res.getHeader("X-Request-ID");
+  if (status >= 500) console.error({ requestId, error: err });
+  res.status(status).json({ error: status === 403 ? "CORS origin is not allowed" : "Internal server error", requestId });
 });
 
 export default app;
