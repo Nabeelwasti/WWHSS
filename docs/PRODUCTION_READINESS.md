@@ -4,12 +4,12 @@ This document is the current operational source of truth for the production arch
 
 ## Runtime architecture
 
-- Backend: Node.js 24, Express, TypeScript, Prisma 5, PostgreSQL 16.
+- Backend: Node.js 24, Express, TypeScript, Prisma 5, PostgreSQL 16, deployed as a stateless container (Cloud Run recommended for the long-running Express runtime). Vercel is the frontend edge/proxy layer.
 - Frontend: React 18, TypeScript, Vite.
 - Authentication: short-lived access JWT plus hashed, rotating refresh tokens in PostgreSQL, with explicit JWT issuer/audience validation.
 - Authorization: backend-enforced permission keys with class/section/subject/department/student scopes.
-- Durable files and backups: S3-compatible object storage in hosted preview/production.
-- Local filesystem and process-memory persistence: development/test only.
+- Durable files and backups: S3-compatible object storage (Cloudflare R2 is the free-first reference provider) in hosted preview/production.
+- Local filesystem and process-memory persistence: development/test only. Cloud Run instances are ephemeral; no business data may depend on the container filesystem.
 - Backup encryption: AES-256-GCM with a deployment-specific secret.
 - Backup privilege boundary: dedicated `backup:view`, `backup:create`, `backup:download`, `backup:restore`, and `backup:delete` permissions; whole-database recovery capability is not implied by `users:manage`.
 - Human exports: business-data exports explicitly exclude refresh-token/session records, password hashes, audit/security material, and recursively named secret/token/key fields. Disaster-recovery backups remain encrypted and contain the full restore dataset by design.
@@ -17,7 +17,7 @@ This document is the current operational source of truth for the production arch
 - Official documents: authoritative `SchoolProfile` data and persistent `DocumentSequence` numbering, with object-level authorization against the referenced student/staff record.
 - AI assessment: teacher grading remains under `grades:enter`; answer-sheet submission is separately authorized for teaching scope or the authenticated student's own record.
 - API contract: `backend/openapi.json` is checked against every mounted module router.
-- CI: Node 24 + PostgreSQL 16, Prisma migrations, lock consistency, security audit, unit/integration tests, build, frontend build, and Docker build.
+- CI: Node 24 + PostgreSQL 16, Prisma migrations, lock consistency, security audit, unit/integration tests, build, frontend build, Docker build, and authenticated browser/accessibility smoke tests.
 
 ## Hosted environment requirements
 
@@ -77,3 +77,54 @@ Private downloads are authorized from persisted ownership/entity scope and retur
 Official document endpoints resolve the referenced student/staff object and enforce the caller's actual class/section/department/self relationship before generating sensitive payloads.
 
 AI-generated assessment content is never replaced by fabricated placeholder questions. Invalid AI output is rejected and retried once through the real provider path.
+
+
+## Recommended free-first hosted topology
+
+- Frontend: Vercel Hobby.
+- Backend: Google Cloud Run using `backend/Dockerfile`. Cloud Run is preferred over forcing the stateful Express server into a serverless-only deployment model.
+- Database: Neon PostgreSQL via Vercel Marketplace or directly from Neon.
+- Object storage: Cloudflare R2 using the existing S3-compatible storage provider.
+- API routing: expose the backend through the frontend's `/api/*` path using a Vercel external rewrite. This keeps refresh cookies same-origin from the browser while the backend remains independently deployable.
+- CI remains the release gate; production deployment credentials must never be committed.
+
+Vercel's current documentation supports Express and external-origin rewrites, while Cloud Run supports Node.js containers and injects the `PORT` environment variable. The repository's container now binds to `0.0.0.0` and its Docker healthcheck follows the injected port.
+
+### Cloud Run deployment sequence
+
+1. Create/select a Google Cloud project and enable Cloud Run, Artifact Registry, and Cloud Build.
+2. Deploy `backend/` from source or build the existing Dockerfile.
+3. Configure `PORT` through Cloud Run (it is injected automatically), `NODE_ENV=production`, and all hosted environment variables below.
+4. Run `npm run prisma:deploy` against the production `DATABASE_URL` as a release/migration step before serving a schema-dependent revision.
+5. Seed the initial administrator once with `npm run seed` using a strong `ADMIN_EMAIL` and `ADMIN_PASSWORD`; never use the development default in production.
+6. Set `CORS_ORIGIN` to the exact HTTPS Vercel production origin. Do not use `*`.
+7. Set `TRUST_PROXY=true` (Cloud Run is behind a managed proxy).
+8. Configure R2 through the existing `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, and optional `S3_ENDPOINT` variables.
+9. Configure the Vercel frontend project to rewrite `/api/:path*` to the Cloud Run API URL. Keep the SPA fallback rewrite after the API rewrite.
+10. Verify `/health`, login, refresh, logout, one authorized read, one authorized write, one private-file upload/download, and backup creation/verification against the hosted database before declaring production live.
+
+### Vercel function compatibility boundary
+
+The application intentionally keeps private file uploads at 10 MB in its own API contract. Vercel Functions have a 4.5 MB request/response payload limit, so the recommended architecture does not route large file bodies through a Vercel Function. Cloud Run is the API runtime for the current 10 MB upload contract; if the backend is ever moved to Vercel Functions, the upload path must be converted to direct object-storage uploads rather than silently lowering or removing the existing capability.
+
+### Database separation
+
+Preview/staging and production must use separate PostgreSQL databases or branches. Never point a preview deployment at the production database. Run Prisma migrations through the controlled release step, not automatically on every application instance startup.
+
+### Backup separation
+
+Database backups and business exports are different capabilities. Backups remain encrypted and complete for recovery; business exports continue to exclude session credentials, password hashes, audit/security material, and secret-like fields. Object storage must be durable and independent from the application container.
+
+### Operational certification rule
+
+Production readiness is not certified solely because CI is green. A release is certified only after:
+- the latest GitHub Actions run is green;
+- the hosted database is reachable and migrated;
+- the backend `/health` endpoint reports database connectivity;
+- the seeded administrator can log in;
+- refresh-token rotation works;
+- CORS and secure cookies work through the Vercel `/api` proxy;
+- representative authorization checks pass;
+- object storage upload/download works;
+- encrypted backup creation and verification work;
+- frontend production routing works on direct paths such as `/admin` and `/dashboard`.
