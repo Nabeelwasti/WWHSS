@@ -8,6 +8,19 @@ export type PermissionScope = {
   studentId?: string;
 };
 
+function scopeMatches(
+  roleScope: Pick<PermissionScope, "classId" | "sectionId" | "subjectId" | "departmentId">,
+  targetScope: Pick<PermissionScope, "classId" | "sectionId" | "subjectId" | "departmentId">
+): boolean {
+  const dimensions: (keyof typeof roleScope)[] = ["classId", "sectionId", "subjectId", "departmentId"];
+  return dimensions.every((key) => {
+    const granted = roleScope[key];
+    if (!granted) return true;
+    const target = targetScope[key];
+    return Boolean(target) && granted === target;
+  });
+}
+
 export async function userHasPermission(
   userId: string,
   permissionKey: string,
@@ -30,11 +43,7 @@ export async function userHasPermission(
       if (roleIsUnscoped) return true;
       if (requestedScopeIsEmpty) continue;
 
-      const classOk = !ur.classId || !scope.classId || ur.classId === scope.classId;
-      const sectionOk = !ur.sectionId || !scope.sectionId || ur.sectionId === scope.sectionId;
-      const subjectOk = !ur.subjectId || !scope.subjectId || ur.subjectId === scope.subjectId;
-      const deptOk = !ur.departmentId || !scope.departmentId || ur.departmentId === scope.departmentId;
-      if (classOk && sectionOk && subjectOk && deptOk) return true;
+      if (scopeMatches(ur, scope)) return true;
     }
   }
 
@@ -72,9 +81,12 @@ export async function userHasPermission(
         const roleIsUnscoped = !ur.classId && !ur.sectionId && !ur.subjectId && !ur.departmentId;
         if (roleIsUnscoped) return true;
 
-        const classOk = !ur.classId || !studentProfile.classId || ur.classId === studentProfile.classId;
-        const sectionOk = !ur.sectionId || !studentProfile.sectionId || ur.sectionId === studentProfile.sectionId;
-        if (classOk && sectionOk) return true;
+        if (scopeMatches(ur, {
+          classId: studentProfile.classId,
+          sectionId: studentProfile.sectionId,
+          subjectId: undefined,
+          departmentId: undefined,
+        })) return true;
       }
     }
   }
