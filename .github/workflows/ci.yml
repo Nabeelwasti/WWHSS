@@ -112,3 +112,28 @@ jobs:
         run: docker build -t wwhs-backend:ci ./backend
       - name: Validate Dockerfile build (frontend)
         run: docker build -t wwhs-frontend:ci ./frontend
+
+  browser-e2e:
+    runs-on: ubuntu-latest
+    needs: frontend-build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+      - name: Install Chromium for browser verification
+        run: npx --yes playwright@1.55.0 install --with-deps chromium
+      - name: Start frontend preview
+        working-directory: frontend
+        run: nohup npm run preview -- --host 127.0.0.1 --port 4173 >/tmp/wwhss-frontend.log 2>&1 &
+      - name: Run browser smoke tests
+        working-directory: frontend
+        run: npx --yes playwright@1.55.0 test
