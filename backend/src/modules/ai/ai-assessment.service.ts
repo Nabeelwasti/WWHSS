@@ -163,6 +163,7 @@ Allowed types: MCQ, TRUE_FALSE, SHORT_ANSWER, ESSAY, NUMERIC. MCQ needs 2-6 uniq
               orderIndex: q.orderIndex!,
             },
           })));
+          await tx.aiAssessmentTest.update({ where: { id: testId }, data: { status: "GENERATED" } });
           return tx.aiAssessmentTest.findUnique({ where: { id: testId }, include: { class: true, subject: true, questions: { orderBy: { orderIndex: "asc" } } } });
         });
       } catch (error) {
