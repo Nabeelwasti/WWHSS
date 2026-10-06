@@ -45,19 +45,20 @@ app.set(
 );
 
 app.use(helmet());
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Requests from the browser to the Vercel Services backend can be
-      // same-origin even when the deployment URL is ephemeral. In that case
-      // the browser Origin is the backend Host and should not require a new
-      // CORS_ORIGIN value for every preview deployment.
-      if (!origin || env.corsOrigins.includes(origin)) return callback(null, true);
-      return callback(new Error("CORS origin is not allowed"));
-    },
-    credentials: true,
-  })
-);
+
+// Vercel Services can expose frontend and backend through the same ephemeral
+// deployment origin. Permit that same-origin case without requiring a new
+// CORS_ORIGIN value for every preview, while still rejecting arbitrary origins.
+app.use((req, _res, next) => {
+  const origin = req.headers.origin;
+  if (!origin) return next();
+  const sameOrigin = `${req.protocol}://${req.get("host")}`;
+  if (env.corsOrigins.includes(origin) || origin === sameOrigin) return next();
+  const error = new Error("CORS origin is not allowed");
+  (error as Error & { status?: number }).status = 403;
+  return next(error);
+});
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
 
@@ -93,9 +94,6 @@ const generalLimiter = rateLimit({
 });
 app.use("/api", generalLimiter);
 
-// Expensive or high-impact operations receive their own tighter budgets in
-// addition to the general API limit. This prevents a legitimate authenticated
-// user from consuming disproportionate CPU, DB, AI, or object-storage capacity.
 const expensiveOperationLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 60,
@@ -113,9 +111,6 @@ const backupOperationLimiter = rateLimit({
 app.use("/api/storage/upload", expensiveOperationLimiter);
 app.use("/api/documents", expensiveOperationLimiter);
 app.use("/api/ai/assessment", expensiveOperationLimiter);
-app.use("/api/backup/create", backupOperationLimiter);
-app.use("/api/backup/export", backupOperationLimiter);
-app.use("/api/backup/restore", backupOperationLimiter);
 app.use("/api/backup", backupOperationLimiter);
 
 const healthHandler = async (_req: express.Request, res: express.Response) => {
@@ -149,8 +144,11 @@ app.use("/api/storage", storageRouter);
 app.use("/api/parent", parentRouter);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error(err);
-  res.status(500).json({ error: "Internal server error" });
+  const status = typeof err === "object" && err && "status" in err && typeof (err as { status?: unknown }).status === "number"
+    ? (err as { status: number }).status
+    : 500;
+  if (status >= 500) console.error(err);
+  res.status(status).json({ error: status === 403 ? "CORS origin is not allowed" : "Internal server error" });
 });
 
 export default app;
