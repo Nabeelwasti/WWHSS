@@ -531,7 +531,8 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
     }
   }
 
-  const result=await prisma.$transaction(async tx=>{
+  try {
+    const result=await prisma.$transaction(async tx=>{
     const fk=await tx.$queryRaw<Array<{childTable:string,parentTable:string}>>`SELECT child.relname AS "childTable", parent.relname AS "parentTable" FROM pg_constraint c JOIN pg_class child ON child.oid=c.conrelid JOIN pg_class parent ON parent.oid=c.confrelid JOIN pg_namespace n ON n.oid=child.relnamespace WHERE c.contype='f' AND n.nspname='public'`;
     const selected=new Set(Object.values(tableMap)); const deps=new Map<string,Set<string>>(); const children=new Map<string,Set<string>>(); for(const t of selected){deps.set(t,new Set());children.set(t,new Set());} for(const f of fk){if(selected.has(f.childTable)&&selected.has(f.parentTable)&&f.childTable!==f.parentTable){deps.get(f.childTable)!.add(f.parentTable);children.get(f.parentTable)!.add(f.childTable);}}
     const ready=[...selected].filter(t=>deps.get(t)!.size===0).sort(); const order:string[]=[]; while(ready.length){const t=ready.shift()!;order.push(t);for(const c of [...children.get(t)!].sort()){deps.get(c)!.delete(t);if(deps.get(c)!.size===0){ready.push(c);ready.sort();}}} if(order.length!==selected.size) throw new BackupError("Backup restore dependency graph contains a foreign-key cycle");
@@ -554,5 +555,11 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
 
     await tx.auditLog.create({data:{userId:restoredByUserId,action:"backup:restore",resource:`backup:${safeBackupFilename(filename)}`,metadata:{version:envelope.version,tableCounts:envelope.tableCounts,restoredTables:order}}}); return counts;
   },{maxWait:10000,timeout:120000});
-  return {success:true,dryRun:false,summary:result};
+    return {success:true,dryRun:false,summary:result};
+  } catch (error) {
+    if (newlyCreatedStorageObjects.length > 0) {
+      await Promise.allSettled(newlyCreatedStorageObjects.map((key) => storageProvider.deleteFile(key)));
+    }
+    throw error;
+  }
 }
