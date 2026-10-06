@@ -26,6 +26,30 @@ const ALLOWED_MIME_TYPES = new Set([
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ]);
 
+const MIME_EXTENSIONS: Record<string, Set<string>> = {
+  "application/pdf": new Set([".pdf"]),
+  "image/jpeg": new Set([".jpg", ".jpeg"]),
+  "image/png": new Set([".png"]),
+  "image/webp": new Set([".webp"]),
+  "text/plain": new Set([".txt"]),
+  "application/msword": new Set([".doc"]),
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": new Set([".docx"]),
+  "application/vnd.ms-excel": new Set([".xls"]),
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": new Set([".xlsx"]),
+};
+
+function hasExpectedFileSignature(mimeType: string, buffer: Buffer): boolean {
+  if (mimeType === "application/pdf") return buffer.subarray(0, 5).toString("ascii") === "%PDF-";
+  if (mimeType === "image/jpeg") return buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  if (mimeType === "image/png") return buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  if (mimeType === "image/webp") return buffer.length >= 12 && buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP";
+  if (mimeType === "application/msword" || mimeType === "application/vnd.ms-excel") return buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]));
+  if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") {
+    return buffer.length >= 4 && buffer.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+  }
+  return true;
+}
+
 export interface StorageProvider {
   saveFile(filename: string, buffer: Buffer, mimeType: string): Promise<void>;
   getFile(filename: string): Promise<{ buffer?: Buffer; filePath?: string; mimeType?: string }>;
@@ -229,9 +253,11 @@ export async function savePrivateFile(
   },
   uploadedByUserId: string
 ) {
-  if (!ALLOWED_MIME_TYPES.has(input.mimeType)) {
-    throw new StorageValidationError(`File type '${input.mimeType}' is not allowed`);
-  }
+  if (!ALLOWED_MIME_TYPES.has(input.mimeType)) throw new StorageValidationError(`File type '${input.mimeType}' is not allowed`);
+  if (input.originalFilename.length < 1 || input.originalFilename.length > 255) throw new StorageValidationError("Filename must be between 1 and 255 characters");
+  const extension = path.extname(input.originalFilename).toLowerCase();
+  if (!MIME_EXTENSIONS[input.mimeType]?.has(extension)) throw new StorageValidationError("Filename extension does not match the declared file type");
+  if (!hasExpectedFileSignature(input.mimeType, input.buffer)) throw new StorageValidationError("Uploaded file content does not match the declared file type");
 
   if (input.buffer.length > MAX_FILE_SIZE) {
     throw new StorageValidationError(`File size exceeds maximum allowed size of 10MB`);
