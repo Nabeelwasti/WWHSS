@@ -4,6 +4,7 @@ import { authorize } from "../../middleware/authorize.js";
 import {
   savePrivateFile,
   getPrivateFileContent,
+  deletePrivateFile,
   StorageValidationError,
   StorageAuthorizationError,
   StorageNotFoundError,
@@ -92,5 +93,17 @@ storageRouter.get("/files/:filename", authorize("academics:view"), async (req, r
     if (e instanceof StorageAuthorizationError) return res.status(403).json({ error: e.message });
     if (e instanceof StorageValidationError) return res.status(400).json({ error: e.message });
     res.status(500).json({ error: "Could not retrieve file" });
+  }
+});
+
+storageRouter.delete("/files/:filename", authorize("academics:view"), async (req, res) => {
+  try {
+    await deletePrivateFile(req.params.filename, req.userId!);
+    res.status(204).send();
+  } catch (e) {
+    if (e instanceof StorageNotFoundError) return res.status(404).json({ error: e.message });
+    if (e instanceof StorageAuthorizationError) return res.status(403).json({ error: e.message });
+    if (e instanceof StorageValidationError) return res.status(400).json({ error: e.message });
+    res.status(500).json({ error: "Could not delete file" });
   }
 });
