@@ -43,6 +43,10 @@ export function ParentPage() {
         <section className="card"><h2>{t("parent.fees")}</h2>{dashboard.invoices.length === 0 ? <p>{t("parent.none")}</p> : dashboard.invoices.slice(0, 8).map((inv) => <p key={inv.id}>{inv.feeStructure.name}: {String(inv.amountDue)} — {inv.status}</p>)}</section>
         <section className="card"><h2>{t("parent.timetable")}</h2>{dashboard.timetable.map((slot, i) => <p key={i}>{slot.dayOfWeek}: {slot.startTime}–{slot.endTime} — {slot.subject.name} ({slot.teacher.fullName})</p>)}</section>
         <section className="card"><h2>{t("parent.notices")}</h2>{dashboard.notices.length === 0 ? <p>{t("parent.none")}</p> : dashboard.notices.map((n) => <article key={n.id}><strong>{n.title}</strong><p>{n.body}</p></article>)}</section>
+        <section className="card"><h2>Assignments & LMS</h2>{dashboard.assignments.length === 0 ? <p>{t("parent.none")}</p> : dashboard.assignments.slice(0, 12).map((a) => <article key={a.id}><strong>{a.course.subject.name}: {a.title}</strong><p>{a.description || ""}</p><small>Due {new Date(a.dueAt).toLocaleString()} · {a.submissions[0]?.score ?? "Not graded"}/{a.maxScore}</small></article>)}</section>
+        <section className="card"><h2>Library</h2>{dashboard.loans.length === 0 ? <p>{t("parent.none")}</p> : dashboard.loans.slice(0, 12).map((l) => <p key={l.id}>{l.bookCopy.book.title} — {l.returnedAt ? "Returned" : "Due " + new Date(l.dueAt).toLocaleDateString()} {l.fineAmount ? "· Fine " + String(l.fineAmount) : ""}</p>)}</section>
+        <section className="card"><h2>Documents</h2>{dashboard.documents.length === 0 ? <p>{t("parent.none")}</p> : dashboard.documents.map((d) => <p key={d.id}>{d.docType} — {d.docNumber}</p>)}</section>
+        <section className="card"><h2>Notifications</h2>{dashboard.notifications.length === 0 ? <p>{t("parent.none")}</p> : dashboard.notifications.slice(0, 12).map((n) => <p key={n.id}><strong>{n.title}</strong> — {n.body}</p>)}</section>
       </div>}
     </main>
   );
