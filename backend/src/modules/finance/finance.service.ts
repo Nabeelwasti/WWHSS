@@ -241,32 +241,47 @@ export async function generateInvoicesForClass(feeStructureId: string, dueDate: 
           }
         }
 
+        const existingInvoice = await tx.feeInvoice.findUnique({
+          where: { feeStructureId_studentProfileId: { feeStructureId, studentProfileId: student.id } },
+          include: { payments: true, feeWaivers: true },
+        });
+        const hasManualWaiver = existingInvoice?.feeWaivers.some((w) => !w.reason.startsWith("Automatic Workers Welfare Funding Waiver (")) ?? false;
+        const canRecalculate = !existingInvoice || (existingInvoice.payments.length === 0 && !hasManualWaiver);
+
         const invoice = await tx.feeInvoice.upsert({
           where: { feeStructureId_studentProfileId: { feeStructureId, studentProfileId: student.id } },
-          update: { dueDate: parsedDueDate },
-          create: {
-            feeStructureId,
-            studentProfileId: student.id,
-            amountDue: calculatedAmountDue,
-            dueDate: parsedDueDate,
-            status: initialStatus,
-          },
+          update: { dueDate: parsedDueDate, ...(canRecalculate ? { amountDue: calculatedAmountDue, status: initialStatus } : {}) },
+          create: { feeStructureId, studentProfileId: student.id, amountDue: calculatedAmountDue, dueDate: parsedDueDate, status: initialStatus },
         });
 
-        // Automatically create a record in fee_waivers if funding fully or partially waived the fee
-        if (activeFunding && (activeFunding.feePolicy === "FULLY_WAIVED" || activeFunding.feePolicy === "PARTIALLY_WAIVED")) {
-          const waivedAmount = baseAmount.sub(calculatedAmountDue);
-          if (waivedAmount.gt(0)) {
+        const automaticReasonPrefix = "Automatic Workers Welfare Funding Waiver (";
+        const desiredWaivedAmount = activeFunding &&
+          (activeFunding.feePolicy === "FULLY_WAIVED" || activeFunding.feePolicy === "PARTIALLY_WAIVED")
+          ? baseAmount.sub(calculatedAmountDue) : new Prisma.Decimal(0);
+        const automaticWaivers = await tx.feeWaiver.findMany({ where: { invoiceId: invoice.id } })
+          .then((rows) => rows.filter((w) => w.reason.startsWith(automaticReasonPrefix)));
+
+        if (desiredWaivedAmount.gt(0)) {
+          if (automaticWaivers.length > 0) {
+            const [first, ...duplicates] = automaticWaivers;
+            await tx.feeWaiver.update({
+              where: { id: first.id },
+              data: { amount: desiredWaivedAmount, reason: `${automaticReasonPrefix}${activeFunding!.feePolicy})` },
+            });
+            if (duplicates.length > 0) await tx.feeWaiver.deleteMany({ where: { id: { in: duplicates.map((w) => w.id) } } });
+          } else {
             await tx.feeWaiver.create({
               data: {
                 invoiceId: invoice.id,
                 studentProfileId: student.id,
-                amount: waivedAmount,
-                reason: `Automatic Workers Welfare Funding Waiver (${activeFunding.feePolicy})`,
+                amount: desiredWaivedAmount,
+                reason: `${automaticReasonPrefix}${activeFunding!.feePolicy})`,
                 approvedByUserId: actorId,
               },
             });
           }
+        } else if (automaticWaivers.length > 0) {
+          await tx.feeWaiver.deleteMany({ where: { id: { in: automaticWaivers.map((w) => w.id) } } });
         }
 
         return invoice;
