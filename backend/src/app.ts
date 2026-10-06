@@ -1,8 +1,8 @@
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-import helmet from "helmet";
-import rateLimit from "express-rate-limit";
+import * as helmetModule from "helmet";
+import { rateLimit } from "express-rate-limit";
 import crypto from "node:crypto";
 import "./middleware/express-async-errors.js";
 import { env } from "./config/env.js";
@@ -25,6 +25,8 @@ import { backupRouter } from "./modules/backup/backup.routes.js";
 import { storageRouter } from "./modules/storage/storage.routes.js";
 import { parentRouter } from "./modules/parent/parent.routes.js";
 import { schoolRouter } from "./modules/school/school.routes.js";
+
+const helmet = helmetModule.default;
 
 export const app = express();
 
