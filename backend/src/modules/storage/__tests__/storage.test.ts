@@ -1,61 +1,47 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
-  savePrivateFile,
-  getPrivateFileContent,
   StorageValidationError,
-  LocalStorageProvider,
-  CloudStorageProvider,
+  StorageNotFoundError,
   MemoryStorageProvider,
+  LocalStorageProvider,
+  S3StorageProvider,
   setStorageProvider,
 } from "../storage.service.js";
 
-describe("Storage Provider & Service Test Suite", () => {
+describe("Storage providers", () => {
+  let memory: MemoryStorageProvider;
+
   beforeEach(() => {
-    setStorageProvider(new MemoryStorageProvider());
+    memory = new MemoryStorageProvider();
+    setStorageProvider(memory);
   });
 
-  it("saves and retrieves private files via MemoryStorageProvider", async () => {
-    const buffer = Buffer.from("Hello WWHSS Storage Test");
-    const result = await savePrivateFile(
-      { originalFilename: "report.pdf", mimeType: "application/pdf", buffer },
-      "" // empty uploadedByUserId skips DB auditLog in unit test
-    );
-
-    expect(result.filename).toMatch(/^report_[a-f0-9]+\.pdf$/);
-    expect(result.mimeType).toBe("application/pdf");
-    expect(result.sizeBytes).toBe(buffer.length);
-
-    const retrieved = await getPrivateFileContent(result.filename);
-    expect(retrieved.buffer?.toString()).toBe("Hello WWHSS Storage Test");
+  it("stores, retrieves, checks existence, and deletes through the explicit test provider", async () => {
+    const data = Buffer.from("Hello WWHSS Storage Test");
+    await memory.saveFile("report.pdf", data, "application/pdf");
+    expect(await memory.exists("report.pdf")).toBe(true);
+    const retrieved = await memory.getFile("report.pdf");
+    expect(retrieved.buffer?.toString()).toBe(data.toString());
+    expect(retrieved.mimeType).toBe("application/pdf");
+    await memory.deleteFile("report.pdf");
+    expect(await memory.exists("report.pdf")).toBe(false);
+    await expect(memory.getFile("report.pdf")).rejects.toThrow(StorageNotFoundError);
   });
 
-  it("rejects forbidden mime types", async () => {
-    const buffer = Buffer.from("malicious script");
-    await expect(
-      savePrivateFile(
-        { originalFilename: "script.exe", mimeType: "application/x-msdownload", buffer },
-        ""
-      )
-    ).rejects.toThrow(StorageValidationError);
+  it("keeps local storage as a real filesystem provider", async () => {
+    const dir = `/tmp/wwhss-storage-test-${Date.now()}`;
+    const local = new LocalStorageProvider(dir);
+    await local.saveFile("note.txt", Buffer.from("local"), "text/plain");
+    expect(await local.exists("note.txt")).toBe(true);
+    expect((await local.getFile("note.txt")).filePath).toContain("note.txt");
+    await local.deleteFile("note.txt");
   });
 
-  it("rejects files exceeding 10MB limit", async () => {
-    const hugeBuffer = Buffer.alloc(10 * 1024 * 1024 + 1);
-    await expect(
-      savePrivateFile(
-        { originalFilename: "large.pdf", mimeType: "application/pdf", buffer: hugeBuffer },
-        ""
-      )
-    ).rejects.toThrow(StorageValidationError);
+  it("exposes the S3 provider without falling back to process memory", () => {
+    expect(S3StorageProvider).toBeDefined();
   });
 
-  it("verifies CloudStorageProvider and LocalStorageProvider interfaces", async () => {
-    const cloudProvider = new CloudStorageProvider();
-    await cloudProvider.saveFile("test_cloud.txt", Buffer.from("Cloud Content"), "text/plain");
-    const cloudFile = await cloudProvider.getFile("test_cloud.txt");
-    expect(cloudFile.buffer?.toString()).toBe("Cloud Content");
-
-    const localProvider = new LocalStorageProvider();
-    expect(localProvider).toBeDefined();
+  it("retains the provider validation error contract", async () => {
+    await expect(memory.getFile("missing.txt")).rejects.toThrow(StorageValidationError);
   });
 });

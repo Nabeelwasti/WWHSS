@@ -91,7 +91,7 @@ export class S3StorageProvider implements StorageProvider {
               secretAccessKey: env.s3SecretAccessKey,
             }
           : undefined,
-      ...(env.s3Endpoint ? { endpoint: env.s3Endpoint } : {}),
+      ...(env.s3Endpoint ? { endpoint: env.s3Endpoint, forcePathStyle: true } : {}),
     });
   }
 
@@ -166,6 +166,16 @@ export class S3StorageProvider implements StorageProvider {
   }
 }
 
+
+export class MemoryStorageProvider implements StorageProvider {
+  private readonly files = new Map<string, { buffer: Buffer; mimeType: string }>();
+  async saveFile(filename: string, buffer: Buffer, mimeType: string): Promise<void> { this.files.set(filename, { buffer: Buffer.from(buffer), mimeType }); }
+  async getFile(filename: string) { const file=this.files.get(filename); if(!file) throw new StorageNotFoundError("File not found"); return { buffer: Buffer.from(file.buffer), mimeType:file.mimeType }; }
+  async deleteFile(filename: string) { this.files.delete(filename); }
+  async exists(filename: string) { return this.files.has(filename); }
+}
+export class CloudStorageProvider extends S3StorageProvider {}
+
 let currentProvider: StorageProvider | null = null;
 
 export function getStorageProvider(): StorageProvider {
@@ -227,6 +237,20 @@ export async function savePrivateFile(
     throw new StorageValidationError(`File size exceeds maximum allowed size of 10MB`);
   }
 
+  if (!uploadedByUserId) throw new StorageAuthorizationError("An authenticated uploader is required");
+
+  if (input.studentProfileId) {
+    const student = await prisma.studentProfile.findUnique({ where: { id: input.studentProfileId }, select: { userId: true, classId: true, sectionId: true } });
+    if (!student) throw new StorageValidationError("Student profile not found");
+    const allowed = student.userId === uploadedByUserId || await userHasPermission(uploadedByUserId, "students:manage", { classId: student.classId, sectionId: student.sectionId });
+    if (!allowed) throw new StorageAuthorizationError("You are not authorized to upload for this student");
+  }
+  if (input.staffProfileId) {
+    const staff = await prisma.staffProfile.findUnique({ where: { id: input.staffProfileId }, select: { userId: true, departmentId: true } });
+    if (!staff) throw new StorageValidationError("Staff profile not found");
+    if (staff.userId !== uploadedByUserId && !(await userHasPermission(uploadedByUserId, "users:manage", { departmentId: staff.departmentId ?? undefined }))) throw new StorageAuthorizationError("You are not authorized to upload for this staff member");
+  }
+
   const safeName = sanitizeFilename(input.originalFilename);
   const provider = getStorageProvider();
   await provider.saveFile(safeName, input.buffer, input.mimeType);
@@ -237,8 +261,6 @@ export async function savePrivateFile(
     sizeBytes: input.buffer.length,
     mimeType: input.mimeType,
   };
-
-  if (!uploadedByUserId) throw new StorageAuthorizationError("An authenticated uploader is required");
 
   try {
     return await prisma.$transaction(async (tx) => {
