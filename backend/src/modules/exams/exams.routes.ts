@@ -14,6 +14,13 @@ import {
   getStudentReportCard,
   ExamValidationError,
 } from "./exams.service.js";
+import {
+  getExamLifecycle,
+  publishExam,
+  lockExam,
+  finalizeExam,
+  ExamLifecycleError,
+} from "./exam-lifecycle.service.js";
 
 export const examsRouter = Router();
 examsRouter.use(authenticate);
@@ -39,6 +46,31 @@ examsRouter.get("/", authorize("academics:view"), async (req, res) => {
   const academicYearId = typeof req.query.academicYearId === "string" ? req.query.academicYearId : undefined;
   res.json({ exams: await listExams(academicYearId) });
 });
+
+examsRouter.get("/:examId/lifecycle", authorize("exams:manage"), async (req, res) => {
+  try {
+    res.json({ lifecycle: await getExamLifecycle(req.params.examId) });
+  } catch (e) {
+    if (e instanceof ExamLifecycleError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
+});
+
+for (const [path, action] of [
+  ["publish", publishExam],
+  ["lock", lockExam],
+  ["finalize", finalizeExam],
+] as const) {
+  examsRouter.post(`/:examId/${path}`, authorize("exams:manage"), async (req, res) => {
+    if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
+    try {
+      res.json({ lifecycle: await action(req.params.examId, req.userId) });
+    } catch (e) {
+      if (e instanceof ExamLifecycleError) return res.status(400).json({ error: e.message });
+      throw e;
+    }
+  });
+}
 
 const configureSubjectSchema = z.object({
   examId: z.string().uuid(),
@@ -100,16 +132,18 @@ examsRouter.post(
     return { subjectId, classId, sectionId };
   }),
   async (req, res) => {
-    if (!req.userId) {
-      return res.status(401).json({ error: "Unauthenticated" });
-    }
+    if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
     const parsed = recordSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     try {
+      const lifecycle = await getExamLifecycle(parsed.data.examId);
+      if (lifecycle.status !== "DRAFT" && lifecycle.status !== "PUBLISHED") {
+        return res.status(409).json({ error: "Exam results cannot be changed after the exam is locked or finalized" });
+      }
       const saved = await recordExamResults(parsed.data, req.userId);
       res.status(201).json({ saved: saved.length });
     } catch (e) {
-      if (e instanceof ExamValidationError) return res.status(400).json({ error: e.message });
+      if (e instanceof ExamValidationError || e instanceof ExamLifecycleError) return res.status(400).json({ error: e.message });
       throw e;
     }
   }
@@ -150,9 +184,7 @@ examsRouter.get(
   async (req, res) => {
     const examId = req.query.examId as string;
     const classId = req.query.classId as string;
-    if (!examId || !classId) {
-      return res.status(400).json({ error: "examId and classId parameters are required" });
-    }
+    if (!examId || !classId) return res.status(400).json({ error: "examId and classId parameters are required" });
     const sectionId = typeof req.query.sectionId === "string" ? req.query.sectionId : undefined;
     const subjectId = typeof req.query.subjectId === "string" ? req.query.subjectId : undefined;
     const results = await getClassExamResults(examId, classId, sectionId, subjectId);
