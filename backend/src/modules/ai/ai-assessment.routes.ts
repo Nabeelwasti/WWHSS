@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate.js";
 import { authorize } from "../../middleware/authorize.js";
+import { prisma } from "../../db/client.js";
 import {
   createAiAssessmentTest,
   generateTestQuestionsWithAi,
@@ -35,7 +36,11 @@ const createTestSchema = z.object({
   language: z.enum(["en", "ur"]).optional(),
 });
 
-aiAssessmentRouter.post("/tests", authorize("academics:manage"), async (req, res) => {
+aiAssessmentRouter.post("/tests", authorize("academics:manage", (req) => ({
+  classId: typeof req.body?.classId === "string" ? req.body.classId : undefined,
+  sectionId: typeof req.body?.sectionId === "string" ? req.body.sectionId : undefined,
+  subjectId: typeof req.body?.subjectId === "string" ? req.body.subjectId : undefined,
+})), async (req, res) => {
   if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
   const parsed = createTestSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -49,7 +54,10 @@ aiAssessmentRouter.post("/tests", authorize("academics:manage"), async (req, res
   }
 });
 
-aiAssessmentRouter.post("/tests/:testId/generate", authorize("academics:manage"), async (req, res) => {
+aiAssessmentRouter.post("/tests/:testId/generate", authorize("academics:manage", async (req) => {
+  const test = await prisma.aiAssessmentTest.findUnique({ where: { id: req.params.testId }, select: { classId: true, sectionId: true, subjectId: true } });
+  return { classId: test?.classId, sectionId: test?.sectionId ?? undefined, subjectId: test?.subjectId };
+}), async (req, res) => {
   if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
   const numQuestions = typeof req.body.numQuestions === "number" ? req.body.numQuestions : 5;
   if (!Number.isInteger(numQuestions) || numQuestions < 1 || numQuestions > 50) {
@@ -65,7 +73,10 @@ aiAssessmentRouter.post("/tests/:testId/generate", authorize("academics:manage")
   }
 });
 
-aiAssessmentRouter.post("/tests/:testId/approve", authorize("academics:manage"), async (req, res) => {
+aiAssessmentRouter.post("/tests/:testId/approve", authorize("academics:manage", async (req) => {
+  const test = await prisma.aiAssessmentTest.findUnique({ where: { id: req.params.testId }, select: { classId: true, sectionId: true, subjectId: true } });
+  return { classId: test?.classId, sectionId: test?.sectionId ?? undefined, subjectId: test?.subjectId };
+}), async (req, res) => {
   if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
   try {
     const approved = await approveAiAssessmentTest(req.params.testId, req.userId);
@@ -83,7 +94,11 @@ const submitSheetSchema = z.object({
   fileUrl: z.string().max(2048).optional(),
 });
 
-aiAssessmentRouter.post("/answer-sheets", authorize("grades:enter"), async (req, res) => {
+aiAssessmentRouter.post("/answer-sheets", authorize("grades:enter", async (req) => {
+  const testId = typeof req.body?.testId === "string" ? req.body.testId : undefined;
+  const test = testId ? await prisma.aiAssessmentTest.findUnique({ where: { id: testId }, select: { classId: true, sectionId: true, subjectId: true } }) : null;
+  return { classId: test?.classId, sectionId: test?.sectionId ?? undefined, subjectId: test?.subjectId };
+}), async (req, res) => {
   const parsed = submitSheetSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -101,7 +116,10 @@ const gradeSheetSchema = z.object({
   teacherFeedback: z.string().optional(),
 });
 
-aiAssessmentRouter.post("/answer-sheets/:sheetId/grade", authorize("grades:enter"), async (req, res) => {
+aiAssessmentRouter.post("/answer-sheets/:sheetId/grade", authorize("grades:enter", async (req) => {
+  const sheet = await prisma.aiAnswerSheet.findUnique({ where: { id: req.params.sheetId }, select: { test: { select: { classId: true, sectionId: true, subjectId: true } } } });
+  return { classId: sheet?.test.classId, sectionId: sheet?.test.sectionId ?? undefined, subjectId: sheet?.test.subjectId };
+}), async (req, res) => {
   if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
   const parsed = gradeSheetSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
