@@ -381,6 +381,7 @@ model Payment {
   invoiceId        String
   amount           Decimal  @db.Decimal(10, 2)
   method           String
+  status           String   @default("posted")
   paidAt           DateTime @default(now())
   receivedByUserId String?
 
