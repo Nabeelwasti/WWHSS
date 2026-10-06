@@ -14,6 +14,8 @@ import {
   createSubject,
   enrollStudent,
   linkGuardian,
+  getStudentEnrollmentHistory,
+  changeStudentPlacement,
   AcademicsValidationError,
 } from "./academics.service.js";
 
@@ -132,6 +134,16 @@ academicsRouter.post("/enroll", authorize("student:view:full_profile"), async (r
     if (e instanceof AcademicsValidationError) return res.status(400).json({ error: e.message });
     throw e;
   }
+});
+
+academicsRouter.get("/students/:studentProfileId/enrollment-history", authorize("student:view:full_profile"), async (req, res) => {
+  res.json({ history: await getStudentEnrollmentHistory(req.params.studentProfileId) });
+});
+
+const placementSchema = z.object({ studentProfileId: z.string().uuid(), classId: z.string().uuid(), sectionId: z.string().uuid().optional(), academicYearId: z.string().uuid(), startDate: z.string(), reason: z.string().optional(), status: z.string().optional() });
+academicsRouter.post("/students/placement", authorize("student:view:full_profile"), async (req, res) => {
+  const parsed = placementSchema.safeParse(req.body); if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  try { res.status(201).json(await changeStudentPlacement(parsed.data, req.userId)); } catch (e) { if (e instanceof AcademicsValidationError) return res.status(400).json({ error: e.message }); throw e; }
 });
 
 const guardianSchema = z.object({

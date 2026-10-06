@@ -28,6 +28,9 @@ model User {
   userRoles               UserRole[]
   studentProfile          StudentProfile?
   staffProfile            StaffProfile?
+  enrollmentChanges       StudentEnrollmentHistory[] @relation("EnrollmentChangedBy")
+  courseTeacherAssignments CourseTeacherAssignment[] @relation("CourseTeacherAssignedBy")
+  teacherCourseAssignments CourseTeacherAssignment[] @relation("CourseTeachers")
   guardianOf              ParentStudentLink[]    @relation("Guardian")
   refreshTokens           RefreshToken[]
   auditLogs               AuditLog[]
@@ -39,6 +42,9 @@ model User {
   uploadedResources       Resource[]             @relation("UploadedResources")
   gradedSubmissions       Submission[]           @relation("GradedSubmissions")
   receivedPayments        Payment[]              @relation("ReceivedPayments")
+  adjustedPayments        PaymentAdjustment[]    @relation("AdjustedPayments")
+  publishedExams          Exam[]                 @relation("PublishedExams")
+  finalizedAiAnswerSheets AiAnswerSheet[]        @relation("FinalizedAiAnswerSheets")
   updatedCmsPages         CmsPage[]              @relation("UpdatedCmsPages")
   publishedNotices        Notice[]               @relation("PublishedNotices")
   createdAiTests          AiAssessmentTest[]     @relation("CreatedAiTests")
@@ -152,6 +158,7 @@ model AcademicYear {
   classes         Class[]
   exams           Exam[]
   feeStructures   FeeStructure[]
+  enrollmentHistory StudentEnrollmentHistory[]
   documentRecords DocumentRecord[]
 
   @@map("academic_years")
@@ -167,6 +174,7 @@ model Class {
   userRoles         UserRole[]
   students          StudentProfile[]
   courses           Course[]
+  enrollmentHistory StudentEnrollmentHistory[]
   timetableSlots    TimetableSlot[]
   feeStructures     FeeStructure[]
   aiAssessmentTests AiAssessmentTest[]
@@ -183,6 +191,7 @@ model Section {
 
   class             Class              @relation(fields: [classId], references: [id])
   students          StudentProfile[]
+  enrollmentHistory StudentEnrollmentHistory[]
   userRoles         UserRole[]
   timetableSlots    TimetableSlot[]
   attendanceRecords AttendanceRecord[]
@@ -247,6 +256,7 @@ model StudentProfile {
   feeInvoices       FeeInvoice[]
   feeWaivers        FeeWaiver[]
   fundingRecords    StudentFundingRecord[]
+  enrollmentHistory StudentEnrollmentHistory[]
   aiAnswerSheets    AiAnswerSheet[]
   documentRecords   DocumentRecord[]
 
@@ -339,7 +349,7 @@ model FeeInvoice {
   studentProfileId String
   amountDue        Decimal  @db.Decimal(10, 2)
   dueDate          DateTime
-  status           String   @default("pending") // pending | paid | overdue | waived
+  status           String   @default("draft") // draft | issued | partial | paid | overdue | waived | cancelled | void | written_off | refunded
   createdAt        DateTime @default(now())
 
   feeStructure FeeStructure   @relation(fields: [feeStructureId], references: [id])
@@ -371,11 +381,13 @@ model Payment {
   invoiceId        String
   amount           Decimal  @db.Decimal(10, 2)
   method           String
+  status           String   @default("posted")
   paidAt           DateTime @default(now())
   receivedByUserId String?
 
   invoice        FeeInvoice @relation(fields: [invoiceId], references: [id])
   receivedByUser User?      @relation("ReceivedPayments", fields: [receivedByUserId], references: [id])
+  adjustments   PaymentAdjustment[]
 
   @@map("payments")
 }
@@ -431,6 +443,7 @@ model Course {
   lessons     Lesson[]
   assignments Assignment[]
   quizzes     Quiz[]
+  teacherAssignments CourseTeacherAssignment[]
 
   @@map("courses")
 }
@@ -545,7 +558,9 @@ model Exam {
   startDate      DateTime
   endDate        DateTime
 
+  publishedByUserId String?
   academicYear AcademicYear  @relation(fields: [academicYearId], references: [id])
+  publishedBy User? @relation("PublishedExams", fields: [publishedByUserId], references: [id])
   examSubjects ExamSubject[]
   results      ExamResult[]
 
@@ -619,7 +634,7 @@ model AiAssessmentTest {
   totalMarks      Decimal  @db.Decimal(5, 2)
   language        String   @default("en")
   createdByUserId String
-  status          String   @default("DRAFT")
+  status          String   @default("DRAFT") // DRAFT | GENERATED | REVIEW | APPROVED | PUBLISHED | LOCKED | ARCHIVED
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -659,6 +674,7 @@ model AiAnswerSheet {
   autoScore        Decimal?  @db.Decimal(5, 2)
   suggestedScore   Decimal?  @db.Decimal(5, 2)
   finalScore       Decimal?  @db.Decimal(5, 2)
+  scoreFinalizedByUserId String?
   teacherFeedback  String?
   gradedByUserId   String?
   gradedAt         DateTime?
@@ -666,8 +682,70 @@ model AiAnswerSheet {
   test     AiAssessmentTest @relation(fields: [testId], references: [id], onDelete: Cascade)
   student  StudentProfile   @relation(fields: [studentProfileId], references: [id])
   gradedBy User?            @relation("GradedAiAnswerSheets", fields: [gradedByUserId], references: [id])
+  scoreFinalizedBy User?    @relation("FinalizedAiAnswerSheets", fields: [scoreFinalizedByUserId], references: [id])
 
   @@map("ai_answer_sheets")
+}
+
+model StudentEnrollmentHistory {
+  id               String   @id @default(uuid())
+  studentProfileId String
+  academicYearId   String
+  classId          String
+  sectionId        String?
+  startDate        DateTime
+  endDate          DateTime?
+  status           String   @default("ACTIVE")
+  reason           String?
+  changedByUserId  String?
+  createdAt        DateTime @default(now())
+
+  student     StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
+  class       Class @relation(fields: [classId], references: [id])
+  section     Section? @relation(fields: [sectionId], references: [id])
+  changedBy   User? @relation("EnrollmentChangedBy", fields: [changedByUserId], references: [id])
+
+  @@index([studentProfileId, startDate])
+  @@index([academicYearId, classId, sectionId])
+  @@map("student_enrollment_history")
+}
+
+model CourseTeacherAssignment {
+  id              String   @id @default(uuid())
+  courseId        String
+  teacherId       String
+  assignedByUserId String?
+  startDate       DateTime @default(now())
+  endDate         DateTime?
+  isPrimary       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  teacher User @relation("CourseTeachers", fields: [teacherId], references: [id])
+  assignedBy User? @relation("CourseTeacherAssignedBy", fields: [assignedByUserId], references: [id])
+
+  @@unique([courseId, teacherId, startDate])
+  @@index([teacherId, startDate, endDate])
+  @@map("course_teacher_assignments")
+}
+
+model PaymentAdjustment {
+  id              String   @id @default(uuid())
+  paymentId       String
+  kind            String
+  amount          Decimal  @db.Decimal(10, 2)
+  reason          String
+  reference       String?
+  adjustedByUserId String
+  createdAt       DateTime @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  adjustedBy User @relation("AdjustedPayments", fields: [adjustedByUserId], references: [id])
+
+  @@index([paymentId])
+  @@index([kind, createdAt])
+  @@map("payment_adjustments")
 }
 
 // ---------- DOCUMENTS & PRINTING ----------
@@ -676,6 +754,7 @@ model DocumentRecord {
   id               String   @id @default(uuid())
   docType          String
   docNumber        String   @unique
+  referenceId      String?
   studentProfileId String?
   staffProfileId   String?
   academicYearId   String?
@@ -688,6 +767,7 @@ model DocumentRecord {
   academicYear AcademicYear?   @relation(fields: [academicYearId], references: [id])
   createdBy    User?           @relation("CreatedDocuments", fields: [createdByUserId], references: [id])
 
+  @@unique([docType, referenceId])
   @@map("document_records")
 }
 

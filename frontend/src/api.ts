@@ -1,3 +1,12 @@
+export type ParentChildDashboard = {
+  student: { id: string; admissionNo: string; status: string; user: { fullName: string; email: string; phone?: string | null }; class?: { name: string } | null; section?: { name: string } | null; fundingCategory?: { name: string } | null };
+  attendance: { date: string; status: string }[];
+  exams: { id: string; marksObtained: number | string; maxMarks: number | string; grade?: string | null; exam: { name: string }; subject: { name: string } }[];
+  invoices: { id: string; amountDue: number | string; dueDate: string; status: string; feeStructure: { name: string }; payments: unknown[]; feeWaivers: unknown[] }[];
+  timetable: { dayOfWeek: number; startTime: string; endTime: string; subject: { name: string }; teacher: { fullName: string }; room?: { name: string } | null }[];
+  notices: { id: string; title: string; body: string; audience: string; publishedAt: string }[];
+};
+
 // Every function here calls the real backend over HTTP. There is no mock
 // mode and no fabricated fallback data: if the backend is unreachable or
 // returns an error, callers get that error and must show it honestly.
@@ -371,6 +380,10 @@ export const api = {
 
   recordPayment: (input: { invoiceId: string; amount: number; method: string }) =>
     request("/finance/payments", { method: "POST", body: JSON.stringify(input) }),
+
+  // ---- Parent Portal ----
+  listParentChildren: () => request<{ children: unknown[] }>("/parent/children"),
+  getParentChildDashboard: (studentProfileId: string) => request<ParentChildDashboard>(`/parent/children/${studentProfileId}/dashboard`),
 
   // ---- Admin: Library ----
 

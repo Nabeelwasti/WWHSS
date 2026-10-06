@@ -5764,6 +5764,111 @@
           }
         }
       }
+    },
+    "/api/parent/children": {
+      "get": {
+        "summary": "List authenticated parent's linked children",
+        "responses": {
+          "200": {
+            "description": "Linked children"
+          }
+        }
+      }
+    },
+    "/api/parent/children/{studentProfileId}/dashboard": {
+      "get": {
+        "summary": "Get authenticated parent's scoped child dashboard",
+        "parameters": [
+          {
+            "name": "studentProfileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Child dashboard"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/api/academics/students/{studentProfileId}/enrollment-history": {
+      "get": {
+        "summary": "Get student enrollment lifecycle history",
+        "parameters": [
+          {
+            "name": "studentProfileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Enrollment history"
+          }
+        }
+      }
+    },
+    "/api/academics/students/placement": {
+      "post": {
+        "summary": "Change student academic placement",
+        "responses": {
+          "201": {
+            "description": "Placement history record"
+          },
+          "400": {
+            "description": "Validation error"
+          }
+        }
+      }
+    },
+    "/api/finance/invoices/{invoiceId}/refresh-status": {
+      "post": {
+        "summary": "Refresh a fee invoice status",
+        "parameters": [
+          {
+            "name": "invoiceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated invoice"
+          },
+          "400": {
+            "description": "Validation error"
+          }
+        }
+      }
+    },
+    "/api/finance/payments/adjust": {
+      "post": {
+        "summary": "Refund, reverse or adjust a payment",
+        "responses": {
+          "201": {
+            "description": "Adjustment"
+          },
+          "400": {
+            "description": "Validation error"
+          }
+        }
+      }
     }
   },
   "components": {

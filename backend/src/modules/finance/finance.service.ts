@@ -101,10 +101,21 @@ export async function assignStudentFundingRecord(
 
   const endDate = input.endDate ? new Date(input.endDate) : undefined;
   if (endDate && Number.isNaN(endDate.getTime())) throw new FinanceValidationError("Invalid end date");
+  if (endDate && endDate < startDate) throw new FinanceValidationError("Funding end date cannot be before start date");
+  if (input.feePolicy === "PARTIALLY_WAIVED" && input.waiverPercentage === undefined) throw new FinanceValidationError("Partial funding requires waiverPercentage");
+  if (input.feePolicy === "CUSTOM" && input.customFeeAmount === undefined) throw new FinanceValidationError("Custom funding requires customFeeAmount");
 
   const feePolicy = input.feePolicy || "FULLY_WAIVED";
 
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(async (tx) => {
+    const overlap = await tx.studentFundingRecord.findFirst({
+      where: {
+        studentProfileId: input.studentProfileId,
+        startDate: { lt: endDate ?? new Date("9999-12-31T23:59:59.999Z") },
+        OR: [{ endDate: null }, ...(endDate ? [{ endDate: { gt: startDate } }] : [])],
+      },
+    });
+    if (overlap) throw new FinanceValidationError("Funding period overlaps an existing effective funding record");
     const record = await tx.studentFundingRecord.create({
       data: {
         studentProfileId: input.studentProfileId,
@@ -213,7 +224,7 @@ export async function listFeeStructures(classId?: string, academicYearId?: strin
 export async function generateInvoicesForClass(feeStructureId: string, dueDate: string, actorId?: string) {
   const feeStructure = await prisma.feeStructure.findUnique({
     where: { id: feeStructureId },
-    include: { class: { include: { students: { include: { fundingRecords: { orderBy: { createdAt: "desc" }, take: 1 } } } } } },
+    include: { class: { include: { students: { include: { fundingRecords: { orderBy: { startDate: "desc" } } } } } }, academicYear: true },
   });
   if (!feeStructure) throw new FinanceValidationError("Fee structure not found");
 
@@ -225,7 +236,7 @@ export async function generateInvoicesForClass(feeStructureId: string, dueDate: 
   return prisma.$transaction(async (tx) => {
     const invoices = await Promise.all(
       feeStructure.class.students.map(async (student) => {
-        const activeFunding = student.fundingRecords[0];
+        const activeFunding = student.fundingRecords.find((r) => r.startDate <= feeStructure.academicYear.endDate && (!r.endDate || r.endDate >= feeStructure.academicYear.startDate));
         let calculatedAmountDue = baseAmount;
         let initialStatus = "pending";
 
@@ -440,14 +451,10 @@ export async function getStudentInvoices(studentProfileId: string) {
   });
 
   const now = new Date();
-  for (const inv of invoices) {
-    if (inv.status === "pending" && inv.dueDate < now) {
-      inv.status = "overdue";
-      await prisma.feeInvoice.update({ where: { id: inv.id }, data: { status: "overdue" } });
-    }
-  }
-
-  return invoices;
+  return invoices.map((inv) => ({
+    ...inv,
+    status: inv.status === "pending" && inv.dueDate < now ? "overdue" : inv.status,
+  }));
 }
 
 export async function getStudentFeeStatement(studentProfileId: string) {
@@ -490,6 +497,35 @@ export async function getStudentFeeStatement(studentProfileId: string) {
   };
 }
 
+export async function adjustPayment(input: { paymentId: string; kind: "REFUND" | "REVERSAL" | "ADJUSTMENT"; amount: number; reason: string; reference?: string; adjustedByUserId: string }) {
+  if (input.amount <= 0) throw new FinanceValidationError("Adjustment amount must be greater than zero");
+  return runSerializableTransaction(async (tx) => {
+    const payment = await tx.payment.findUnique({ where: { id: input.paymentId }, include: { invoice: true, adjustments: true } });
+    if (!payment) throw new FinanceValidationError("Payment not found");
+    const adjusted = payment.adjustments.reduce((s, a) => s.add(a.amount), new Prisma.Decimal(0));
+    const available = payment.amount.sub(adjusted);
+    const amount = new Prisma.Decimal(input.amount);
+    if (amount.gt(available)) throw new FinanceValidationError("Adjustment exceeds the remaining payment amount");
+    if (input.kind === "REVERSAL" && adjusted.gt(0)) throw new FinanceValidationError("A payment with prior adjustments cannot be fully reversed");
+    const row = await tx.paymentAdjustment.create({ data: { paymentId: payment.id, kind: input.kind, amount, reason: input.reason, reference: input.reference, adjustedByUserId: input.adjustedByUserId } });
+    if (input.kind === "REVERSAL" && amount.eq(payment.amount)) await tx.payment.update({ where: { id: payment.id }, data: { status: "reversed" } });
+    await tx.auditLog.create({ data: { userId: input.adjustedByUserId, action: "finance:payment_adjustment", resource: `payment:${payment.id}:adjustment:${row.id}`, metadata: { kind: input.kind, amount: amount.toNumber(), reason: input.reason } } });
+    return row;
+  });
+}
+
+export async function refreshInvoiceStatus(invoiceId: string, actorId?: string) {
+  return runSerializableTransaction(async (tx) => {
+    const invoice = await tx.feeInvoice.findUnique({ where: { id: invoiceId }, include: { payments: { include: { adjustments: true } }, feeWaivers: true } });
+    if (!invoice) throw new FinanceValidationError("Invoice not found");
+    const paid = invoice.payments.filter(p => p.status !== "reversed").reduce((s,p) => s.add(p.amount.sub(p.adjustments.reduce((a,x)=>a.add(x.amount),new Prisma.Decimal(0)))),new Prisma.Decimal(0));
+    const waived = invoice.feeWaivers.reduce((s,w)=>s.add(w.amount),new Prisma.Decimal(0));
+    const remaining = invoice.amountDue.sub(paid).sub(waived);
+    const status = remaining.lte(0) ? (paid.gt(0) ? "paid" : "waived") : paid.gt(0) ? "partial" : invoice.dueDate < new Date() ? "overdue" : "issued";
+    return tx.feeInvoice.update({ where: { id: invoiceId }, data: { status } });
+  });
+}
+
 export async function getPaymentReceipt(paymentId: string) {
   const payment = await prisma.payment.findUnique({
     where: { id: paymentId },
@@ -515,8 +551,8 @@ export async function getPaymentReceipt(paymentId: string) {
 
 export async function getFinancialSummaryReport() {
   const [invoices, payments, waivers, fundingCategories] = await Promise.all([
-    prisma.feeInvoice.findMany({ include: { student: { include: { fundingCategory: true } } } }),
-    prisma.payment.findMany(),
+    prisma.feeInvoice.findMany({ include: { feeStructure: { include: { academicYear: true } }, student: { include: { fundingRecords: { orderBy: { startDate: "desc" } } } } } }),
+    prisma.payment.findMany({ include: { adjustments: true } }),
     prisma.feeWaiver.findMany(),
     prisma.fundingCategory.findMany(),
   ]);
@@ -535,7 +571,7 @@ export async function getFinancialSummaryReport() {
 
   for (const inv of invoices) {
     totalBilled = totalBilled.add(inv.amountDue);
-    const isFunded = Boolean(inv.student.fundingCategoryId);
+    const isFunded = inv.student.fundingRecords.some((r) => r.startDate <= inv.feeStructure.academicYear.endDate && (!r.endDate || r.endDate >= inv.feeStructure.academicYear.startDate));
     if (isFunded) {
       fundedBilled = fundedBilled.add(inv.amountDue);
     } else {
@@ -544,7 +580,9 @@ export async function getFinancialSummaryReport() {
   }
 
   for (const p of payments) {
-    totalPaid = totalPaid.add(p.amount);
+    if (p.status === "reversed") continue;
+    const adjusted = p.adjustments.reduce((sum, a) => sum.add(a.amount), new Prisma.Decimal(0));
+    totalPaid = totalPaid.add(p.amount.sub(adjusted));
   }
 
   for (const w of waivers) {

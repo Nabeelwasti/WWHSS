@@ -23,6 +23,7 @@ import { aiAssessmentRouter } from "./modules/ai/ai-assessment.routes.js";
 import { documentsRouter } from "./modules/documents/documents.routes.js";
 import { backupRouter } from "./modules/backup/backup.routes.js";
 import { storageRouter } from "./modules/storage/storage.routes.js";
+import { parentRouter } from "./modules/parent/parent.routes.js";
 
 export const app = express();
 
@@ -44,7 +45,7 @@ app.set(
 
 app.use(helmet());
 
-app.use(cors({ origin: env.corsOrigin, credentials: true }));
+app.use(cors({ origin: (origin, callback) => { if (!origin || env.corsOrigins.includes(origin)) return callback(null, true); return callback(new Error("CORS origin is not allowed")); }, credentials: true }));
 
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
@@ -74,7 +75,7 @@ app.use("/api/ai", aiLimiter);
 
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 1500,
+  limit: 600,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests. Please slow down and try again shortly." },
@@ -109,6 +110,7 @@ app.use("/api/ai/assessment", aiAssessmentRouter);
 app.use("/api/documents", documentsRouter);
 app.use("/api/backup", backupRouter);
 app.use("/api/storage", storageRouter);
+app.use("/api/parent", parentRouter);
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);
