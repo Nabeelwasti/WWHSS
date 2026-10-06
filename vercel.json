@@ -1,29 +1,44 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "other",
   "services": {
     "backend": {
-      "rootDirectory": "backend"
+      "root": "backend",
+      "runtime": "nodejs24.x"
     },
     "frontend": {
-      "rootDirectory": "frontend"
+      "root": "frontend",
+      "runtime": "nodejs24.x"
     }
   },
   "rewrites": [
     {
       "source": "/api",
-      "destination": "backend"
+      "destination": {
+        "pathname": "/api",
+        "service": "backend"
+      }
     },
     {
       "source": "/api/(.*)",
-      "destination": "backend"
+      "destination": {
+        "pathname": "/api/$1",
+        "service": "backend"
+      }
     },
     {
       "source": "/health",
-      "destination": "backend"
+      "destination": {
+        "pathname": "/health",
+        "service": "backend"
+      }
     },
     {
       "source": "/(.*)",
-      "destination": "frontend"
+      "destination": {
+        "pathname": "/$1",
+        "service": "frontend"
+      }
     }
   ]
 }
