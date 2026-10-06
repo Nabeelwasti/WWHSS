@@ -9,7 +9,7 @@ export type PermissionScope = {
 };
 
 function scopeMatches(
-  roleScope: Pick<PermissionScope, "classId" | "sectionId" | "subjectId" | "departmentId">,
+  roleScope: { classId: string | null; sectionId: string | null; subjectId: string | null; departmentId: string | null },
   targetScope: Pick<PermissionScope, "classId" | "sectionId" | "subjectId" | "departmentId">
 ): boolean {
   const dimensions: (keyof typeof roleScope)[] = ["classId", "sectionId", "subjectId", "departmentId"];
