@@ -30,6 +30,7 @@ model User {
   staffProfile            StaffProfile?
   enrollmentChanges       StudentEnrollmentHistory[] @relation("EnrollmentChangedBy")
   courseTeacherAssignments CourseTeacherAssignment[] @relation("CourseTeacherAssignedBy")
+  teacherCourseAssignments CourseTeacherAssignment[] @relation("CourseTeachers")
   guardianOf              ParentStudentLink[]    @relation("Guardian")
   refreshTokens           RefreshToken[]
   auditLogs               AuditLog[]
@@ -193,6 +194,7 @@ model Section {
 
   class             Class              @relation(fields: [classId], references: [id])
   students          StudentProfile[]
+  enrollmentHistory StudentEnrollmentHistory[]
   userRoles         UserRole[]
   timetableSlots    TimetableSlot[]
   attendanceRecords AttendanceRecord[]
@@ -721,7 +723,7 @@ model CourseTeacherAssignment {
   createdAt       DateTime @default(now())
 
   course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  teacher User @relation(fields: [teacherId], references: [id])
+  teacher User @relation("CourseTeachers", fields: [teacherId], references: [id])
   assignedBy User? @relation("CourseTeacherAssignedBy", fields: [assignedByUserId], references: [id])
 
   @@unique([courseId, teacherId, startDate])
