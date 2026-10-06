@@ -1,10 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { prisma } from "../../db/client.js";
 import { env } from "../../config/env.js";
 
 export class StorageValidationError extends Error {}
+export class StorageConfigError extends Error {}
 
 const STORAGE_DIR = path.resolve(process.cwd(), "storage_private");
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
@@ -67,54 +69,109 @@ export class LocalStorageProvider implements StorageProvider {
   }
 }
 
-export class CloudStorageProvider implements StorageProvider {
-  private memoryStore = new Map<string, { buffer: Buffer; mimeType: string }>();
+export class S3StorageProvider implements StorageProvider {
+  private client: S3Client;
+  private bucket: string;
+
+  constructor() {
+    if (!env.s3Bucket) {
+      throw new StorageConfigError("S3_BUCKET environment variable is required for S3 storage");
+    }
+
+    this.bucket = env.s3Bucket;
+    this.client = new S3Client({
+      region: env.s3Region,
+      credentials: env.s3AccessKeyId && env.s3SecretAccessKey ? {
+        accessKeyId: env.s3AccessKeyId,
+        secretAccessKey: env.s3SecretAccessKey,
+      } : undefined,
+      ...(env.s3Endpoint && { endpoint: env.s3Endpoint }),
+    });
+  }
 
   async saveFile(filename: string, buffer: Buffer, mimeType: string): Promise<void> {
-    // Durable cloud object store provider abstraction.
-    // When S3 credentials are functional in env, object is uploaded to private S3 bucket.
-    // Otherwise stores in private server-side object map without relying on serverless filesystem.
-    this.memoryStore.set(filename, { buffer: Buffer.from(buffer), mimeType });
+    const key = `storage/${filename}`;
+    const command = new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+      Body: buffer,
+      ContentType: mimeType,
+      ServerSideEncryption: "AES256",
+    });
+
+    try {
+      await this.client.send(command);
+    } catch (error) {
+      throw new StorageValidationError(`Failed to upload file to S3: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   async getFile(filename: string): Promise<{ buffer?: Buffer; mimeType?: string }> {
-    const data = this.memoryStore.get(filename);
-    if (!data) {
-      throw new StorageValidationError("File not found");
+    const key = `storage/${filename}`;
+    const command = new GetObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+    });
+
+    try {
+      const response = await this.client.send(command);
+      const chunks: Uint8Array[] = [];
+
+      if (response.Body) {
+        const reader = response.Body as any;
+        if (reader.getReader) {
+          // ReadableStream
+          const readableReader = reader.getReader();
+          let result = await readableReader.read();
+          while (!result.done) {
+            chunks.push(result.value);
+            result = await readableReader.read();
+          }
+        } else if (reader[Symbol.asyncIterator]) {
+          // AsyncIterable
+          for await (const chunk of reader) {
+            chunks.push(chunk);
+          }
+        }
+      }
+
+      const buffer = Buffer.concat(chunks as any);
+      return {
+        buffer,
+        mimeType: response.ContentType,
+      };
+    } catch (error) {
+      throw new StorageValidationError(`Failed to retrieve file from S3: ${error instanceof Error ? error.message : String(error)}`);
     }
-    return { buffer: data.buffer, mimeType: data.mimeType };
   }
 
   async deleteFile(filename: string): Promise<void> {
-    this.memoryStore.delete(filename);
-  }
+    const key = `storage/${filename}`;
+    const command = new DeleteObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+    });
 
-  async exists(filename: string): Promise<boolean> {
-    return this.memoryStore.has(filename);
-  }
-}
-
-export class MemoryStorageProvider implements StorageProvider {
-  private store = new Map<string, { buffer: Buffer; mimeType: string }>();
-
-  async saveFile(filename: string, buffer: Buffer, mimeType: string): Promise<void> {
-    this.store.set(filename, { buffer: Buffer.from(buffer), mimeType });
-  }
-
-  async getFile(filename: string): Promise<{ buffer?: Buffer; mimeType?: string }> {
-    const item = this.store.get(filename);
-    if (!item) {
-      throw new StorageValidationError("File not found");
+    try {
+      await this.client.send(command);
+    } catch (error) {
+      throw new StorageValidationError(`Failed to delete file from S3: ${error instanceof Error ? error.message : String(error)}`);
     }
-    return { buffer: item.buffer, mimeType: item.mimeType };
-  }
-
-  async deleteFile(filename: string): Promise<void> {
-    this.store.delete(filename);
   }
 
   async exists(filename: string): Promise<boolean> {
-    return this.store.has(filename);
+    const key = `storage/${filename}`;
+    const command = new HeadObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+    });
+
+    try {
+      await this.client.send(command);
+      return true;
+    } catch (error) {
+      return false;
+    }
   }
 }
 
@@ -124,9 +181,15 @@ export function getStorageProvider(): StorageProvider {
   if (!currentProvider) {
     const type = env.storageProvider;
     if (type === "s3" || type === "cloud") {
-      currentProvider = new CloudStorageProvider();
-    } else if (type === "memory") {
-      currentProvider = new MemoryStorageProvider();
+      try {
+        currentProvider = new S3StorageProvider();
+      } catch (error) {
+        if (error instanceof StorageConfigError && (env.vercelEnv === "production" || env.vercelEnv === "preview")) {
+          throw error;
+        }
+        console.warn("S3 storage initialization failed, falling back to local storage:", error instanceof Error ? error.message : String(error));
+        currentProvider = new LocalStorageProvider();
+      }
     } else {
       currentProvider = new LocalStorageProvider();
     }
@@ -186,6 +249,19 @@ export async function savePrivateFile(
   }
 
   return prisma.$transaction(async (tx) => {
+    await tx.storageFile.create({
+      data: {
+        storageKey: safeName,
+        originalName: input.originalFilename,
+        mimeType: input.mimeType,
+        size: input.buffer.length,
+        ownerUserId: uploadedByUserId,
+        entityType: input.studentProfileId ? "StudentProfile" : input.staffProfileId ? "StaffProfile" : undefined,
+        entityId: input.studentProfileId || input.staffProfileId,
+        isPrivate: true,
+      },
+    });
+
     await tx.auditLog.create({
       data: {
         userId: uploadedByUserId,
