@@ -20,7 +20,8 @@ export function LibraryManagementSection() {
 
   async function createBook(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = new FormData(e.currentTarget);
+    const formElement = e.currentTarget;
+    const form = new FormData(formElement);
     try {
       await api.createBook({
         title: String(form.get("title")),
@@ -28,7 +29,8 @@ export function LibraryManagementSection() {
         isbn: String(form.get("isbn") || "") || undefined,
         category: String(form.get("category") || "") || undefined,
       });
-      e.currentTarget.reset();
+      formElement.reset();
+      setError(null);
       setNotice("Book added to the catalog.");
       await refresh();
     } catch (e) {
@@ -38,13 +40,15 @@ export function LibraryManagementSection() {
 
   async function addCopy(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = new FormData(e.currentTarget);
+    const formElement = e.currentTarget;
+    const form = new FormData(formElement);
     try {
       await api.createBookCopy({
         bookId: String(form.get("bookId")),
         barcode: String(form.get("barcode")),
       });
-      e.currentTarget.reset();
+      formElement.reset();
+      setError(null);
       setNotice("Book copy added.");
       await refresh();
     } catch (e) {
