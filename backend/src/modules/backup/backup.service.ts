@@ -192,6 +192,8 @@ export async function exportDatabaseData() {
     rolePermissions,
     departments,
     userRoles,
+    refreshTokens,
+    auditLogs,
     academicYears,
     classes,
     sections,
@@ -232,6 +234,9 @@ export async function exportDatabaseData() {
     events,
     galleryItems,
     notifications,
+    schoolProfiles,
+    documentSequences,
+    storageFiles,
   ] = await Promise.all([
     prisma.user.findMany(),
     prisma.role.findMany(),
@@ -239,6 +244,8 @@ export async function exportDatabaseData() {
     prisma.rolePermission.findMany(),
     prisma.department.findMany(),
     prisma.userRole.findMany(),
+    prisma.refreshToken.findMany(),
+    prisma.auditLog.findMany(),
     prisma.academicYear.findMany(),
     prisma.class.findMany(),
     prisma.section.findMany(),
@@ -279,6 +286,9 @@ export async function exportDatabaseData() {
     prisma.eventItem.findMany(),
     prisma.galleryItem.findMany(),
     prisma.notification.findMany(),
+    prisma.schoolProfile.findMany(),
+    prisma.documentSequence.findMany(),
+    prisma.storageFile.findMany(),
   ]);
 
   return {
@@ -294,6 +304,8 @@ export async function exportDatabaseData() {
       rolePermissions,
       departments,
       userRoles,
+      refreshTokens,
+      auditLogs,
       academicYears,
       classes,
       sections,
@@ -334,6 +346,9 @@ export async function exportDatabaseData() {
       events,
       galleryItems,
       notifications,
+      schoolProfiles,
+      documentSequences,
+      storageFiles,
     },
   };
 }
@@ -433,7 +448,10 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
   if (!parsed.meta || !parsed.tables || typeof parsed.tables !== "object") throw new BackupError("Decrypted backup payload is missing required schema sections");
   const tables=parsed.tables as Record<string, unknown>;
   const tableMap: Record<string,string> = { users:"users", roles:"roles", permissions:"permissions", rolePermissions:"role_permissions", departments:"departments", userRoles:"user_roles", refreshTokens:"refresh_tokens", auditLogs:"audit_logs", academicYears:"academic_years", classes:"classes", sections:"sections", subjects:"subjects", studentProfiles:"student_profiles", staffProfiles:"staff_profiles", parentStudentLinks:"parent_student_links", fundingCategories:"funding_categories", studentFundingRecords:"student_funding_records", feeStructures:"fee_structures", feeInvoices:"fee_invoices", feeWaivers:"fee_waivers", payments:"payments", attendanceRecords:"attendance_records", courses:"courses", lessons:"lessons", resources:"resources", assignments:"assignments", submissions:"submissions", quizzes:"quizzes", quizQuestions:"quiz_questions", quizAttempts:"quiz_attempts", exams:"exams", examSubjects:"exam_subjects", examResults:"exam_results", aiUsageRecords:"ai_usage_records", aiAssessmentTests:"ai_assessment_tests", aiAssessmentQuestions:"ai_assessment_questions", aiAnswerSheets:"ai_answer_sheets", documentRecords:"document_records", rooms:"rooms", timetableSlots:"timetable_slots", books:"books", bookCopies:"book_copies", bookLoans:"book_loans", cmsPages:"cms_pages", notices:"notices", events:"events", galleryItems:"gallery_items", notifications:"notifications", schoolProfiles:"school_profiles", documentSequences:"document_sequences", storageFiles:"storage_files" };
-  const keys=Object.keys(tables); for(const k of keys) { if(!tableMap[k] || !Array.isArray(tables[k])) throw new BackupError(`Invalid or unsupported backup table: ${k}`); }
+  const requiredKeys = Object.keys(tableMap);
+  const keys=Object.keys(tables);
+  for(const k of keys) { if(!tableMap[k] || !Array.isArray(tables[k])) throw new BackupError(`Invalid or unsupported backup table: ${k}`); }
+  for(const k of requiredKeys) { if(!(k in tables)) throw new BackupError(`Backup is incomplete: missing table: ${k}`); }
   const result=await prisma.$transaction(async tx=>{
     const fk=await tx.$queryRaw<Array<{childTable:string,parentTable:string}>>`SELECT child.relname AS "childTable", parent.relname AS "parentTable" FROM pg_constraint c JOIN pg_class child ON child.oid=c.conrelid JOIN pg_class parent ON parent.oid=c.confrelid JOIN pg_namespace n ON n.oid=child.relnamespace WHERE c.contype='f' AND n.nspname='public'`;
     const selected=new Set(Object.values(tableMap)); const deps=new Map<string,Set<string>>(); const children=new Map<string,Set<string>>(); for(const t of selected){deps.set(t,new Set());children.set(t,new Set());} for(const f of fk){if(selected.has(f.childTable)&&selected.has(f.parentTable)&&f.childTable!==f.parentTable){deps.get(f.childTable)!.add(f.parentTable);children.get(f.parentTable)!.add(f.childTable);}}
@@ -441,6 +459,20 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
     const reverse=new Map(Object.entries(tableMap).map(([k,v])=>[v,k])); const counts:Record<string,number>={};
     for(const table of order){const key=reverse.get(table)!;const rows=tables[key] as Record<string,unknown>[]; if(!rows.length){counts[key]=0;continue;} const cols=await tx.$queryRaw<Array<{columnName:string}>>`SELECT column_name AS "columnName" FROM information_schema.columns WHERE table_schema='public' AND table_name=${table} ORDER BY ordinal_position`; const allowed=new Set(cols.map(c=>c.columnName)); const pk=await tx.$queryRaw<Array<{columnName:string}>>`SELECT kcu.column_name AS "columnName" FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name=kcu.constraint_name AND tc.table_name=kcu.table_name WHERE tc.table_schema='public' AND tc.constraint_type='PRIMARY KEY' AND tc.table_name=${table} ORDER BY kcu.ordinal_position`; if(!pk.length) throw new BackupError(`Table ${table} has no primary key`); let affected=0;
       for(const row of rows){const names=Object.keys(row);if(names.some(n=>!allowed.has(n))) throw new BackupError(`Backup contains unknown column in ${key}`);const values=names.map(n=>row[n]===undefined?null:row[n]);const placeholders=values.map((_,i)=>`$${i+1}`).join(",");const qcols=names.map(n=>`"${n.replace(/"/g,'""')}"`).join(",");const conflict=pk.map(x=>`"${x.columnName.replace(/"/g,'""')}"`).join(",");const updates=names.filter(n=>!pk.some(x=>x.columnName===n)).map(n=>`"${n.replace(/"/g,'""')}"=EXCLUDED."${n.replace(/"/g,'""')}"`).join(",");const sql=`INSERT INTO "public"."${table}" (${qcols}) VALUES (${placeholders}) ON CONFLICT (${conflict}) DO ${updates?"UPDATE SET "+updates:"NOTHING"}`; affected+=await tx.$executeRawUnsafe(sql,...values); } counts[key]=affected; if(affected!==rows.length) throw new BackupError(`Restore count mismatch for ${key}`); }
+    const sequences = await tx.$queryRaw<Array<{tableName:string;columnName:string;sequenceName:string|null}>>`
+      SELECT table_name AS "tableName", column_name AS "columnName",
+             pg_get_serial_sequence(format('%I.%I', table_schema, table_name), column_name) AS "sequenceName"
+      FROM information_schema.columns
+      WHERE table_schema='public'
+        AND pg_get_serial_sequence(format('%I.%I', table_schema, table_name), column_name) IS NOT NULL
+    `;
+    for (const sequence of sequences) {
+      if (!sequence.sequenceName) continue;
+      const table = `"public"."${sequence.tableName.replace(/"/g, '""')}"`;
+      const column = `"${sequence.columnName.replace(/"/g, '""')}"`;
+      await tx.$executeRawUnsafe(`SELECT setval(${JSON.stringify(sequence.sequenceName)}::regclass, COALESCE((SELECT MAX(${column}) FROM ${table}), 1), true)`);
+    }
+
     await tx.auditLog.create({data:{userId:restoredByUserId,action:"backup:restore",resource:`backup:${safeBackupFilename(filename)}`,metadata:{version:envelope.version,tableCounts:envelope.tableCounts,restoredTables:order}}}); return counts;
   },{maxWait:10000,timeout:120000});
   return {success:true,summary:result};
