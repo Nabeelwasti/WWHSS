@@ -238,6 +238,7 @@ export const api = {
   listUsers: () => request<{ users: UserSummary[] }>("/users"),
 
   listRoles: () => request<{ roles: RoleSummary[] }>("/users/roles"),
+  listDepartments: () => request<{ departments: { id: string; name: string; code: string | null }[] }>("/users/departments"),
 
   createUser: (input: { email: string; fullName: string; phone?: string }) =>
     request<{ user: { id: string; email: string; fullName: string }; temporaryPassword?: string }>("/users", {
@@ -259,6 +260,7 @@ export const api = {
   // ---- Admin: academic structure (requires "academics:manage") ----
 
   listClasses: () => request<{ classes: ClassSummary[] }>("/academics/classes"),
+  listAcademicYears: () => request<{ academicYears: { id: string; label: string; startDate: string; endDate: string; isActive: boolean }[] }>("/academics/academic-years"),
 
   listSubjects: () => request<{ subjects: SubjectSummary[] }>("/academics/subjects"),
 
