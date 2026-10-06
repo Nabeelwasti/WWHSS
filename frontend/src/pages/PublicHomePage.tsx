@@ -37,7 +37,7 @@ export function PublicHomePage({ onLoginClick }: { onLoginClick: () => void }) {
 
   return (
     <div>
-      <div style={{ background: "var(--navy)", color: "#fff", padding: "var(--space-6) var(--space-4)" }}>
+      <header style={{ background: "var(--navy)", color: "#fff", padding: "var(--space-6) var(--space-4)" }}>
         <div className="page-wide" style={{ margin: "0 auto", padding: 0 }}>
           <div className="flex justify-between items-center gap-2" style={{ flexWrap: "wrap" }}>
             <div>
@@ -52,9 +52,9 @@ export function PublicHomePage({ onLoginClick }: { onLoginClick: () => void }) {
             </div>
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="page page-wide">
+      <main className="page page-wide">
         <section className="card card-accent">
           <h2 className="card-title">{t("home.notices")}</h2>
           {noticesError && <p role="alert" className="alert alert-danger" style={{ fontSize: 13, padding: "8px 12px" }}>{noticesError}</p>}
@@ -81,7 +81,7 @@ export function PublicHomePage({ onLoginClick }: { onLoginClick: () => void }) {
             </div>
           ))}
         </section>
-      </div>
+      </main>
     </div>
   );
 }
