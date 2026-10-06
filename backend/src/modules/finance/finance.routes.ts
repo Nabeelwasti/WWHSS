@@ -16,6 +16,8 @@ import {
   getStudentFundingHistory,
   applyFeeWaiver,
   getFinancialSummaryReport,
+  adjustPayment,
+  refreshInvoiceStatus,
   FinanceValidationError,
 } from "./finance.service.js";
 
@@ -151,6 +153,19 @@ financeRouter.post("/waivers", authorize("finance:manage"), async (req, res) => 
     if (e instanceof FinanceValidationError) return res.status(400).json({ error: e.message });
     throw e;
   }
+});
+
+const adjustmentSchema = z.object({ paymentId: z.string().uuid(), kind: z.enum(["REFUND", "REVERSAL", "ADJUSTMENT"]), amount: z.number().positive(), reason: z.string().min(3), reference: z.string().optional() });
+financeRouter.post("/payments/adjust", authorize("finance:manage"), async (req, res) => {
+  const parsed = adjustmentSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  try { res.status(201).json(await adjustPayment({ ...parsed.data, adjustedByUserId: req.userId! })); }
+  catch (e) { if (e instanceof FinanceValidationError) return res.status(400).json({ error: e.message }); throw e; }
+});
+
+financeRouter.post("/invoices/:invoiceId/refresh-status", authorize("finance:manage"), async (req, res) => {
+  try { res.json(await refreshInvoiceStatus(req.params.invoiceId, req.userId)); }
+  catch (e) { if (e instanceof FinanceValidationError) return res.status(400).json({ error: e.message }); throw e; }
 });
 
 // ---------- STUDENT STATEMENTS & RECEIPTS ----------
