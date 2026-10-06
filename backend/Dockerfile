@@ -39,6 +39,6 @@ EXPOSE 8080
 # orchestrator can see this container is actually serving traffic, not just
 # that the process hasn't crashed.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD-SHELL node -e "const port=process.env.PORT||4000; fetch(\"http://127.0.0.1:\"+port+\"/health\").then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+  CMD node -e "const port=process.env.PORT||4000; fetch(\"http://127.0.0.1:\"+port+\"/health\").then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 
 CMD ["node", "dist/server.js"]
