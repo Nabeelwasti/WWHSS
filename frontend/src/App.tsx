@@ -6,6 +6,7 @@ import { AdminPage } from "./pages/AdminPage";
 import { AttendancePage } from "./pages/AttendancePage";
 import { TimetablePage } from "./pages/TimetablePage";
 import { QuizzesPage } from "./pages/QuizzesPage";
+import { ParentPage } from "./pages/ParentPage";
 import { PublicHomePage } from "./pages/PublicHomePage";
 import { useLanguage, LanguageToggle } from "./i18n";
 import { AssistantLauncher } from "./components/AssistantLauncher";
@@ -22,7 +23,7 @@ function canMarkAttendance(roleKeys: string[]) {
   return roleKeys.some((k) => k === "teacher" || k === "class_teacher" || k === "super_admin");
 }
 
-type View = "dashboard" | "admin" | "attendance" | "timetable" | "quizzes";
+type View = "dashboard" | "admin" | "attendance" | "timetable" | "quizzes" | "parent";
 
 export default function App() {
   const { user, booting } = useAuth();
@@ -50,6 +51,7 @@ export default function App() {
   const showAdminLink = hasAdminRole(roleKeys);
   const showAttendanceLink = canMarkAttendance(roleKeys);
   const showQuizzesLink = Boolean(user.studentProfile);
+  const showParentLink = roleKeys.some((k) => k === "parent" || k === "guardian");
 
   const navItem = (key: View, label: string) => (
     <button className={`nav-link${view === key ? " active" : ""}`} onClick={() => setView(key)}>
@@ -67,6 +69,7 @@ export default function App() {
             {showQuizzesLink && navItem("quizzes", t("nav.quizzes"))}
             {showAttendanceLink && navItem("attendance", t("nav.attendance"))}
             {showAdminLink && navItem("admin", t("nav.admin"))}
+            {showParentLink && navItem("parent", t("nav.parent"))}
           </nav>
           <LanguageToggle />
         </div>
@@ -75,13 +78,15 @@ export default function App() {
       {view === "admin" && showAdminLink && <AdminPage />}
       {view === "attendance" && showAttendanceLink && <AttendancePage />}
       {view === "timetable" && <TimetablePage />}
+      {view === "parent" && showParentLink && <ParentPage />}
       {view === "quizzes" && showQuizzesLink && user.studentProfile && (
         <QuizzesPage studentProfileId={user.studentProfile.id} />
       )}
       {(view === "dashboard" ||
         (view === "admin" && !showAdminLink) ||
         (view === "attendance" && !showAttendanceLink) ||
-        (view === "quizzes" && !showQuizzesLink)) && <DashboardPage />}
+        (view === "quizzes" && !showQuizzesLink) ||
+        (view === "parent" && !showParentLink)) && <DashboardPage />}
 
       {/* Available on every screen once logged in — a real, scoped
           assistant launcher rather than an intrusive forced "tour". */}
