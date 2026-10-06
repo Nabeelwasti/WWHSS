@@ -5,6 +5,10 @@ export type ParentChildDashboard = {
   invoices: { id: string; amountDue: number | string; dueDate: string; status: string; feeStructure: { name: string }; payments: unknown[]; feeWaivers: unknown[] }[];
   timetable: { dayOfWeek: number; startTime: string; endTime: string; subject: { name: string }; teacher: { fullName: string }; room?: { name: string } | null }[];
   notices: { id: string; title: string; body: string; audience: string; publishedAt: string }[];
+  assignments: { id: string; title: string; description: string | null; dueAt: string; maxScore: number; course: { title: string; subject: { name: string } }; submissions: { score: number | null; feedback: string | null; submittedAt: string }[] }[];
+  loans: { id: string; issuedAt: string; dueAt: string; returnedAt: string | null; fineAmount: number | string | null; bookCopy: { book: { title: string } } }[];
+  notifications: { id: string; title: string; body: string; type: string; isRead: boolean; createdAt: string }[];
+  documents: { id: string; docType: string; docNumber: string; createdAt: string }[];
 };
 
 // Every function here calls the real backend over HTTP. There is no mock
