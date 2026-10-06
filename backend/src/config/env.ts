@@ -4,7 +4,7 @@ import { z } from "zod";
 const isVercelPreview = process.env.VERCEL_ENV === "preview";
 const isVercelProduction = process.env.VERCEL_ENV === "production";
 const isNodeProduction = process.env.NODE_ENV === "production";
-const isProductionOrPreview = isNodeProduction || isVercelPreview || isVercelProduction;
+const isVercelDeployment = isVercelPreview || isVercelProduction;\nconst isProductionOrPreview = isNodeProduction || isVercelDeployment;
 
 const envSchema = z
   .object({

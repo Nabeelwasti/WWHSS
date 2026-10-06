@@ -52,7 +52,7 @@ backupRouter.post("/verify/:filename", authorize("users:manage"), async (req, re
 
 backupRouter.post("/restore/:filename", authorize("users:manage"), async (req, res) => {
   try {
-    const result = await restoreFromBackup(req.params.filename);
+    const result = await restoreFromBackup(req.params.filename, undefined, req.userId!);
     res.json({ restore: result });
   } catch (e) {
     if (e instanceof BackupError) return res.status(400).json({ error: e.message });

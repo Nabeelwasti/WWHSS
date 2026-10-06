@@ -1,12 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client, S3ServiceException, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { prisma } from "../../db/client.js";
 import { env } from "../../config/env.js";
+import { userHasPermission } from "../identity/permissions.js";
 
 export class StorageValidationError extends Error {}
 export class StorageConfigError extends Error {}
+export class StorageNotFoundError extends StorageValidationError {}
+export class StorageAuthorizationError extends StorageValidationError {}
 
 const STORAGE_DIR = path.resolve(process.cwd(), "storage_private");
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -48,7 +51,7 @@ export class LocalStorageProvider implements StorageProvider {
     await fs.promises.writeFile(fullPath, buffer);
   }
 
-  async getFile(filename: string): Promise<{ filePath?: string }> {
+  async getFile(filename: string): Promise<{ filePath?: string; mimeType?: string }> {
     const fullPath = path.join(this.dir, filename);
     if (!fs.existsSync(fullPath)) {
       throw new StorageValidationError("File not found");
@@ -113,32 +116,20 @@ export class S3StorageProvider implements StorageProvider {
 
   async getFile(filename: string): Promise<{ buffer?: Buffer; mimeType?: string }> {
     const key = `storage/${filename}`;
-    const command = new GetObjectCommand({
-      Bucket: this.bucket,
-      Key: key,
-    });
-
     try {
-      const response = await this.client.send(command);
-      const chunks: Buffer[] = [];
-
-      if (response.Body) {
-        const body = response.Body as NodeJS.ReadableStream;
-        const data = await new Promise<Buffer>((resolve, reject) => {
-          const buffers: Buffer[] = [];
-          body.on("data", (chunk: Buffer) => buffers.push(chunk));
-          body.on("end", () => resolve(Buffer.concat(buffers)));
-          body.on("error", reject);
-        });
-        chunks.push(data);
-      }
-
-      const buffer = Buffer.concat(chunks);
+      const response = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+      if (!response.Body) throw new StorageNotFoundError("File not found");
       return {
-        buffer,
+        buffer: Buffer.from(await response.Body.transformToByteArray()),
         mimeType: response.ContentType,
       };
     } catch (error) {
+      if (
+        error instanceof StorageNotFoundError ||
+        (error instanceof S3ServiceException && error.$metadata.httpStatusCode === 404)
+      ) {
+        throw new StorageNotFoundError("File not found");
+      }
       throw new StorageValidationError(
         `Failed to retrieve file from S3: ${error instanceof Error ? error.message : String(error)}`
       );
@@ -163,16 +154,14 @@ export class S3StorageProvider implements StorageProvider {
 
   async exists(filename: string): Promise<boolean> {
     const key = `storage/${filename}`;
-    const command = new HeadObjectCommand({
-      Bucket: this.bucket,
-      Key: key,
-    });
-
     try {
-      await this.client.send(command);
+      await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
       return true;
-    } catch {
-      return false;
+    } catch (error) {
+      if (error instanceof S3ServiceException && error.$metadata.httpStatusCode === 404) return false;
+      throw new StorageValidationError(
+        `Failed to check S3 object: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 }
@@ -223,6 +212,9 @@ export async function savePrivateFile(
     buffer: Buffer;
     studentProfileId?: string;
     staffProfileId?: string;
+    classId?: string;
+    sectionId?: string;
+    subjectId?: string;
     category?: string;
   },
   uploadedByUserId: string
@@ -246,11 +238,10 @@ export async function savePrivateFile(
     mimeType: input.mimeType,
   };
 
-  if (!uploadedByUserId) {
-    return fileData;
-  }
+  if (!uploadedByUserId) throw new StorageAuthorizationError("An authenticated uploader is required");
 
-  return prisma.$transaction(async (tx) => {
+  try {
+    return await prisma.$transaction(async (tx) => {
     await tx.storageFile.create({
       data: {
         storageKey: safeName,
@@ -260,6 +251,9 @@ export async function savePrivateFile(
         ownerUserId: uploadedByUserId,
         entityType: input.studentProfileId ? "StudentProfile" : input.staffProfileId ? "StaffProfile" : undefined,
         entityId: input.studentProfileId || input.staffProfileId,
+        classId: input.classId,
+        sectionId: input.sectionId,
+        subjectId: input.subjectId,
         isPrivate: true,
       },
     });
@@ -279,7 +273,17 @@ export async function savePrivateFile(
       },
     });
     return fileData;
-  });
+    });
+  } catch (error) {
+    try {
+      await provider.deleteFile(safeName);
+    } catch (compensationError) {
+      throw new StorageValidationError(
+        `Storage metadata transaction failed and object compensation also failed: ${error instanceof Error ? error.message : String(error)}; compensation: ${compensationError instanceof Error ? compensationError.message : String(compensationError)}`
+      );
+    }
+    throw error;
+  }
 }
 
 export function getPrivateFilePath(filename: string): string {
@@ -292,14 +296,74 @@ export function getPrivateFilePath(filename: string): string {
   return fullPath;
 }
 
-export async function getPrivateFileContent(filename: string) {
+export async function getPrivateFileContent(filename: string, requesterUserId: string) {
+  if (!requesterUserId) throw new StorageAuthorizationError("An authenticated requester is required");
+
   const safeName = path.basename(filename);
+  const file = await prisma.storageFile.findUnique({ where: { storageKey: safeName } });
+  if (!file) throw new StorageNotFoundError("File not found");
+
+  if (file.isPrivate) {
+    let allowed = file.ownerUserId === requesterUserId;
+
+    if (!allowed && file.entityType === "StudentProfile" && file.entityId) {
+      const [student, guardianLink] = await Promise.all([
+        prisma.studentProfile.findUnique({ where: { id: file.entityId }, select: { userId: true } }),
+        prisma.parentStudentLink.findFirst({
+          where: { studentId: file.entityId, parentId: requesterUserId },
+          select: { id: true },
+        }),
+      ]);
+      allowed = student?.userId === requesterUserId || Boolean(guardianLink);
+    }
+
+    if (!allowed && file.entityType === "StaffProfile" && file.entityId) {
+      const staff = await prisma.staffProfile.findUnique({
+        where: { id: file.entityId },
+        select: { userId: true },
+      });
+      allowed = staff?.userId === requesterUserId;
+    }
+
+    if (!allowed && (file.classId || file.sectionId || file.subjectId)) {
+      allowed = await userHasPermission(requesterUserId, "academics:view", {
+        classId: file.classId ?? undefined,
+        sectionId: file.sectionId ?? undefined,
+        subjectId: file.subjectId ?? undefined,
+      });
+    }
+
+    if (!allowed) throw new StorageAuthorizationError("You are not authorized to access this private file");
+  }
+
   const provider = getStorageProvider();
-  return provider.getFile(safeName);
+  const fileData = await provider.getFile(safeName);
+
+  await prisma.auditLog.create({
+    data: {
+      userId: requesterUserId,
+      action: "storage:download_file",
+      resource: `file:${safeName}`,
+      metadata: {
+        storageFileId: file.id,
+        provider: env.storageProvider,
+      },
+    },
+  });
+
+  return fileData;
 }
 
-export async function deletePrivateFile(filename: string) {
+export async function deletePrivateFile(filename: string, requesterUserId: string) {
+  if (!requesterUserId) throw new StorageAuthorizationError("An authenticated requester is required");
   const safeName = path.basename(filename);
+  const file = await prisma.storageFile.findUnique({ where: { storageKey: safeName } });
+  if (!file) throw new StorageNotFoundError("File not found");
+  if (file.ownerUserId !== requesterUserId) {
+    throw new StorageAuthorizationError("Only the file owner may delete this private file");
+  }
+
   const provider = getStorageProvider();
-  return provider.deleteFile(safeName);
+  await provider.deleteFile(safeName);
+  await prisma.storageFile.delete({ where: { id: file.id } });
 }

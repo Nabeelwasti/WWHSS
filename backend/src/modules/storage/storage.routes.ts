@@ -5,6 +5,8 @@ import {
   savePrivateFile,
   getPrivateFileContent,
   StorageValidationError,
+  StorageAuthorizationError,
+  StorageNotFoundError,
 } from "./storage.service.js";
 
 export const storageRouter = Router();
@@ -27,11 +29,21 @@ storageRouter.post("/upload", authorize("academics:view"), async (req, res) => {
         return res.status(400).json({ error: "Empty upload payload" });
       }
       const saved = await savePrivateFile(
-        { originalFilename: filename, mimeType, buffer },
+        {
+          originalFilename: filename,
+          mimeType,
+          buffer,
+          studentProfileId: req.headers["x-student-profile-id"] as string | undefined,
+          staffProfileId: req.headers["x-staff-profile-id"] as string | undefined,
+          classId: req.headers["x-class-id"] as string | undefined,
+          sectionId: req.headers["x-section-id"] as string | undefined,
+          subjectId: req.headers["x-subject-id"] as string | undefined,
+        },
         req.userId!
       );
       res.status(201).json({ file: saved });
     } catch (e) {
+      if (e instanceof StorageAuthorizationError) return res.status(403).json({ error: e.message });
       if (e instanceof StorageValidationError) return res.status(400).json({ error: e.message });
       res.status(500).json({ error: "File upload failed" });
     }
@@ -40,7 +52,7 @@ storageRouter.post("/upload", authorize("academics:view"), async (req, res) => {
 
 storageRouter.get("/files/:filename", authorize("academics:view"), async (req, res) => {
   try {
-    const fileData = await getPrivateFileContent(req.params.filename);
+    const fileData = await getPrivateFileContent(req.params.filename, req.userId!);
     if (fileData.filePath) {
       return res.sendFile(fileData.filePath);
     }
@@ -50,7 +62,9 @@ storageRouter.get("/files/:filename", authorize("academics:view"), async (req, r
     }
     res.status(404).json({ error: "File not found" });
   } catch (e) {
-    if (e instanceof StorageValidationError) return res.status(404).json({ error: e.message });
+    if (e instanceof StorageNotFoundError) return res.status(404).json({ error: e.message });
+    if (e instanceof StorageAuthorizationError) return res.status(403).json({ error: e.message });
+    if (e instanceof StorageValidationError) return res.status(400).json({ error: e.message });
     res.status(500).json({ error: "Could not retrieve file" });
   }
 });
