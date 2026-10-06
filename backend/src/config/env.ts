@@ -23,8 +23,8 @@ const envSchema = z
     BACKUP_ENCRYPTION_KEY: isProductionOrPreview
       ? z.string().min(32, "BACKUP_ENCRYPTION_KEY must be at least 32 characters in production/preview")
       : z.string().min(16).default("dev-backup-encryption-key-must-be-at-least-32-bytes!"),
-    STORAGE_PROVIDER: z.enum(["local", "s3", "cloud", "memory"]).default("local"),
-    BACKUP_PROVIDER: z.enum(["local", "s3", "cloud", "memory"]).default("local"),
+    STORAGE_PROVIDER: z.enum(["local", "s3", "cloud"]).default("local"),
+    BACKUP_PROVIDER: z.enum(["local", "s3", "cloud"]).default("local"),
     S3_BUCKET: z.string().optional(),
     S3_REGION: z.string().default("us-east-1"),
     S3_ACCESS_KEY_ID: z.string().optional(),
@@ -55,6 +55,28 @@ const envSchema = z
       return true;
     },
     { message: "Default/development secrets cannot be used in production or preview deployments" }
+  )
+  .refine(
+    (data) => {
+      if (isProductionOrPreview) {
+        if ((data.STORAGE_PROVIDER === "s3" || data.STORAGE_PROVIDER === "cloud") && !data.S3_BUCKET) {
+          return false;
+        }
+      }
+      return true;
+    },
+    { message: "S3_BUCKET is required when STORAGE_PROVIDER is s3 or cloud in production/preview" }
+  )
+  .refine(
+    (data) => {
+      if (isProductionOrPreview) {
+        if ((data.BACKUP_PROVIDER === "s3" || data.BACKUP_PROVIDER === "cloud") && !data.S3_BUCKET) {
+          return false;
+        }
+      }
+      return true;
+    },
+    { message: "S3_BUCKET is required when BACKUP_PROVIDER is s3 or cloud in production/preview" }
   );
 
 const parsed = envSchema.safeParse(process.env);
@@ -89,5 +111,3 @@ export const env = {
   maxAiInputChars: rawEnv.MAX_AI_INPUT_CHARS,
   maxAiOutputTokens: rawEnv.MAX_AI_OUTPUT_TOKENS,
 };
-
-
