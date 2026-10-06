@@ -551,8 +551,8 @@ export async function getPaymentReceipt(paymentId: string) {
 
 export async function getFinancialSummaryReport() {
   const [invoices, payments, waivers, fundingCategories] = await Promise.all([
-    prisma.feeInvoice.findMany({ include: { student: { include: { fundingCategory: true } } } }),
-    prisma.payment.findMany(),
+    prisma.feeInvoice.findMany({ include: { feeStructure: { include: { academicYear: true } }, student: { include: { fundingRecords: { orderBy: { startDate: "desc" } } } } } }),
+    prisma.payment.findMany({ include: { adjustments: true } }),
     prisma.feeWaiver.findMany(),
     prisma.fundingCategory.findMany(),
   ]);
@@ -571,7 +571,7 @@ export async function getFinancialSummaryReport() {
 
   for (const inv of invoices) {
     totalBilled = totalBilled.add(inv.amountDue);
-    const isFunded = Boolean(inv.student.fundingCategoryId);
+    const isFunded = inv.student.fundingRecords.some((r) => r.startDate <= inv.feeStructure.academicYear.endDate && (!r.endDate || r.endDate >= inv.feeStructure.academicYear.startDate));
     if (isFunded) {
       fundedBilled = fundedBilled.add(inv.amountDue);
     } else {
@@ -580,7 +580,9 @@ export async function getFinancialSummaryReport() {
   }
 
   for (const p of payments) {
-    totalPaid = totalPaid.add(p.amount);
+    if (p.status === "reversed") continue;
+    const adjusted = p.adjustments.reduce((sum, a) => sum.add(a.amount), new Prisma.Decimal(0));
+    totalPaid = totalPaid.add(p.amount.sub(adjusted));
   }
 
   for (const w of waivers) {
