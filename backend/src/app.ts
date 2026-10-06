@@ -2,7 +2,6 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
-import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 import crypto from "node:crypto";
 import "./middleware/express-async-errors.js";
@@ -69,7 +68,23 @@ app.use(cors({
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
 
-if (env.nodeEnv !== "test") app.use(morgan(env.nodeEnv === "production" ? "combined" : "dev"));
+app.use((req, res, next) => {
+  const startedAt = process.hrtime.bigint();
+  res.on("finish", () => {
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+    const event = {
+      timestamp: new Date().toISOString(),
+      requestId: res.getHeader("X-Request-ID"),
+      userId: (req as express.Request & { userId?: string }).userId ?? null,
+      method: req.method,
+      route: req.route?.path ?? req.path,
+      status: res.statusCode,
+      durationMs: Math.round(durationMs * 100) / 100,
+    };
+    if (env.nodeEnv !== "test") console.log(JSON.stringify(event));
+  });
+  next();
+});
 
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: true, legacyHeaders: false, message: { error: "Too many attempts. Please try again later." } });
 app.use("/api/auth/login", authLimiter);
