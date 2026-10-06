@@ -56,8 +56,8 @@ async function allocateDocumentNumber(docType: string, academicYear: string, cam
           data: { docType: normalizedType, academicYear: normalizedYear, campus: normalizedCampus, nextVal: 2 },
         });
         return `${prefix}-${normalizedType}-${normalizedYear}-000001`;
-      } catch (error: any) {
-        if (error?.code === "P2002") continue;
+      } catch (error: unknown) {
+        if ((error as { code?: string }).code === "P2002") continue;
         throw error;
       }
     }
@@ -73,27 +73,30 @@ async function allocateDocumentNumber(docType: string, academicYear: string, cam
 async function getOrCreateDocumentNumber(docType: string, referenceId: string, academicYearId?: string): Promise<string> {
   const existing = await prisma.documentRecord.findFirst({ where: { docType, referenceId }, select: { docNumber: true } });
   if (existing) return existing.docNumber;
-  let academicYearLabel = academicYearId ? (await prisma.academicYear.findUnique({ where: { id: academicYearId }, select: { label: true } }))?.label : undefined;
-  academicYearLabel ||= await getCurrentAcademicYearLabel();
+  const academicYearLabel = academicYearId
+    ? (await prisma.academicYear.findUnique({ where: { id: academicYearId }, select: { label: true } }))?.label
+    : await getCurrentAcademicYearLabel();
+  if (!academicYearLabel) throw new DocumentValidationError("Academic year is required for document numbering.");
   const docNumber = await allocateDocumentNumber(docType, academicYearLabel);
   try {
     await prisma.documentRecord.create({ data: { docType, docNumber, referenceId, academicYearId } });
     return docNumber;
-  } catch (error: any) {
-    if (error?.code === "P2002") {
+  } catch (error: unknown) {
+    if ((error as { code?: string }).code === "P2002") {
       const raced = await prisma.documentRecord.findFirst({ where: { docType, referenceId }, select: { docNumber: true } });
       if (raced) return raced.docNumber;
     }
     throw error;
   }
 }
+
 export async function createDocumentRecord(
   input: {
     docType: string;
     studentProfileId?: string;
     staffProfileId?: string;
     academicYearId?: string;
-    metadataJson?: Record<string, any>;
+    metadataJson?: Record<string, unknown>;
   },
   createdByUserId?: string
 ) {
@@ -101,14 +104,17 @@ export async function createDocumentRecord(
     ? (await prisma.academicYear.findUnique({ where: { id: input.academicYearId }, select: { label: true } }))?.label
     : await getCurrentAcademicYearLabel();
   if (!academicYearLabel) throw new DocumentValidationError("Academic year is required for document numbering.");
-  const docNumber = await allocateDocumentNumber(input.docType, academicYearLabel);
+  if (!input.studentProfileId && !input.staffProfileId) throw new DocumentValidationError("A student or staff record is required for an official document.");
 
   return prisma.$transaction(async (tx) => {
-    const doc = await tx.documentRecord.create({
+    const referenceId = input.studentProfileId || input.staffProfileId!;
+    const existing = await tx.documentRecord.findFirst({ where: { docType: input.docType, referenceId } });
+    const docNumber = existing?.docNumber || await allocateDocumentNumber(input.docType, academicYearLabel);
+    const doc = existing || await tx.documentRecord.create({
       data: {
         docType: input.docType,
         docNumber,
-        referenceId: input.studentProfileId || input.staffProfileId,
+        referenceId,
         studentProfileId: input.studentProfileId,
         staffProfileId: input.staffProfileId,
         academicYearId: input.academicYearId,
@@ -122,7 +128,7 @@ export async function createDocumentRecord(
       },
     });
 
-    if (createdByUserId) {
+    if (createdByUserId && !existing) {
       await tx.auditLog.create({
         data: {
           userId: createdByUserId,
@@ -132,7 +138,6 @@ export async function createDocumentRecord(
         },
       });
     }
-
     return doc;
   });
 }
@@ -155,6 +160,33 @@ export async function listDocumentRecords(filters: {
   });
 }
 
+async function getStudentOutstandingBalance(studentProfileId: string) {
+  const invoices = await prisma.feeInvoice.findMany({
+    where: { studentProfileId },
+    include: { payments: { include: { adjustments: true } }, feeWaivers: true },
+  });
+  let billed = 0;
+  let paid = 0;
+  let waived = 0;
+  for (const invoice of invoices) {
+    if (["cancelled", "void"].includes(invoice.status)) continue;
+    billed += invoice.amountDue.toNumber();
+    waived += invoice.feeWaivers.reduce((sum, waiver) => sum + waiver.amount.toNumber(), 0);
+    paid += invoice.payments
+      .filter((payment) => payment.status !== "reversed")
+      .reduce((sum, payment) => {
+        const adjusted = payment.adjustments.reduce((adjustmentSum, adjustment) => adjustmentSum + adjustment.amount.toNumber(), 0);
+        return sum + Math.max(0, payment.amount.toNumber() - adjusted);
+      }, 0);
+  }
+  return {
+    totalBilled: billed,
+    totalPaid: paid,
+    totalWaived: waived,
+    outstanding: Math.max(0, billed - paid - waived),
+  };
+}
+
 export async function generatePrintableDocumentPayload(docType: string, referenceId: string) {
   const header = await getSchoolHeader();
   const issueDate = new Date().toISOString().slice(0, 10);
@@ -173,7 +205,6 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
         },
       });
       if (!student) throw new DocumentValidationError(`Student ${referenceId} not found`);
-
       return {
         docType,
         docNumber: await getOrCreateDocumentNumber(docType, referenceId),
@@ -207,17 +238,11 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
       const payment = await prisma.payment.findUnique({
         where: { id: referenceId },
         include: {
-          invoice: {
-            include: {
-              feeStructure: true,
-              student: { include: { user: { select: { fullName: true, email: true } }, class: true } },
-            },
-          },
+          invoice: { include: { feeStructure: true, student: { include: { user: { select: { fullName: true, email: true } }, class: true } } } },
           receivedByUser: { select: { fullName: true } },
         },
       });
       if (!payment) throw new DocumentValidationError(`Payment ${referenceId} not found`);
-
       return {
         docType: "fee_receipt",
         docNumber: await getOrCreateDocumentNumber("fee_receipt", payment.id, payment.invoice.feeStructure.academicYearId),
@@ -230,31 +255,26 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
           className: payment.invoice.student.class?.name || "N/A",
           invoiceName: payment.invoice.feeStructure.name,
         },
-        records: [
-          {
-            description: payment.invoice.feeStructure.name,
-            amountPaid: payment.amount.toNumber(),
-            paymentMethod: payment.method.toUpperCase(),
-            receivedBy: payment.receivedByUser?.fullName || "Accounts Dept",
-          },
-        ],
-        signatures: [
-          { title: "Accounts Officer", name: payment.receivedByUser?.fullName || "Authorized Signatory" },
-        ],
+        records: [{
+          description: payment.invoice.feeStructure.name,
+          amountPaid: payment.amount.toNumber(),
+          paymentMethod: payment.method.toUpperCase(),
+          receivedBy: payment.receivedByUser?.fullName || "Accounts Dept",
+        }],
+        signatures: [{ title: "Accounts Officer", name: payment.receivedByUser?.fullName || "Authorized Signatory" }],
       };
     }
 
     case "transfer_certificate": {
       const student = await prisma.studentProfile.findUnique({
         where: { id: referenceId },
-        include: {
-          user: { select: { fullName: true, email: true, phone: true } },
-          class: true,
-          section: true,
-        },
+        include: { user: { select: { fullName: true, email: true, phone: true } }, class: true, section: true },
       });
       if (!student) throw new DocumentValidationError(`Student ${referenceId} not found`);
-
+      const balance = await getStudentOutstandingBalance(student.id);
+      const duesStatement = balance.outstanding === 0
+        ? "The student's school dues have been cleared as of the issue date."
+        : `The student's school account has an outstanding balance of ${balance.outstanding.toFixed(2)} as of the issue date.`;
       return {
         docType: "transfer_certificate",
         docNumber: await getOrCreateDocumentNumber("transfer_certificate", student.id),
@@ -272,7 +292,8 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
           status: student.status,
           withdrawalReason: student.withdrawalReason || "Personal Request",
         },
-        statement: `This is to certify that ${student.user.fullName}, son/daughter of ${student.fatherName || "the guardian"}, was a bona fide student of this institution. All school dues have been cleared.`,
+        financialStatus: balance,
+        statement: `This is to certify that ${student.user.fullName}, son/daughter of ${student.fatherName || "the guardian"}, was a bona fide student of this institution. ${duesStatement}`,
         signatures: [
           { title: "Exam Incharge", name: null, status: "PENDING_SIGNATURE" },
           { title: "Principal", name: null, status: "PENDING_SIGNATURE" },
@@ -283,33 +304,21 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
     case "fee_statement": {
       const student = await prisma.studentProfile.findUnique({
         where: { id: referenceId },
-        include: {
-          user: { select: { fullName: true, email: true } },
-          class: true,
-          section: true,
-          fundingCategory: true,
-          feeInvoices: { include: { feeStructure: true, payments: true, feeWaivers: true } },
-        },
+        include: { user: { select: { fullName: true, email: true } }, class: true, section: true, fundingCategory: true, feeInvoices: { include: { feeStructure: true, payments: { include: { adjustments: true } }, feeWaivers: true } } },
       });
       if (!student) throw new DocumentValidationError(`Student ${referenceId} not found`);
-
       return {
         docType: "fee_statement",
         docNumber: await getOrCreateDocumentNumber("fee_statement", student.id),
         issueDate,
         header,
         title: "Student Fee Account Statement / فيس والى تفصيل",
-        entity: {
-          name: student.user.fullName,
-          admissionNo: student.admissionNo,
-          className: student.class?.name || "N/A",
-          fundingCategory: student.fundingCategory?.name || "Standard",
-        },
+        entity: { name: student.user.fullName, admissionNo: student.admissionNo, className: student.class?.name || "N/A", fundingCategory: student.fundingCategory?.name || "Standard" },
         records: student.feeInvoices.map((inv) => ({
           invoiceName: inv.feeStructure.name,
           dueDate: inv.dueDate.toISOString().slice(0, 10),
           amountDue: inv.amountDue.toNumber(),
-          paid: inv.payments.reduce((sum, p) => sum + p.amount.toNumber(), 0),
+          paid: inv.payments.filter((p) => p.status !== "reversed").reduce((sum, p) => sum + p.amount.toNumber() - p.adjustments.reduce((s, a) => s + a.amount.toNumber(), 0), 0),
           waived: inv.feeWaivers.reduce((sum, w) => sum + w.amount.toNumber(), 0),
           status: inv.status.toUpperCase(),
         })),
@@ -320,37 +329,22 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
     case "attendance_report": {
       const student = await prisma.studentProfile.findUnique({
         where: { id: referenceId },
-        include: {
-          user: { select: { fullName: true } },
-          class: true,
-          section: true,
-          attendanceRecords: { orderBy: { date: "desc" }, take: 30 },
-        },
+        include: { user: { select: { fullName: true } }, class: true, section: true, attendanceRecords: { orderBy: { date: "desc" }, take: 30 } },
       });
       if (!student) throw new DocumentValidationError(`Student ${referenceId} not found`);
-
       return {
         docType: "attendance_report",
         docNumber: await getOrCreateDocumentNumber("attendance_report", student.id),
         issueDate,
         header,
         title: "Student Attendance Log & Report / حاضرى رپورٹ",
-        entity: {
-          name: student.user.fullName,
-          admissionNo: student.admissionNo,
-          className: student.class?.name || "N/A",
-          sectionName: student.section?.name || "N/A",
-        },
-        records: student.attendanceRecords.map((a) => ({
-          date: a.date.toISOString().slice(0, 10),
-          status: a.status.toUpperCase(),
-        })),
+        entity: { name: student.user.fullName, admissionNo: student.admissionNo, className: student.class?.name || "N/A", sectionName: student.section?.name || "N/A" },
+        records: student.attendanceRecords.map((a) => ({ date: a.date.toISOString().slice(0, 10), status: a.status.toUpperCase() })),
         signatures: [{ title: "Class Teacher", name: null, status: "PENDING_SIGNATURE" }],
       };
     }
 
-    default: {
+    default:
       throw new DocumentValidationError("Unsupported document type: " + docType);
-    }
   }
 }
