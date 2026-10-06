@@ -37,7 +37,7 @@ jobs:
           --health-timeout 3s
           --health-retries 5
       minio:
-        image: quay.io/minio/minio:latest
+        image: bitnami/minio:2024.4.6
         env:
           MINIO_ROOT_USER: minioadmin
           MINIO_ROOT_PASSWORD: minioadmin
@@ -48,7 +48,7 @@ jobs:
           --health-interval 3s
           --health-timeout 3s
           --health-retries 10
-        command: server /data
+        command: /opt/bitnami/minio/bin/minio server /bitnami/minio/data
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
