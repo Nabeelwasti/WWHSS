@@ -880,6 +880,19 @@
             "description": "Academic years"
           }
         }
+      },
+      "post": {
+        "summary": "Create academic year",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Academic year created"
+          }
+        }
       }
     },
     "/api/academics/sections": {
