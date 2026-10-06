@@ -45,7 +45,19 @@ app.set(
 );
 
 app.use(helmet());
-app.use(cors({ origin: (origin, callback) => { if (!origin || env.corsOrigins.includes(origin)) return callback(null, true); return callback(new Error("CORS origin is not allowed")); }, credentials: true }));
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Requests from the browser to the Vercel Services backend can be
+      // same-origin even when the deployment URL is ephemeral. In that case
+      // the browser Origin is the backend Host and should not require a new
+      // CORS_ORIGIN value for every preview deployment.
+      if (!origin || env.corsOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error("CORS origin is not allowed"));
+    },
+    credentials: true,
+  })
+);
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
 
@@ -104,6 +116,7 @@ app.use("/api/ai/assessment", expensiveOperationLimiter);
 app.use("/api/backup/create", backupOperationLimiter);
 app.use("/api/backup/export", backupOperationLimiter);
 app.use("/api/backup/restore", backupOperationLimiter);
+app.use("/api/backup", backupOperationLimiter);
 
 const healthHandler = async (_req: express.Request, res: express.Response) => {
   try {
