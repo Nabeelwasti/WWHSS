@@ -5764,6 +5764,40 @@
           }
         }
       }
+    },
+    "/api/parent/children": {
+      "get": {
+        "summary": "List authenticated parent's linked children",
+        "responses": {
+          "200": {
+            "description": "Linked children"
+          }
+        }
+      }
+    },
+    "/api/parent/children/{studentProfileId}/dashboard": {
+      "get": {
+        "summary": "Get authenticated parent's scoped child dashboard",
+        "parameters": [
+          {
+            "name": "studentProfileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Child dashboard"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
     }
   },
   "components": {
