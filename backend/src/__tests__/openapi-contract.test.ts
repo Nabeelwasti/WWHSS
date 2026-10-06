@@ -78,7 +78,7 @@ function getImplementedExpressRoutes(): { path: string; method: string }[] {
 describe("OpenAPI Contract Validation Test Suite", () => {
   it("verifies backend openapi.json and route overrides pass standards-compliant OpenAPI 3.0 validation", async () => {
     const { doc, openapiPath } = readOpenApiDoc();
-    expect(fs.existsSync(openapiPath)).toBe(true); expect(doc.openapi).toBe("3.0.3"); expect(doc.info).toBeDefined(); expect(doc.info.title).toBe("WWHS Digital Campus API"); expect(doc.paths).toBeDefined();
+    expect(fs.existsSync(openapiPath), `OpenAPI file missing: ${openapiPath}`).toBe(true); expect(doc.openapi, `OpenAPI version was ${JSON.stringify(doc.openapi)}`).toBe("3.0.3"); expect(doc.info, `OpenAPI info was ${JSON.stringify(doc.info)}`).toBeDefined(); expect(doc.info.title, `OpenAPI title was ${JSON.stringify(doc.info.title)}`).toBe("WWHS Digital Campus API"); expect(doc.paths, "OpenAPI paths missing").toBeDefined();
     const SwaggerParser = (await import("@apidevtools/swagger-parser")).default;
     try { const validatedApi = await SwaggerParser.validate(doc as never); expect(validatedApi.info.title).toBe("WWHS Digital Campus API"); } catch (error) { throw new Error(`OpenAPI validation failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error }); }
   }, 30000);
