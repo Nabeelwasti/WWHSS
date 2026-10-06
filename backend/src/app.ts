@@ -5,6 +5,7 @@ import helmet from "helmet";
 import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 import crypto from "node:crypto";
+import "./middleware/express-async-errors.js";
 import { env } from "./config/env.js";
 import { prisma } from "./db/client.js";
 import { authRouter } from "./modules/identity/auth.routes.js";
