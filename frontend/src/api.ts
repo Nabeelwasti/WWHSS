@@ -127,12 +127,30 @@ export type UserSummary = {
   email: string;
   fullName: string;
   isActive: boolean;
-  userRoles: { role: { key: string; name: string }; classId: string | null; sectionId: string | null }[];
+  userRoles: {
+    role: { key: string; name: string };
+    classId: string | null;
+    sectionId: string | null;
+    subjectId: string | null;
+    departmentId: string | null;
+  }[];
 };
 
 export type RoleSummary = { id: string; key: string; name: string };
 export type ClassSummary = { id: string; name: string; sections: { id: string; name: string }[] };
 export type SubjectSummary = { id: string; name: string; code: string | null };
+export type StaffSummary = {
+  id: string;
+  userId: string;
+  employeeId: string;
+  designation: string;
+  qualification: string | null;
+  joiningDate: string | null;
+  status: string;
+  emergencyContact: string | null;
+  user: { id: string; fullName: string; email: string; phone: string | null; isActive: boolean };
+  department: { id: string; name: string } | null;
+};
 export type NotificationSummary = { id: string; title: string; body: string; type: string; isRead: boolean; createdAt: string };
 export type StudentInRoster = { id: string; rollNumber: string | null; user: { fullName: string } };
 export type ExamResultSummary = {
@@ -451,10 +469,17 @@ export const api = {
     request<{ profile: unknown }>(`/users/students/${id}`, { method: "PUT", body: JSON.stringify(input) }),
 
   // ---- Staff Profiles ----
-  listStaff: () => request<{ staff: unknown[] }>("/users/staff"),
+  listStaff: () => request<{ staff: StaffSummary[] }>("/users/staff"),
 
-  createStaff: (input: Record<string, unknown>) =>
-    request<{ staff: unknown }>("/users/staff", { method: "POST", body: JSON.stringify(input) }),
+  createStaff: (input: {
+    userId: string;
+    employeeId: string;
+    designation: string;
+    qualification?: string;
+    joiningDate?: string;
+    status?: string;
+    emergencyContact?: string;
+  }) => request<{ staff: StaffSummary }>("/users/staff", { method: "POST", body: JSON.stringify(input) }),
 
   // ---- Funding & Fee Extensions ----
   listFundingCategories: () => request<unknown[]>("/finance/funding-categories"),
