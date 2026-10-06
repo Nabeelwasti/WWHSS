@@ -45,7 +45,7 @@ app.set(
 
 app.use(helmet());
 
-app.use(cors({ origin: env.corsOrigin, credentials: true }));
+app.use(cors({ origin: (origin, callback) => { if (!origin || env.corsOrigins.includes(origin)) return callback(null, true); return callback(new Error("CORS origin is not allowed")); }, credentials: true }));
 
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
@@ -75,7 +75,7 @@ app.use("/api/ai", aiLimiter);
 
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 1500,
+  limit: 600,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many requests. Please slow down and try again shortly." },
