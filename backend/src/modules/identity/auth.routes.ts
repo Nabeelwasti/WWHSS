@@ -83,21 +83,38 @@ authRouter.get("/me", authenticate, async (req, res) => {
       id: true,
       email: true,
       fullName: true,
-      phone: true,
       photoUrl: true,
-      isActive: true,
+      studentProfile: { select: { id: true, classId: true, sectionId: true } },
       aiPersonalizationConsent: true,
       userRoles: {
-        include: {
-          role: { include: { rolePermissions: { include: { permission: true } } } },
-          class: true,
-          section: true,
-          subject: true,
-          department: true,
+        select: {
+          classId: true,
+          sectionId: true,
+          subjectId: true,
+          departmentId: true,
+          role: { select: { key: true, name: true } },
         },
       },
     },
   });
-  if (!user || !user.isActive) return res.status(401).json({ error: "User not found or inactive" });
+
+  if (!user) return res.status(404).json({ error: "User not found" });
   res.json({ user });
+});
+
+const consentSchema = z.object({ consent: z.boolean() });
+authRouter.post("/ai-consent", authenticate, async (req, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
+  const parsed = consentSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  await prisma.user.update({
+    where: { id: req.userId },
+    data: { aiPersonalizationConsent: parsed.data.consent },
+  });
+  await prisma.auditLog.create({
+    data: { userId: req.userId, action: "ai:consent_changed", metadata: { consent: parsed.data.consent } },
+  });
+
+  res.status(204).send();
 });
