@@ -38,11 +38,11 @@ const PERMISSIONS = [
   "documents:create",
   "documents:print",
   "documents:view:own",
+  "ai_assessment:submit",
+  "ai_assessment:submit:own",
 ];
 
 const ROLES: Record<string, string[]> = {
-  // System backup permissions are deliberately explicit and are not granted
-  // through users:manage. Only the dedicated system role receives them.
   super_admin: PERMISSIONS,
   principal: [
     "attendance:view:class",
@@ -69,6 +69,7 @@ const ROLES: Record<string, string[]> = {
     "timetable:view:own",
     "documents:view",
     "documents:print",
+    "ai_assessment:submit",
   ],
   class_teacher: [
     "attendance:mark",
@@ -80,6 +81,7 @@ const ROLES: Record<string, string[]> = {
     "timetable:view:own",
     "documents:view",
     "documents:print",
+    "ai_assessment:submit",
   ],
   accountant: ["finance:view", "finance:manage", "documents:view", "documents:print"],
   librarian: ["library:view", "library:manage"],
@@ -91,6 +93,7 @@ const ROLES: Record<string, string[]> = {
     "finance:view:own",
     "exams:view:own",
     "documents:view:own",
+    "ai_assessment:submit:own",
   ],
   parent: [
     "attendance:view:own",
@@ -136,11 +139,6 @@ async function main() {
     });
   }
 
-  // The first administrator account. In production this REFUSES to run
-  // without an explicit ADMIN_PASSWORD, because a publicly-known default
-  // password on a live school system holding children's records is exactly
-  // the kind of thing that gets found and abused. Local development keeps
-  // a convenient default so first-time testing doesn't need any setup.
   const isProduction = process.env.NODE_ENV === "production";
   const adminEmail = process.env.ADMIN_EMAIL || "admin@wwhs.local";
   const adminPassword = process.env.ADMIN_PASSWORD || (isProduction ? "" : "ChangeMe!123");
