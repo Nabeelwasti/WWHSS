@@ -133,10 +133,10 @@ jobs:
         working-directory: frontend
         run: npm install --no-save --package-lock=false @playwright/test@1.55.0
       - name: Install Chromium for browser verification
-        run: npx playwright install --with-deps chromium chromium-headless-shell
+        run: ./node_modules/.bin/playwright install --with-deps chromium chromium-headless-shell
       - name: Start frontend preview
         working-directory: frontend
         run: nohup npm run preview -- --host 127.0.0.1 --port 4173 >/tmp/wwhss-frontend.log 2>&1 &
       - name: Run browser smoke tests
         working-directory: frontend
-        run: npx playwright test
+        run: ./node_modules/.bin/playwright test
