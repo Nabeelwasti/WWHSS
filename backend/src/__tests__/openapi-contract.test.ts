@@ -56,7 +56,7 @@ function readOpenApiDoc(): { doc: OpenApiDoc; openapiPath: string } {
     type: "object", required: ["schoolName", "address", "phone", "email"],
     properties: { schoolName: { type: "string", minLength: 2, maxLength: 200 }, schoolUrduName: { type: "string", maxLength: 200, nullable: true }, address: { type: "string", minLength: 2, maxLength: 500 }, phone: { type: "string", minLength: 3, maxLength: 50 }, email: { type: "string", format: "email", maxLength: 254 }, logoUrl: { type: "string", format: "uri", maxLength: 2048, nullable: true }, boardRegistration: { type: "string", maxLength: 200, nullable: true }, campusInfo: { type: "string", maxLength: 1000, nullable: true }, principalName: { type: "string", maxLength: 200, nullable: true }, currentAcademicYear: { type: "string", maxLength: 100, nullable: true }, documentPrefix: { type: "string", pattern: "^[A-Za-z0-9_-]{1,24}$", nullable: true } },
   };
-  return normalizeOpenApi30(doc) as OpenApiDoc;
+  return { doc: normalizeOpenApi30(doc) as OpenApiDoc, openapiPath };
 }
 
 function getImplementedExpressRoutes(): { path: string; method: string }[] {
@@ -78,9 +78,9 @@ function getImplementedExpressRoutes(): { path: string; method: string }[] {
 describe("OpenAPI Contract Validation Test Suite", () => {
   it("verifies backend openapi.json and route overrides pass standards-compliant OpenAPI 3.0 validation", async () => {
     const { doc, openapiPath } = readOpenApiDoc();
-    expect(fs.existsSync(openapiPath), `OpenAPI file missing: ${openapiPath}`).toBe(true); expect(doc.openapi, `OpenAPI version was ${JSON.stringify(doc.openapi)}`).toBe("3.0.3"); expect(doc.info, `OpenAPI info was ${JSON.stringify(doc.info)}`).toBeDefined(); expect(doc.info.title, `OpenAPI title was ${JSON.stringify(doc.info.title)}`).toBe("WWHS Digital Campus API"); expect(doc.paths, "OpenAPI paths missing").toBeDefined();
+    expect(fs.existsSync(openapiPath)).toBe(true); expect(doc.openapi).toBe("3.0.3"); expect(doc.info).toBeDefined(); expect(doc.info.title).toBe("WWHS Digital Campus API"); expect(doc.paths).toBeDefined();
     const SwaggerParser = (await import("@apidevtools/swagger-parser")).default;
-    try { const validatedApi = await SwaggerParser.validate(doc as never); expect(validatedApi.info.title).toBe("WWHS Digital Campus API"); } catch (error) { throw new Error(`OpenAPI validation failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error }); }
+    const validatedApi = await SwaggerParser.validate(doc as never); expect(validatedApi.info.title).toBe("WWHS Digital Campus API");
   }, 30000);
   it("verifies all $ref links in the combined OpenAPI contract resolve", () => {
     const { doc } = readOpenApiDoc(); const raw = JSON.stringify(doc); const refRegex = /"\$ref":\s*"#\/components\/(schemas|responses|securitySchemes)\/([A-Za-z0-9_]+)"/g; let match;
