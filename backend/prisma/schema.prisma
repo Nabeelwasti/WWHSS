@@ -752,6 +752,7 @@ model DocumentRecord {
   id               String   @id @default(uuid())
   docType          String
   docNumber        String   @unique
+  referenceId      String?
   studentProfileId String?
   staffProfileId   String?
   academicYearId   String?
@@ -764,6 +765,7 @@ model DocumentRecord {
   academicYear AcademicYear?   @relation(fields: [academicYearId], references: [id])
   createdBy    User?           @relation("CreatedDocuments", fields: [createdByUserId], references: [id])
 
+  @@unique([docType, referenceId])
   @@map("document_records")
 }
 
