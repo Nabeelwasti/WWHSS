@@ -34,6 +34,11 @@ usersRouter.get("/roles", authorize("users:manage"), async (_req, res) => {
   res.json({ roles: await listRoles() });
 });
 
+usersRouter.get("/departments", authorize("users:manage"), async (_req, res) => {
+  const departments = await prisma.department.findMany({ orderBy: { name: "asc" } });
+  res.json({ departments });
+});
+
 const createSchema = z.object({
   email: z.string().email(),
   fullName: z.string().min(1),
