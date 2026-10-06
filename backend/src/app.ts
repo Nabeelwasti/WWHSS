@@ -55,7 +55,17 @@ app.use((req, _res, next) => {
   (error as Error & { status?: number }).status = 403;
   return next(error);
 });
-app.use(cors({ origin: true, credentials: true }));
+const corsAllowedOrigins = new Set([
+  ...env.corsOrigins,
+  ...(env.vercelUrl ? [`https://${env.vercelUrl}`] : []),
+]);
+app.use(cors({
+  credentials: true,
+  origin(origin, callback) {
+    if (!origin || corsAllowedOrigins.has(origin)) return callback(null, true);
+    callback(new Error("CORS origin is not allowed"));
+  },
+}));
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
 
