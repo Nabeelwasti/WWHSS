@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, HeadObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { prisma } from "../../db/client.js";
 import { env } from "../../config/env.js";
 
@@ -9,7 +9,7 @@ export class StorageValidationError extends Error {}
 export class StorageConfigError extends Error {}
 
 const STORAGE_DIR = path.resolve(process.cwd(), "storage_private");
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 const ALLOWED_MIME_TYPES = new Set([
   "application/pdf",
@@ -80,12 +80,15 @@ export class S3StorageProvider implements StorageProvider {
 
     this.bucket = env.s3Bucket;
     this.client = new S3Client({
-      region: env.s3Region,
-      credentials: env.s3AccessKeyId && env.s3SecretAccessKey ? {
-        accessKeyId: env.s3AccessKeyId,
-        secretAccessKey: env.s3SecretAccessKey,
-      } : undefined,
-      ...(env.s3Endpoint && { endpoint: env.s3Endpoint }),
+      region: env.s3Region || "us-east-1",
+      credentials:
+        env.s3AccessKeyId && env.s3SecretAccessKey
+          ? {
+              accessKeyId: env.s3AccessKeyId,
+              secretAccessKey: env.s3SecretAccessKey,
+            }
+          : undefined,
+      ...(env.s3Endpoint ? { endpoint: env.s3Endpoint } : {}),
     });
   }
 
@@ -102,7 +105,9 @@ export class S3StorageProvider implements StorageProvider {
     try {
       await this.client.send(command);
     } catch (error) {
-      throw new StorageValidationError(`Failed to upload file to S3: ${error instanceof Error ? error.message : String(error)}`);
+      throw new StorageValidationError(
+        `Failed to upload file to S3: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 
@@ -115,33 +120,28 @@ export class S3StorageProvider implements StorageProvider {
 
     try {
       const response = await this.client.send(command);
-      const chunks: Uint8Array[] = [];
+      const chunks: Buffer[] = [];
 
       if (response.Body) {
-        const reader = response.Body as any;
-        if (reader.getReader) {
-          // ReadableStream
-          const readableReader = reader.getReader();
-          let result = await readableReader.read();
-          while (!result.done) {
-            chunks.push(result.value);
-            result = await readableReader.read();
-          }
-        } else if (reader[Symbol.asyncIterator]) {
-          // AsyncIterable
-          for await (const chunk of reader) {
-            chunks.push(chunk);
-          }
-        }
+        const body = response.Body as NodeJS.ReadableStream;
+        const data = await new Promise<Buffer>((resolve, reject) => {
+          const buffers: Buffer[] = [];
+          body.on("data", (chunk: Buffer) => buffers.push(chunk));
+          body.on("end", () => resolve(Buffer.concat(buffers)));
+          body.on("error", reject);
+        });
+        chunks.push(data);
       }
 
-      const buffer = Buffer.concat(chunks as any);
+      const buffer = Buffer.concat(chunks);
       return {
         buffer,
         mimeType: response.ContentType,
       };
     } catch (error) {
-      throw new StorageValidationError(`Failed to retrieve file from S3: ${error instanceof Error ? error.message : String(error)}`);
+      throw new StorageValidationError(
+        `Failed to retrieve file from S3: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 
@@ -155,7 +155,9 @@ export class S3StorageProvider implements StorageProvider {
     try {
       await this.client.send(command);
     } catch (error) {
-      throw new StorageValidationError(`Failed to delete file from S3: ${error instanceof Error ? error.message : String(error)}`);
+      throw new StorageValidationError(
+        `Failed to delete file from S3: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 
@@ -169,7 +171,7 @@ export class S3StorageProvider implements StorageProvider {
     try {
       await this.client.send(command);
       return true;
-    } catch (error) {
+    } catch {
       return false;
     }
   }
@@ -184,10 +186,10 @@ export function getStorageProvider(): StorageProvider {
       try {
         currentProvider = new S3StorageProvider();
       } catch (error) {
-        if (error instanceof StorageConfigError && (env.vercelEnv === "production" || env.vercelEnv === "preview")) {
+        if (env.nodeEnv === "production" || env.vercelEnv === "preview" || env.vercelEnv === "production") {
           throw error;
         }
-        console.warn("S3 storage initialization failed, falling back to local storage:", error instanceof Error ? error.message : String(error));
+        console.warn("S3 initialization failed, falling back to local storage");
         currentProvider = new LocalStorageProvider();
       }
     } else {
