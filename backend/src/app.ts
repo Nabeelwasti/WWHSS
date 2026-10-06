@@ -27,7 +27,8 @@ import { storageRouter } from "./modules/storage/storage.routes.js";
 export const app = express();
 
 app.use((req, res, next) => {
-  const reqId = (req.headers["x-request-id"] as string) || crypto.randomUUID();
+  const supplied = typeof req.headers["x-request-id"] === "string" ? req.headers["x-request-id"].trim() : "";
+  const reqId = /^[A-Za-z0-9._:-]{1,128}$/.test(supplied) ? supplied : crypto.randomUUID();
   res.setHeader("X-Request-ID", reqId);
   next();
 });
