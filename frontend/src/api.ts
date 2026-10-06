@@ -409,6 +409,13 @@ export const api = {
   listParentChildren: () => request<{ children: unknown[] }>("/parent/children"),
   getParentChildDashboard: (studentProfileId: string) => request<ParentChildDashboard>(`/parent/children/${studentProfileId}/dashboard`),
 
+  listExams: () => request<{ exams: { id: string; name: string; startDate: string; endDate: string; academicYear: { label: string } }[] }>("/exams"),
+  createExam: (input: { name: string; academicYearId: string; startDate: string; endDate: string }) =>
+    request("/exams", { method: "POST", body: JSON.stringify(input) }),
+  getExamLifecycle: (examId: string) => request<{ lifecycle: { status: string; publishedAt: string | null; lockedAt: string | null; publishedByUserId: string | null } }>(`/exams/${examId}/lifecycle`),
+  transitionExam: (examId: string, action: "publish" | "lock" | "finalize") =>
+    request(`/exams/${examId}/${action}`, { method: "POST" }),
+
   // ---- Admin: Library ----
 
   createBook: (input: { title: string; author: string; isbn?: string; category?: string }) =>
