@@ -3,54 +3,27 @@ import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate.js";
 import { prisma } from "../../db/client.js";
 import { userHasPermission } from "../identity/permissions.js";
-import {
-  createDocumentRecord,
-  listDocumentRecords,
-  generatePrintableDocumentPayload,
-  DocumentValidationError,
-} from "./documents.service.js";
+import { createDocumentRecord, listDocumentRecords, generatePrintableDocumentPayload, DocumentValidationError } from "./documents.service.js";
+import { renderDocumentCsv, renderDocumentHtml, renderDocumentPdf } from "./document-files.js";
 
 export const documentsRouter = Router();
 documentsRouter.use(authenticate);
 
-const createDocSchema = z.object({
-  docType: z.string().min(1),
-  referenceId: z.string().uuid().optional(),
-  studentProfileId: z.string().uuid().optional(),
-  staffProfileId: z.string().uuid().optional(),
-  academicYearId: z.string().uuid().optional(),
-  metadataJson: z.record(z.any()).optional(),
-});
+const createDocSchema = z.object({ docType: z.string().min(1), referenceId: z.string().uuid().optional(), studentProfileId: z.string().uuid().optional(), staffProfileId: z.string().uuid().optional(), academicYearId: z.string().uuid().optional(), metadataJson: z.record(z.any()).optional() });
 
 async function resolveDocumentScope(docType: string, referenceId: string) {
   if (["result_card", "report_card", "transfer_certificate", "fee_statement", "attendance_report"].includes(docType)) {
-    const student = await prisma.studentProfile.findUnique({
-      where: { id: referenceId },
-      select: { id: true, classId: true, sectionId: true },
-    });
+    const student = await prisma.studentProfile.findUnique({ where: { id: referenceId }, select: { id: true, classId: true, sectionId: true } });
     if (!student) throw new DocumentValidationError(`Student ${referenceId} not found`);
     return { studentId: student.id, classId: student.classId ?? undefined, sectionId: student.sectionId ?? undefined };
   }
-
   if (docType === "fee_receipt") {
-    const payment = await prisma.payment.findUnique({
-      where: { id: referenceId },
-      select: { invoice: { select: { studentProfileId: true, student: { select: { classId: true, sectionId: true } } } } },
-    });
+    const payment = await prisma.payment.findUnique({ where: { id: referenceId }, select: { invoice: { select: { studentProfileId: true, student: { select: { classId: true, sectionId: true } } } } } });
     if (!payment) throw new DocumentValidationError(`Payment ${referenceId} not found`);
-    return {
-      studentId: payment.invoice.studentProfileId,
-      classId: payment.invoice.student.classId ?? undefined,
-      sectionId: payment.invoice.student.sectionId ?? undefined,
-    };
+    return { studentId: payment.invoice.studentProfileId, classId: payment.invoice.student.classId ?? undefined, sectionId: payment.invoice.student.sectionId ?? undefined };
   }
-
-  const record = await prisma.documentRecord.findFirst({
-    where: { docType, referenceId },
-    select: { studentProfileId: true, staffProfileId: true },
-  });
+  const record = await prisma.documentRecord.findFirst({ where: { docType, referenceId }, select: { studentProfileId: true, staffProfileId: true } });
   if (!record) throw new DocumentValidationError(`Document reference ${referenceId} not found`);
-
   if (record.studentProfileId) {
     const student = await prisma.studentProfile.findUnique({ where: { id: record.studentProfileId }, select: { classId: true, sectionId: true } });
     return { studentId: record.studentProfileId, classId: student?.classId ?? undefined, sectionId: student?.sectionId ?? undefined };
@@ -74,7 +47,6 @@ documentsRouter.get("/", async (req, res) => {
   const studentProfileId = typeof req.query.studentProfileId === "string" ? req.query.studentProfileId : undefined;
   const staffProfileId = typeof req.query.staffProfileId === "string" ? req.query.staffProfileId : undefined;
   const academicYearId = typeof req.query.academicYearId === "string" ? req.query.academicYearId : undefined;
-
   if (studentProfileId) {
     const student = await prisma.studentProfile.findUnique({ where: { id: studentProfileId }, select: { classId: true, sectionId: true } });
     if (!student) return res.status(404).json({ error: "Student not found" });
@@ -85,10 +57,7 @@ documentsRouter.get("/", async (req, res) => {
     const staff = await prisma.staffProfile.findUnique({ where: { id: staffProfileId }, select: { departmentId: true } });
     if (!staff) return res.status(404).json({ error: "Staff profile not found" });
     if (!(await userHasPermission(req.userId, "documents:view", { departmentId: staff.departmentId ?? undefined }))) return res.status(403).json({ error: "Forbidden" });
-  } else if (!(await userHasPermission(req.userId, "documents:view"))) {
-    return res.status(403).json({ error: "A document scope is required for this request" });
-  }
-
+  } else if (!(await userHasPermission(req.userId, "documents:view"))) return res.status(403).json({ error: "A document scope is required for this request" });
   const records = await listDocumentRecords({ docType, studentProfileId, staffProfileId, academicYearId });
   res.json({ documents: records });
 });
@@ -97,7 +66,6 @@ documentsRouter.post("/", async (req, res) => {
   if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
   const parsed = createDocSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-
   if (parsed.data.studentProfileId) {
     const student = await prisma.studentProfile.findUnique({ where: { id: parsed.data.studentProfileId }, select: { classId: true, sectionId: true } });
     if (!student) return res.status(404).json({ error: "Student not found" });
@@ -106,32 +74,26 @@ documentsRouter.post("/", async (req, res) => {
     const staff = await prisma.staffProfile.findUnique({ where: { id: parsed.data.staffProfileId }, select: { departmentId: true } });
     if (!staff) return res.status(404).json({ error: "Staff profile not found" });
     if (!(await userHasPermission(req.userId, "documents:create", { departmentId: staff.departmentId ?? undefined }))) return res.status(403).json({ error: "Forbidden" });
-  } else if (!(await userHasPermission(req.userId, "documents:create"))) {
-    return res.status(403).json({ error: "A document scope is required for this request" });
-  }
-
-  try {
-    const doc = await createDocumentRecord(parsed.data, req.userId);
-    res.status(201).json({ document: doc });
-  } catch (e) {
-    if (e instanceof DocumentValidationError) return res.status(400).json({ error: e.message });
-    throw e;
-  }
+  } else if (!(await userHasPermission(req.userId, "documents:create"))) return res.status(403).json({ error: "A document scope is required for this request" });
+  try { const doc = await createDocumentRecord(parsed.data, req.userId); res.status(201).json({ document: doc }); } catch (e) { if (e instanceof DocumentValidationError) return res.status(400).json({ error: e.message }); throw e; }
 });
 
 documentsRouter.get("/payload/:docType/:referenceId", async (req, res) => {
   if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
+  try { const scope = await resolveDocumentScope(req.params.docType, req.params.referenceId); try { await requireDocumentPermission(req.userId, "documents:print", scope); } catch { return res.status(403).json({ error: "Forbidden: document is outside your permitted scope" }); } const payload = await generatePrintableDocumentPayload(req.params.docType, req.params.referenceId); res.json({ payload }); } catch (e) { if (e instanceof DocumentValidationError) return res.status(404).json({ error: e.message }); throw e; }
+});
+
+documentsRouter.get("/file/:format/:docType/:referenceId", async (req, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
+  const format = z.enum(["pdf", "html", "csv"]).safeParse(req.params.format);
+  if (!format.success) return res.status(400).json({ error: "Unsupported document format" });
   try {
     const scope = await resolveDocumentScope(req.params.docType, req.params.referenceId);
-    try {
-      await requireDocumentPermission(req.userId, "documents:print", scope);
-    } catch {
-      return res.status(403).json({ error: "Forbidden: document is outside your permitted scope" });
-    }
+    try { await requireDocumentPermission(req.userId, "documents:print", scope); } catch { return res.status(403).json({ error: "Forbidden: document is outside your permitted scope" }); }
     const payload = await generatePrintableDocumentPayload(req.params.docType, req.params.referenceId);
-    res.json({ payload });
-  } catch (e) {
-    if (e instanceof DocumentValidationError) return res.status(404).json({ error: e.message });
-    throw e;
-  }
+    const title = `${req.params.docType.replace(/[_-]+/g, " ")} — WWHS Digital Campus`;
+    const output = format.data === "pdf" ? renderDocumentPdf(payload, title) : format.data === "html" ? renderDocumentHtml(payload, title) : renderDocumentCsv(payload);
+    const mime = format.data === "pdf" ? "application/pdf" : format.data === "html" ? "text/html; charset=utf-8" : "text/csv; charset=utf-8";
+    res.setHeader("Content-Type", mime); res.setHeader("Content-Length", output.byteLength); res.setHeader("Cache-Control", "private, no-store"); res.setHeader("Content-Disposition", `attachment; filename="${req.params.docType}-${req.params.referenceId}.${format.data}"`); res.send(output);
+  } catch (e) { if (e instanceof DocumentValidationError) return res.status(404).json({ error: e.message }); throw e; }
 });
