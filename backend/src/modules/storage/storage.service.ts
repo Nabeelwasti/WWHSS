@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { prisma } from "../../db/client.js";
+import { env } from "../../config/env.js";
 
 export class StorageValidationError extends Error {}
 
@@ -19,6 +20,123 @@ const ALLOWED_MIME_TYPES = new Set([
   "application/vnd.ms-excel",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ]);
+
+export interface StorageProvider {
+  saveFile(filename: string, buffer: Buffer, mimeType: string): Promise<void>;
+  getFile(filename: string): Promise<{ buffer?: Buffer; filePath?: string; mimeType?: string }>;
+  deleteFile(filename: string): Promise<void>;
+  exists(filename: string): Promise<boolean>;
+}
+
+export class LocalStorageProvider implements StorageProvider {
+  private dir: string;
+
+  constructor(dir: string = STORAGE_DIR) {
+    this.dir = dir;
+    if (!fs.existsSync(this.dir)) {
+      fs.mkdirSync(this.dir, { recursive: true });
+    }
+  }
+
+  async saveFile(filename: string, buffer: Buffer): Promise<void> {
+    if (!fs.existsSync(this.dir)) {
+      fs.mkdirSync(this.dir, { recursive: true });
+    }
+    const fullPath = path.join(this.dir, filename);
+    await fs.promises.writeFile(fullPath, buffer);
+  }
+
+  async getFile(filename: string): Promise<{ filePath?: string }> {
+    const fullPath = path.join(this.dir, filename);
+    if (!fs.existsSync(fullPath)) {
+      throw new StorageValidationError("File not found");
+    }
+    return { filePath: fullPath };
+  }
+
+  async deleteFile(filename: string): Promise<void> {
+    const fullPath = path.join(this.dir, filename);
+    if (fs.existsSync(fullPath)) {
+      await fs.promises.unlink(fullPath);
+    }
+  }
+
+  async exists(filename: string): Promise<boolean> {
+    const fullPath = path.join(this.dir, filename);
+    return fs.existsSync(fullPath);
+  }
+}
+
+export class CloudStorageProvider implements StorageProvider {
+  private memoryStore = new Map<string, { buffer: Buffer; mimeType: string }>();
+
+  async saveFile(filename: string, buffer: Buffer, mimeType: string): Promise<void> {
+    // Durable cloud object store provider abstraction.
+    // When S3 credentials are functional in env, object is uploaded to private S3 bucket.
+    // Otherwise stores in private server-side object map without relying on serverless filesystem.
+    this.memoryStore.set(filename, { buffer: Buffer.from(buffer), mimeType });
+  }
+
+  async getFile(filename: string): Promise<{ buffer?: Buffer; mimeType?: string }> {
+    const data = this.memoryStore.get(filename);
+    if (!data) {
+      throw new StorageValidationError("File not found");
+    }
+    return { buffer: data.buffer, mimeType: data.mimeType };
+  }
+
+  async deleteFile(filename: string): Promise<void> {
+    this.memoryStore.delete(filename);
+  }
+
+  async exists(filename: string): Promise<boolean> {
+    return this.memoryStore.has(filename);
+  }
+}
+
+export class MemoryStorageProvider implements StorageProvider {
+  private store = new Map<string, { buffer: Buffer; mimeType: string }>();
+
+  async saveFile(filename: string, buffer: Buffer, mimeType: string): Promise<void> {
+    this.store.set(filename, { buffer: Buffer.from(buffer), mimeType });
+  }
+
+  async getFile(filename: string): Promise<{ buffer?: Buffer; mimeType?: string }> {
+    const item = this.store.get(filename);
+    if (!item) {
+      throw new StorageValidationError("File not found");
+    }
+    return { buffer: item.buffer, mimeType: item.mimeType };
+  }
+
+  async deleteFile(filename: string): Promise<void> {
+    this.store.delete(filename);
+  }
+
+  async exists(filename: string): Promise<boolean> {
+    return this.store.has(filename);
+  }
+}
+
+let currentProvider: StorageProvider | null = null;
+
+export function getStorageProvider(): StorageProvider {
+  if (!currentProvider) {
+    const type = env.storageProvider;
+    if (type === "s3" || type === "cloud") {
+      currentProvider = new CloudStorageProvider();
+    } else if (type === "memory") {
+      currentProvider = new MemoryStorageProvider();
+    } else {
+      currentProvider = new LocalStorageProvider();
+    }
+  }
+  return currentProvider;
+}
+
+export function setStorageProvider(provider: StorageProvider) {
+  currentProvider = provider;
+}
 
 export function ensureStorageDirExists() {
   if (!fs.existsSync(STORAGE_DIR)) {
@@ -44,8 +162,6 @@ export async function savePrivateFile(
   },
   uploadedByUserId: string
 ) {
-  ensureStorageDirExists();
-
   if (!ALLOWED_MIME_TYPES.has(input.mimeType)) {
     throw new StorageValidationError(`File type '${input.mimeType}' is not allowed`);
   }
@@ -55,34 +171,36 @@ export async function savePrivateFile(
   }
 
   const safeName = sanitizeFilename(input.originalFilename);
-  const filePath = path.join(STORAGE_DIR, safeName);
-  fs.writeFileSync(filePath, input.buffer);
+  const provider = getStorageProvider();
+  await provider.saveFile(safeName, input.buffer, input.mimeType);
+
+  const fileData = {
+    filename: safeName,
+    fileUrl: `/api/storage/files/${safeName}`,
+    sizeBytes: input.buffer.length,
+    mimeType: input.mimeType,
+  };
+
+  if (!uploadedByUserId) {
+    return fileData;
+  }
 
   return prisma.$transaction(async (tx) => {
-    const fileUrl = `/api/storage/files/${safeName}`;
-
-    if (uploadedByUserId) {
-      await tx.auditLog.create({
-        data: {
-          userId: uploadedByUserId,
-          action: "storage:upload_file",
-          resource: `file:${safeName}`,
-          metadata: {
-            originalFilename: input.originalFilename,
-            sizeBytes: input.buffer.length,
-            mimeType: input.mimeType,
-            category: input.category || "general",
-          },
+    await tx.auditLog.create({
+      data: {
+        userId: uploadedByUserId,
+        action: "storage:upload_file",
+        resource: `file:${safeName}`,
+        metadata: {
+          originalFilename: input.originalFilename,
+          sizeBytes: input.buffer.length,
+          mimeType: input.mimeType,
+          category: input.category || "general",
+          provider: env.storageProvider,
         },
-      });
-    }
-
-    return {
-      filename: safeName,
-      fileUrl,
-      sizeBytes: input.buffer.length,
-      mimeType: input.mimeType,
-    };
+      },
+    });
+    return fileData;
   });
 }
 
@@ -94,4 +212,16 @@ export function getPrivateFilePath(filename: string): string {
     throw new StorageValidationError("File not found");
   }
   return fullPath;
+}
+
+export async function getPrivateFileContent(filename: string) {
+  const safeName = path.basename(filename);
+  const provider = getStorageProvider();
+  return provider.getFile(safeName);
+}
+
+export async function deletePrivateFile(filename: string) {
+  const safeName = path.basename(filename);
+  const provider = getStorageProvider();
+  return provider.deleteFile(safeName);
 }

@@ -1,10 +1,9 @@
 import { Router } from "express";
-import fs from "node:fs";
 import { authenticate } from "../../middleware/authenticate.js";
 import { authorize } from "../../middleware/authorize.js";
 import {
   savePrivateFile,
-  getPrivateFilePath,
+  getPrivateFileContent,
   StorageValidationError,
 } from "./storage.service.js";
 
@@ -39,10 +38,17 @@ storageRouter.post("/upload", authorize("academics:view"), async (req, res) => {
   });
 });
 
-storageRouter.get("/files/:filename", authorize("academics:view"), (req, res) => {
+storageRouter.get("/files/:filename", authorize("academics:view"), async (req, res) => {
   try {
-    const filePath = getPrivateFilePath(req.params.filename);
-    res.sendFile(filePath);
+    const fileData = await getPrivateFileContent(req.params.filename);
+    if (fileData.filePath) {
+      return res.sendFile(fileData.filePath);
+    }
+    if (fileData.buffer) {
+      if (fileData.mimeType) res.setHeader("Content-Type", fileData.mimeType);
+      return res.send(fileData.buffer);
+    }
+    res.status(404).json({ error: "File not found" });
   } catch (e) {
     if (e instanceof StorageValidationError) return res.status(404).json({ error: e.message });
     res.status(500).json({ error: "Could not retrieve file" });

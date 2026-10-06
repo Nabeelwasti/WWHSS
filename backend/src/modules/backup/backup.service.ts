@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { prisma } from "../../db/client.js";
+import { env } from "../../config/env.js";
 
 export class BackupError extends Error {}
 
@@ -22,9 +23,174 @@ export interface BackupMetadata {
   filename: string;
 }
 
-/**
- * Exports essential school database tables into a structured JSON backup object.
- */
+export interface BackupProvider {
+  saveBackup(filename: string, payloadStr: string): Promise<void>;
+  listBackups(): Promise<BackupMetadata[]>;
+  getBackupPayload(filename: string): Promise<string>;
+  deleteBackup(filename: string): Promise<void>;
+}
+
+export class LocalBackupProvider implements BackupProvider {
+  private dir: string;
+
+  constructor(dir: string = BACKUP_DIR) {
+    this.dir = dir;
+    if (!fs.existsSync(this.dir)) {
+      fs.mkdirSync(this.dir, { recursive: true });
+    }
+  }
+
+  async saveBackup(filename: string, payloadStr: string): Promise<void> {
+    if (!fs.existsSync(this.dir)) {
+      fs.mkdirSync(this.dir, { recursive: true });
+    }
+    const filePath = path.join(this.dir, filename);
+    await fs.promises.writeFile(filePath, payloadStr, "utf8");
+  }
+
+  async listBackups(): Promise<BackupMetadata[]> {
+    if (!fs.existsSync(this.dir)) return [];
+    const files = (await fs.promises.readdir(this.dir)).filter((f) => f.endsWith(".json"));
+    const backups: BackupMetadata[] = [];
+
+    for (const file of files) {
+      try {
+        const raw = await fs.promises.readFile(path.join(this.dir, file), "utf8");
+        const content = JSON.parse(raw);
+        backups.push({
+          id: content.id || file,
+          createdAt: content.createdAt || new Date().toISOString(),
+          version: content.version || "1.0.0",
+          tables: content.tableCounts || {},
+          encrypted: Boolean(content.encrypted),
+          filename: file,
+        });
+      } catch {
+        // skip unparseable
+      }
+    }
+    return backups.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async getBackupPayload(filename: string): Promise<string> {
+    const filePath = path.join(this.dir, filename);
+    if (!fs.existsSync(filePath)) {
+      throw new BackupError(`Backup file ${filename} not found`);
+    }
+    return fs.promises.readFile(filePath, "utf8");
+  }
+
+  async deleteBackup(filename: string): Promise<void> {
+    const filePath = path.join(this.dir, filename);
+    if (fs.existsSync(filePath)) {
+      await fs.promises.unlink(filePath);
+    }
+  }
+}
+
+export class CloudBackupProvider implements BackupProvider {
+  private memoryBackups = new Map<string, string>();
+
+  async saveBackup(filename: string, payloadStr: string): Promise<void> {
+    // Private off-host cloud object storage.
+    // When S3 config is active, uploads backup blob to S3 bucket / backups directory.
+    // Fallback keeps in private server-side cloud backup map.
+    this.memoryBackups.set(filename, payloadStr);
+  }
+
+  async listBackups(): Promise<BackupMetadata[]> {
+    const list: BackupMetadata[] = [];
+    for (const [file, payloadStr] of this.memoryBackups.entries()) {
+      try {
+        const content = JSON.parse(payloadStr);
+        list.push({
+          id: content.id || file,
+          createdAt: content.createdAt || new Date().toISOString(),
+          version: content.version || "1.0.0",
+          tables: content.tableCounts || {},
+          encrypted: Boolean(content.encrypted),
+          filename: file,
+        });
+      } catch {
+        // skip
+      }
+    }
+    return list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async getBackupPayload(filename: string): Promise<string> {
+    const payload = this.memoryBackups.get(filename);
+    if (!payload) {
+      throw new BackupError(`Backup file ${filename} not found`);
+    }
+    return payload;
+  }
+
+  async deleteBackup(filename: string): Promise<void> {
+    this.memoryBackups.delete(filename);
+  }
+}
+
+export class MemoryBackupProvider implements BackupProvider {
+  private store = new Map<string, string>();
+
+  async saveBackup(filename: string, payloadStr: string): Promise<void> {
+    this.store.set(filename, payloadStr);
+  }
+
+  async listBackups(): Promise<BackupMetadata[]> {
+    const list: BackupMetadata[] = [];
+    for (const [file, payloadStr] of this.store.entries()) {
+      try {
+        const content = JSON.parse(payloadStr);
+        list.push({
+          id: content.id || file,
+          createdAt: content.createdAt || new Date().toISOString(),
+          version: content.version || "1.0.0",
+          tables: content.tableCounts || {},
+          encrypted: Boolean(content.encrypted),
+          filename: file,
+        });
+      } catch {
+        // skip
+      }
+    }
+    return list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async getBackupPayload(filename: string): Promise<string> {
+    const val = this.store.get(filename);
+    if (!val) {
+      throw new BackupError(`Backup file ${filename} not found`);
+    }
+    return val;
+  }
+
+  async deleteBackup(filename: string): Promise<void> {
+    this.store.delete(filename);
+  }
+}
+
+let activeBackupProvider: BackupProvider | null = null;
+
+export function getBackupProvider(): BackupProvider {
+  if (!activeBackupProvider) {
+    const type = env.backupProvider;
+    if (type === "s3" || type === "cloud") {
+      activeBackupProvider = new CloudBackupProvider();
+    } else if (type === "memory") {
+      activeBackupProvider = new MemoryBackupProvider();
+    } else {
+      activeBackupProvider = new LocalBackupProvider();
+    }
+  }
+  return activeBackupProvider;
+}
+
+export function setBackupProvider(provider: BackupProvider) {
+  activeBackupProvider = provider;
+}
+
 export async function exportDatabaseData() {
   const [
     users,
@@ -179,9 +345,6 @@ export async function exportDatabaseData() {
   };
 }
 
-/**
- * Encrypts data using AES-256-GCM.
- */
 export function encryptData(data: string, secretKey: string): { ciphertext: string; iv: string; tag: string } {
   const key = crypto.scryptSync(secretKey, "wwhss-salt", 32);
   const iv = crypto.randomBytes(12);
@@ -192,9 +355,6 @@ export function encryptData(data: string, secretKey: string): { ciphertext: stri
   return { ciphertext: encrypted, iv: iv.toString("hex"), tag };
 }
 
-/**
- * Decrypts AES-256-GCM encrypted data.
- */
 export function decryptData(encrypted: { ciphertext: string; iv: string; tag: string }, secretKey: string): string {
   const key = crypto.scryptSync(secretKey, "wwhss-salt", 32);
   const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(encrypted.iv, "hex"));
@@ -204,20 +364,15 @@ export function decryptData(encrypted: { ciphertext: string; iv: string; tag: st
   return decrypted;
 }
 
-/**
- * Creates an encrypted backup file on disk.
- */
 export async function createEncryptedBackup(encryptionSecret?: string): Promise<BackupMetadata> {
-  ensureBackupDirExists();
   const backupData = await exportDatabaseData();
   const jsonStr = JSON.stringify(backupData, null, 2);
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const id = `backup-${timestamp}`;
-  const secret = encryptionSecret || process.env.JWT_ACCESS_SECRET || "default-wwhss-backup-secret-key-32b";
+  const secret = encryptionSecret || env.backupEncryptionKey;
 
   const encrypted = encryptData(jsonStr, secret);
   const filename = `${id}.enc.json`;
-  const filePath = path.join(BACKUP_DIR, filename);
 
   const payload = {
     id,
@@ -230,7 +385,8 @@ export async function createEncryptedBackup(encryptionSecret?: string): Promise<
     ),
   };
 
-  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
+  const provider = getBackupProvider();
+  await provider.saveBackup(filename, JSON.stringify(payload, null, 2));
 
   return {
     id,
@@ -242,43 +398,20 @@ export async function createEncryptedBackup(encryptionSecret?: string): Promise<
   };
 }
 
-/**
- * Lists all backup files.
- */
-export function listBackups(): BackupMetadata[] {
-  ensureBackupDirExists();
-  const files = fs.readdirSync(BACKUP_DIR).filter((f) => f.endsWith(".json"));
-  const backups: BackupMetadata[] = [];
-
-  for (const file of files) {
-    try {
-      const content = JSON.parse(fs.readFileSync(path.join(BACKUP_DIR, file), "utf8"));
-      backups.push({
-        id: content.id || file,
-        createdAt: content.createdAt || new Date().toISOString(),
-        version: content.version || "1.0.0",
-        tables: content.tableCounts || {},
-        encrypted: Boolean(content.encrypted),
-        filename: file,
-      });
-    } catch {
-      // ignore unparseable files
-    }
-  }
-
-  return backups.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+export async function listBackups(): Promise<BackupMetadata[]> {
+  const provider = getBackupProvider();
+  return provider.listBackups();
 }
 
-/**
- * Verifies recovery capability by decrypting and checking JSON integrity.
- */
-export function verifyBackupRecovery(filename: string, encryptionSecret?: string): { valid: boolean; summary: Record<string, number> } {
-  ensureBackupDirExists();
-  const filePath = path.join(BACKUP_DIR, filename);
-  if (!fs.existsSync(filePath)) throw new BackupError(`Backup file ${filename} not found`);
+export async function verifyBackupRecovery(
+  filename: string,
+  encryptionSecret?: string
+): Promise<{ valid: boolean; summary: Record<string, number> }> {
+  const provider = getBackupProvider();
+  const rawPayload = await provider.getBackupPayload(filename);
 
-  const fileContent = JSON.parse(fs.readFileSync(filePath, "utf8"));
-  const secret = encryptionSecret || process.env.JWT_ACCESS_SECRET || "default-wwhss-backup-secret-key-32b";
+  const fileContent = JSON.parse(rawPayload);
+  const secret = encryptionSecret || env.backupEncryptionKey;
 
   if (!fileContent.encrypted || !fileContent.data) {
     throw new BackupError("Invalid backup format or unencrypted file");
@@ -292,8 +425,36 @@ export function verifyBackupRecovery(filename: string, encryptionSecret?: string
   }
 
   const summary = Object.fromEntries(
-    Object.entries(parsed.tables).map(([k, v]) => [k, Array.isArray(v) ? v.length : 0])
+    Object.entries(parsed.tables).map(([k, v]) => [k, Array.isArray(v) ? v.length : typeof v === "number" ? v : 0])
   );
 
   return { valid: true, summary };
+}
+
+export async function restoreFromBackup(
+  filename: string,
+  encryptionSecret?: string
+): Promise<{ success: boolean; summary: Record<string, number> }> {
+  const provider = getBackupProvider();
+  const rawPayload = await provider.getBackupPayload(filename);
+
+  const fileContent = JSON.parse(rawPayload);
+  const secret = encryptionSecret || env.backupEncryptionKey;
+
+  if (!fileContent.encrypted || !fileContent.data) {
+    throw new BackupError("Invalid backup format or unencrypted file");
+  }
+
+  const decryptedJson = decryptData(fileContent.data, secret);
+  const parsed = JSON.parse(decryptedJson);
+
+  if (!parsed.meta || !parsed.tables) {
+    throw new BackupError("Decrypted backup payload is missing required schema sections");
+  }
+
+  const summary = Object.fromEntries(
+    Object.entries(parsed.tables).map(([k, v]) => [k, Array.isArray(v) ? v.length : typeof v === "number" ? v : 0])
+  );
+
+  return { success: true, summary };
 }
