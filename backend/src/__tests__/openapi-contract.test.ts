@@ -80,7 +80,7 @@ describe("OpenAPI Contract Validation Test Suite", () => {
     const { doc, openapiPath } = readOpenApiDoc();
     expect(fs.existsSync(openapiPath)).toBe(true); expect(doc.openapi).toBe("3.0.3"); expect(doc.info).toBeDefined(); expect(doc.info.title).toBe("WWHS Digital Campus API"); expect(doc.paths).toBeDefined();
     const SwaggerParser = (await import("@apidevtools/swagger-parser")).default;
-    const validatedApi = await SwaggerParser.validate(doc as never); expect(validatedApi.info.title).toBe("WWHS Digital Campus API");
+    try { const validatedApi = await SwaggerParser.validate(doc as never); expect(validatedApi.info.title).toBe("WWHS Digital Campus API"); } catch (error) { throw new Error(`OpenAPI validation failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error }); }
   }, 30000);
   it("verifies all $ref links in the combined OpenAPI contract resolve", () => {
     const { doc } = readOpenApiDoc(); const raw = JSON.stringify(doc); const refRegex = /"\$ref":\s*"#\/components\/(schemas|responses|securitySchemes)\/([A-Za-z0-9_]+)"/g; let match;
