@@ -14,6 +14,8 @@ const envSchema = z.object({
   DATABASE_URL: isProductionOrPreview ? z.string().min(1, "DATABASE_URL is required in production/preview") : z.string().default("postgresql://wwhs:wwhs@localhost:5432/wwhs_digital_campus"),
   JWT_ACCESS_SECRET: isProductionOrPreview ? z.string().min(32, "JWT_ACCESS_SECRET must be at least 32 characters in production/preview") : z.string().min(16).default("dev-jwt-access-secret-key-must-be-at-least-32-bytes!"),
   JWT_REFRESH_SECRET: isProductionOrPreview ? z.string().min(32, "JWT_REFRESH_SECRET must be at least 32 characters in production/preview") : z.string().min(16).default("dev-jwt-refresh-secret-key-must-be-at-least-32-bytes!"),
+  JWT_ISSUER: z.string().min(1).default("wwhss-api"),
+  JWT_AUDIENCE: z.string().min(1).default("wwhss-web"),
   BACKUP_ENCRYPTION_KEY: isProductionOrPreview ? z.string().min(32, "BACKUP_ENCRYPTION_KEY must be at least 32 characters in production/preview") : z.string().min(16).default("dev-backup-encryption-key-must-be-at-least-32-bytes!"),
   STORAGE_PROVIDER: z.enum(["local", "s3", "cloud"]).default("local"),
   BACKUP_PROVIDER: z.enum(["local", "s3", "cloud", "memory"]).default("local"),
@@ -37,10 +39,11 @@ const envSchema = z.object({
   if (isProductionOrPreview) {
     if (data.JWT_ACCESS_SECRET.includes("dev-jwt") || data.JWT_ACCESS_SECRET.includes("CHANGE-ME")) return false;
     if (data.JWT_REFRESH_SECRET.includes("dev-jwt") || data.JWT_REFRESH_SECRET.includes("CHANGE-ME")) return false;
+    if (data.JWT_ISSUER === "wwhss-api" || data.JWT_AUDIENCE === "wwhss-web") return false;
     if (data.BACKUP_ENCRYPTION_KEY.includes("dev-backup") || data.BACKUP_ENCRYPTION_KEY.includes("CHANGE-ME")) return false;
   }
   return true;
-}, { message: "Default/development secrets cannot be used in production or preview deployments" }).refine((data) => {
+}, { message: "Default/development JWT secrets, issuer, or audience cannot be used in production or preview deployments" }).refine((data) => {
   if (!isProductionOrPreview) return true;
   if (data.STORAGE_PROVIDER === "local" || data.BACKUP_PROVIDER === "local" || data.BACKUP_PROVIDER === "memory") return false;
   if (!data.S3_BUCKET || !data.S3_ACCESS_KEY_ID || !data.S3_SECRET_ACCESS_KEY) return false;
@@ -65,6 +68,8 @@ export const env = {
   databaseUrl: rawEnv.DATABASE_URL,
   jwtAccessSecret: rawEnv.JWT_ACCESS_SECRET,
   jwtRefreshSecret: rawEnv.JWT_REFRESH_SECRET,
+  jwtIssuer: rawEnv.JWT_ISSUER,
+  jwtAudience: rawEnv.JWT_AUDIENCE,
   backupEncryptionKey: rawEnv.BACKUP_ENCRYPTION_KEY,
   storageProvider: rawEnv.STORAGE_PROVIDER,
   backupProvider: rawEnv.BACKUP_PROVIDER,
