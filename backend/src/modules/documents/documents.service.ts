@@ -81,7 +81,7 @@ export async function createDocumentRecord(
   createdByUserId?: string
 ) {
   const academicYearLabel = input.academicYearId
-    ? (await prisma.academicYear.findUnique({ where: { id: input.academicYearId }, select: { name: true } }))?.name
+    ? (await prisma.academicYear.findUnique({ where: { id: input.academicYearId }, select: { label: true } }))?.label
     : await getCurrentAcademicYearLabel();
   if (!academicYearLabel) throw new DocumentValidationError("Academic year is required for document numbering.");
   const docNumber = await allocateDocumentNumber(input.docType, academicYearLabel);
