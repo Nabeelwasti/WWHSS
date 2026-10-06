@@ -558,6 +558,7 @@ model Exam {
   startDate      DateTime
   endDate        DateTime
 
+  publishedByUserId String?
   academicYear AcademicYear  @relation(fields: [academicYearId], references: [id])
   publishedBy User? @relation("PublishedExams", fields: [publishedByUserId], references: [id])
   examSubjects ExamSubject[]
