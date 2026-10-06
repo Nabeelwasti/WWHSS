@@ -51,8 +51,10 @@ backupRouter.post("/verify/:filename", authorize("users:manage"), async (req, re
 });
 
 backupRouter.post("/restore/:filename", authorize("users:manage"), async (req, res) => {
+  const dryRun = req.body?.dryRun === true;
+  if (!dryRun && req.body?.confirm !== "RESTORE") return res.status(400).json({ error: "Destructive restore requires confirm: RESTORE; run a dryRun first." });
   try {
-    const result = await restoreFromBackup(req.params.filename, undefined, req.userId!);
+    const result = await restoreFromBackup(req.params.filename, undefined, req.userId!, dryRun);
     res.json({ restore: result });
   } catch (e) {
     if (e instanceof BackupError) return res.status(400).json({ error: e.message });
