@@ -48,6 +48,10 @@ const envSchema = z
     MAX_DAILY_AI_REQUESTS: z.coerce.number().int().min(1).default(100),
     MAX_AI_INPUT_CHARS: z.coerce.number().int().min(10).default(2000),
     MAX_AI_OUTPUT_TOKENS: z.coerce.number().int().min(10).default(800),
+
+    WEB_RESEARCH_ENABLED: z.coerce.boolean().default(isProductionOrPreview),
+    WEB_RESEARCH_API_KEY: z.string().optional(),
+    WEB_RESEARCH_ENDPOINT: z.string().url().default("https://api.search.brave.com/res/v1/web/search"),
   })
   .refine(
     (data) => {
@@ -67,9 +71,10 @@ const envSchema = z
     const origins = data.CORS_ORIGIN.split(",").map((value) => value.trim()).filter(Boolean);
     if (origins.length === 0 || origins.some((origin) => !/^https:\/\//i.test(origin) || /localhost|127\.0\.0\.1/i.test(origin))) return false;
     if (!["true", "1"].includes(data.TRUST_PROXY)) return false;
+    if (data.WEB_RESEARCH_ENABLED && !data.WEB_RESEARCH_API_KEY) return false;
     return true;
   }, {
-    message: "Preview/production requires durable S3-compatible storage/backups, complete S3 credentials, HTTPS CORS, and TRUST_PROXY=true/1",
+    message: "Preview/production requires durable S3-compatible storage/backups, complete S3 credentials, HTTPS CORS, TRUST_PROXY=true/1, and a web-research key when research is enabled",
   });
 
 const parsed = envSchema.safeParse(process.env);
@@ -104,4 +109,7 @@ export const env = {
   maxDailyAiRequests: rawEnv.MAX_DAILY_AI_REQUESTS,
   maxAiInputChars: rawEnv.MAX_AI_INPUT_CHARS,
   maxAiOutputTokens: rawEnv.MAX_AI_OUTPUT_TOKENS,
+  webResearchEnabled: rawEnv.WEB_RESEARCH_ENABLED,
+  webResearchApiKey: rawEnv.WEB_RESEARCH_API_KEY,
+  webResearchEndpoint: rawEnv.WEB_RESEARCH_ENDPOINT,
 };
