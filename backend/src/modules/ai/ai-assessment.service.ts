@@ -252,7 +252,7 @@ export async function submitAiAnswerSheet(
         fileUrl: input.fileUrl,
         autoScore,
         suggestedScore,
-        finalScore: suggestedScore,
+        finalScore: null,
       },
       include: { test: true, student: { include: { user: { select: { fullName: true } } } } },
     });
