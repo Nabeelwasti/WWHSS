@@ -427,15 +427,6 @@ export const api = {
       };
     }>(`/exams/${examId}/lifecycle`),
 
-  getExamLifecycle: (examId: string) =>
-    request<{
-      lifecycle: {
-        status: string;
-        publishedAt: string | null;
-        lockedAt: string | null;
-        publishedByUserId: string | null;
-      };
-    }>(`/exams/${examId}/lifecycle`),
   transitionExam: (examId: string, action: "publish" | "lock" | "finalize") =>
     request(`/exams/${examId}/${action}`, { method: "POST" }),
 
