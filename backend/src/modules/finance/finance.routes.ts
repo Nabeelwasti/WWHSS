@@ -178,7 +178,10 @@ financeRouter.get(
 
 financeRouter.get(
   "/payments/:paymentId/receipt",
-  authorize("finance:view:own"),
+  authorize("finance:view:own", async (req) => {
+    const payment = await getPaymentReceipt(req.params.paymentId);
+    return { studentId: payment.invoice.studentProfileId };
+  }),
   async (req, res) => {
     try {
       res.json({ receipt: await getPaymentReceipt(req.params.paymentId) });
