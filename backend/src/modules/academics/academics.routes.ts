@@ -32,6 +32,11 @@ academicsRouter.get("/subjects", authorize("academics:view"), async (_req, res) 
   res.json({ subjects: await listSubjects() });
 });
 
+academicsRouter.get("/academic-years", authorize("academics:view"), async (_req, res) => {
+  const years = await prisma.academicYear.findMany({ orderBy: { startDate: "desc" } });
+  res.json({ academicYears: years });
+});
+
 // A teacher's real roster for a section they're about to mark attendance
 // for — scoped the same way marking itself is. The section's real classId
 // is resolved first so both dimensions of scope are checked (a teacher
