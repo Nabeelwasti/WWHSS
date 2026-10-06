@@ -10,7 +10,7 @@ const { prismaMock, askCampusAIMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../db/client.js", () => ({ prisma: prismaMock }));
-vi.mock("../../ai.service.js", () => ({ askCampusAI: askCampusAIMock }));
+vi.mock("../ai.service.js", () => ({ askCampusAI: askCampusAIMock }));
 
 const { generateTestQuestionsWithAi } = await import("../ai-assessment.service.js");
 
