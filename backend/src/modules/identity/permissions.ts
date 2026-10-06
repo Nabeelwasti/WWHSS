@@ -1,15 +1,5 @@
 import { prisma } from "../../db/client.js";
 
-/**
- * The permission engine. Every module in the system routes access decisions
- * through this file — there must be exactly one place that answers
- * "is this user allowed to do X to Y", so it can be audited and trusted.
- *
- * Design: a user holds one or more (role, scope) pairs via UserRole rows.
- * A permission check asks: does the user hold, in some scope that covers
- * the requested resource, a role granted the requested permission key?
- */
-
 export type PermissionScope = {
   classId?: string;
   sectionId?: string;
@@ -100,6 +90,7 @@ const SELF_ACCESS_PERMISSIONS = new Set([
   "finance:view:own",
   "exams:view:own",
   "documents:view:own",
+  "ai_assessment:submit:own",
 ]);
 
 const GUARDIAN_ACCESS_PERMISSIONS = new Set([
