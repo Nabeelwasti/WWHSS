@@ -2,7 +2,7 @@ import { app } from "./app.js";
 import { env } from "./config/env.js";
 import { prisma } from "./db/client.js";
 
-const server = app.listen(env.port, () => {
+const server = app.listen(env.port, "0.0.0.0", () => {
   console.log(`WWHS Digital Campus API listening on :${env.port}`);
 });
 
