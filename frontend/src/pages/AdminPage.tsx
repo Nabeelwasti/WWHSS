@@ -120,7 +120,7 @@ export function AdminPage() {
   );
 
   return (
-    <div className="page" style={{ maxWidth: 840, margin: "0 auto" }}>
+    <main className="page" style={{ maxWidth: 840, margin: "0 auto" }}>
       <h1 style={{ fontSize: 20, margin: "0 0 16px 0" }}>{t("admin.title")}</h1>
 
       <div className="flex gap-2 flex-wrap" style={{ marginBottom: 16 }}>
@@ -262,6 +262,6 @@ export function AdminPage() {
           </section>
         </>
       )}
-    </div>
+    </main>
   );
 }
