@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate.js";
 import { authorize } from "../../middleware/authorize.js";
+import { userHasPermission } from "../identity/permissions.js";
 import { prisma } from "../../db/client.js";
 import {
   createAiAssessmentTest,
@@ -23,7 +24,6 @@ aiAssessmentRouter.get("/tests", authorize("academics:view", (req) => ({
   const classId = typeof req.query.classId === "string" ? req.query.classId : undefined;
   const subjectId = typeof req.query.subjectId === "string" ? req.query.subjectId : undefined;
   const status = typeof req.query.status === "string" ? req.query.status : undefined;
-
   res.json({ tests: await listAiAssessmentTests({ classId, subjectId, status }) });
 });
 
@@ -63,10 +63,7 @@ aiAssessmentRouter.post("/tests/:testId/generate", authorize("academics:manage",
 }), async (req, res) => {
   if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
   const numQuestions = typeof req.body.numQuestions === "number" ? req.body.numQuestions : 5;
-  if (!Number.isInteger(numQuestions) || numQuestions < 1 || numQuestions > 50) {
-    return res.status(400).json({ error: "numQuestions must be an integer between 1 and 50" });
-  }
-
+  if (!Number.isInteger(numQuestions) || numQuestions < 1 || numQuestions > 50) return res.status(400).json({ error: "numQuestions must be an integer between 1 and 50" });
   try {
     const updated = await generateTestQuestionsWithAi(req.params.testId, numQuestions, req.userId);
     res.json({ test: updated });
@@ -97,13 +94,26 @@ const submitSheetSchema = z.object({
   fileUrl: z.string().max(2048).optional(),
 });
 
-aiAssessmentRouter.post("/answer-sheets", authorize("grades:enter", async (req) => {
-  const testId = typeof req.body?.testId === "string" ? req.body.testId : undefined;
-  const test = testId ? await prisma.aiAssessmentTest.findUnique({ where: { id: testId }, select: { classId: true, sectionId: true, subjectId: true } }) : null;
-  return { classId: test?.classId, sectionId: test?.sectionId ?? undefined, subjectId: test?.subjectId };
-}), async (req, res) => {
+aiAssessmentRouter.post("/answer-sheets", async (req, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
   const parsed = submitSheetSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const test = await prisma.aiAssessmentTest.findUnique({
+    where: { id: parsed.data.testId },
+    select: { classId: true, sectionId: true, subjectId: true },
+  });
+  if (!test) return res.status(404).json({ error: "Assessment test not found" });
+
+  const scopedTeacherSubmission = await userHasPermission(req.userId, "ai_assessment:submit", {
+    classId: test.classId,
+    sectionId: test.sectionId ?? undefined,
+    subjectId: test.subjectId,
+  });
+  const ownStudentSubmission = await userHasPermission(req.userId, "ai_assessment:submit:own", {
+    studentId: parsed.data.studentProfileId,
+  });
+  if (!scopedTeacherSubmission && !ownStudentSubmission) return res.status(403).json({ error: "Forbidden: submit only your own assessment or an assessment within your teaching scope" });
 
   try {
     const sheet = await submitAiAnswerSheet(parsed.data, req.userId);
