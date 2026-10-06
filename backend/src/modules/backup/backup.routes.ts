@@ -7,6 +7,7 @@ import {
   verifyBackupRecovery,
   restoreFromBackup,
   exportDatabaseData,
+  deleteBackup,
   BackupError,
 } from "./backup.service.js";
 
@@ -87,5 +88,15 @@ backupRouter.post("/restore/:filename", authorize("backup:restore"), async (req,
   } catch (e) {
     if (e instanceof BackupError) return res.status(400).json({ error: e.message });
     res.status(500).json({ error: "Backup restore failed" });
+  }
+});
+
+backupRouter.delete("/:filename", authorize("backup:delete"), async (req, res) => {
+  try {
+    await deleteBackup(req.params.filename, req.userId!);
+    res.status(204).send();
+  } catch (e) {
+    if (e instanceof BackupError) return res.status(400).json({ error: e.message });
+    res.status(500).json({ error: "Backup deletion failed" });
   }
 });
