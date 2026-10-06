@@ -363,18 +363,23 @@ export async function exportDatabaseData() {
   };
 }
 
-export function encryptData(data: string, secretKey: string): { ciphertext: string; iv: string; tag: string } {
-  const key = crypto.scryptSync(secretKey, "wwhss-salt", 32);
+export function encryptData(data: string, secretKey: string): { ciphertext: string; iv: string; tag: string; salt: string } {
+  const salt = crypto.randomBytes(16);
+  const key = crypto.scryptSync(secretKey, salt, 32);
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
   let encrypted = cipher.update(data, "utf8", "hex");
   encrypted += cipher.final("hex");
   const tag = cipher.getAuthTag().toString("hex");
-  return { ciphertext: encrypted, iv: iv.toString("hex"), tag };
+  return { ciphertext: encrypted, iv: iv.toString("hex"), tag, salt: salt.toString("hex") };
 }
 
-export function decryptData(encrypted: { ciphertext: string; iv: string; tag: string }, secretKey: string): string {
-  const key = crypto.scryptSync(secretKey, "wwhss-salt", 32);
+export function decryptData(encrypted: { ciphertext: string; iv: string; tag: string; salt?: string }, secretKey: string): string {
+  // Backward compatibility: backups created before randomized per-envelope
+  // salts used the legacy fixed salt. New backups always carry their own
+  // cryptographically random salt.
+  const salt = encrypted.salt ? Buffer.from(encrypted.salt, "hex") : "wwhss-salt";
+  const key = crypto.scryptSync(secretKey, salt, 32);
   const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(encrypted.iv, "hex"));
   decipher.setAuthTag(Buffer.from(encrypted.tag, "hex"));
   let decrypted = decipher.update(encrypted.ciphertext, "hex", "utf8");
@@ -395,7 +400,7 @@ export async function createEncryptedBackup(encryptionSecret?: string): Promise<
   const payload = {
     id,
     createdAt: new Date().toISOString(),
-    version: "1.0.0",
+    version: BACKUP_SCHEMA_VERSION,
     encrypted: true,
     data: encrypted,
     tableCounts: Object.fromEntries(
