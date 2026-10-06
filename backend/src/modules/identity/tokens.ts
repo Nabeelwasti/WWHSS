@@ -7,6 +7,8 @@ export type AccessTokenPayload = { sub: string; email: string; tokenVersion?: nu
 export function signAccessToken(payload: AccessTokenPayload): string {
   return jwt.sign(payload, env.jwtAccessSecret, {
     algorithm: "HS256",
+    issuer: env.jwtIssuer,
+    audience: env.jwtAudience,
     expiresIn: `${env.accessTokenTtlMin}m`,
   });
 }
@@ -14,6 +16,8 @@ export function signAccessToken(payload: AccessTokenPayload): string {
 export function verifyAccessToken(token: string): AccessTokenPayload {
   const payload = jwt.verify(token, env.jwtAccessSecret, {
     algorithms: ["HS256"],
+    issuer: env.jwtIssuer,
+    audience: env.jwtAudience,
   });
   if (
     typeof payload !== "object" ||
@@ -25,7 +29,6 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
   }
   return payload as AccessTokenPayload;
 }
-
 
 export function newRefreshTokenValue(): { token: string; hash: string } {
   const token = crypto.randomBytes(48).toString("hex");
