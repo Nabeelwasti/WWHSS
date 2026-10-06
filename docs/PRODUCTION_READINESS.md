@@ -93,9 +93,9 @@ Vercel's current documentation supports Express and external-origin rewrites, wh
 ### Cloud Run deployment sequence
 
 1. Create/select a Google Cloud project and enable Cloud Run, Artifact Registry, and Cloud Build.
-2. Deploy `backend/` from source or build the existing Dockerfile.
+2. Deploy `backend/` from source or build the existing Dockerfile. Keep the service at `min-instances=0` for the free-first deployment and set a conservative `max-instances` (for example 3) until database capacity is measured.
 3. Configure `PORT` through Cloud Run (it is injected automatically), `NODE_ENV=production`, and all hosted environment variables below.
-4. Run `npm run prisma:deploy` against the production `DATABASE_URL` as a release/migration step before serving a schema-dependent revision.
+4. Use Neon's pooled PostgreSQL connection string for application traffic; run `npm run prisma:deploy` against the production `DATABASE_URL` as a controlled release/migration step before serving a schema-dependent revision.
 5. Seed the initial administrator once with `npm run seed` using a strong `ADMIN_EMAIL` and `ADMIN_PASSWORD`; never use the development default in production.
 6. Set `CORS_ORIGIN` to the exact HTTPS Vercel production origin. Do not use `*`.
 7. Set `TRUST_PROXY=true` (Cloud Run is behind a managed proxy).
