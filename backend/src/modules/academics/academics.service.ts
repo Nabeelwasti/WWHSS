@@ -169,6 +169,23 @@ export async function enrollStudent(
       },
     });
 
+    if (input.classId) {
+      const cls = await tx.class.findUnique({ where: { id: input.classId }, select: { academicYearId: true } });
+      if (cls) {
+        await tx.studentEnrollmentHistory.create({
+          data: {
+            studentProfileId: profile.id,
+            academicYearId: cls.academicYearId,
+            classId: input.classId,
+            sectionId: input.sectionId,
+            startDate: adm ?? new Date(),
+            status: "ACTIVE",
+            changedByUserId: actorId,
+          },
+        });
+      }
+    }
+
     await tx.auditLog.create({
       data: {
         userId: actorId ?? input.userId,
