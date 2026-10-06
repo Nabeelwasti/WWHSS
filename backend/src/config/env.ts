@@ -1,40 +1,49 @@
 import "dotenv/config";
 import { z } from "zod";
 
-const isProductionOrPreview =
-  process.env.NODE_ENV === "production" ||
-  process.env.VERCEL_ENV === "production" ||
-  process.env.VERCEL_ENV === "preview";
+const isVercelPreview = process.env.VERCEL_ENV === "preview";
+const isVercelProduction = process.env.VERCEL_ENV === "production";
+const isNodeProduction = process.env.NODE_ENV === "production";
+const isProductionOrPreview = isNodeProduction || isVercelPreview || isVercelProduction;
 
 const envSchema = z
   .object({
     PORT: z.coerce.number().int().min(1).max(65535).default(4000),
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     VERCEL_ENV: z.enum(["development", "preview", "production"]).optional(),
+
     DATABASE_URL: isProductionOrPreview
       ? z.string().min(1, "DATABASE_URL is required in production/preview")
       : z.string().default("postgresql://wwhs:wwhs@localhost:5432/wwhs_digital_campus"),
+
     JWT_ACCESS_SECRET: isProductionOrPreview
       ? z.string().min(32, "JWT_ACCESS_SECRET must be at least 32 characters in production/preview")
       : z.string().min(16).default("dev-jwt-access-secret-key-must-be-at-least-32-bytes!"),
+
     JWT_REFRESH_SECRET: isProductionOrPreview
       ? z.string().min(32, "JWT_REFRESH_SECRET must be at least 32 characters in production/preview")
       : z.string().min(16).default("dev-jwt-refresh-secret-key-must-be-at-least-32-bytes!"),
+
     BACKUP_ENCRYPTION_KEY: isProductionOrPreview
       ? z.string().min(32, "BACKUP_ENCRYPTION_KEY must be at least 32 characters in production/preview")
       : z.string().min(16).default("dev-backup-encryption-key-must-be-at-least-32-bytes!"),
+
     STORAGE_PROVIDER: z.enum(["local", "s3", "cloud"]).default("local"),
     BACKUP_PROVIDER: z.enum(["local", "s3", "cloud"]).default("local"),
+
     S3_BUCKET: z.string().optional(),
     S3_REGION: z.string().default("us-east-1"),
     S3_ACCESS_KEY_ID: z.string().optional(),
     S3_SECRET_ACCESS_KEY: z.string().optional(),
     S3_ENDPOINT: z.string().optional(),
+
     ACCESS_TOKEN_TTL_MIN: z.coerce.number().int().min(1).max(1440).default(15),
     REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+
     CORS_ORIGIN: z.string().default("http://localhost:5173"),
     LIBRARY_FINE_PER_DAY: z.coerce.number().min(0).default(5),
     TRUST_PROXY: z.string().default("0"),
+
     MAX_DAILY_AI_REQUESTS: z.coerce.number().int().min(1).default(100),
     MAX_AI_INPUT_CHARS: z.coerce.number().int().min(10).default(2000),
     MAX_AI_OUTPUT_TOKENS: z.coerce.number().int().min(10).default(800),
@@ -42,15 +51,9 @@ const envSchema = z
   .refine(
     (data) => {
       if (isProductionOrPreview) {
-        if (data.JWT_ACCESS_SECRET.includes("dev-jwt") || data.JWT_ACCESS_SECRET.includes("CHANGE-ME")) {
-          return false;
-        }
-        if (data.JWT_REFRESH_SECRET.includes("dev-jwt") || data.JWT_REFRESH_SECRET.includes("CHANGE-ME")) {
-          return false;
-        }
-        if (data.BACKUP_ENCRYPTION_KEY.includes("dev-backup") || data.BACKUP_ENCRYPTION_KEY.includes("CHANGE-ME")) {
-          return false;
-        }
+        if (data.JWT_ACCESS_SECRET.includes("dev-jwt") || data.JWT_ACCESS_SECRET.includes("CHANGE-ME")) return false;
+        if (data.JWT_REFRESH_SECRET.includes("dev-jwt") || data.JWT_REFRESH_SECRET.includes("CHANGE-ME")) return false;
+        if (data.BACKUP_ENCRYPTION_KEY.includes("dev-backup") || data.BACKUP_ENCRYPTION_KEY.includes("CHANGE-ME")) return false;
       }
       return true;
     },
@@ -65,7 +68,9 @@ const envSchema = z
       }
       return true;
     },
-    { message: "S3_BUCKET is required when STORAGE_PROVIDER is s3 or cloud in production/preview" }
+    {
+      message: "S3_BUCKET is required when STORAGE_PROVIDER is s3 or cloud in production/preview",
+    }
   )
   .refine(
     (data) => {
@@ -76,7 +81,9 @@ const envSchema = z
       }
       return true;
     },
-    { message: "S3_BUCKET is required when BACKUP_PROVIDER is s3 or cloud in production/preview" }
+    {
+      message: "S3_BUCKET is required when BACKUP_PROVIDER is s3 or cloud in production/preview",
+    }
   );
 
 const parsed = envSchema.safeParse(process.env);
