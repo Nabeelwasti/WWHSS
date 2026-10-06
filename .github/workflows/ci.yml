@@ -41,6 +41,9 @@ jobs:
       - name: Install dependencies (ci)
         working-directory: backend
         run: npm ci
+      - name: Verify package-lock consistency
+        working-directory: backend
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund && git diff --exit-code -- package-lock.json
       - name: Validate Prisma schema
         working-directory: backend
         run: npx prisma validate
@@ -91,6 +94,9 @@ jobs:
       - name: Install dependencies (ci)
         working-directory: frontend
         run: npm ci
+      - name: Verify package-lock consistency
+        working-directory: frontend
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund && git diff --exit-code -- package-lock.json
       - name: Dependency security check
         working-directory: frontend
         run: npm audit --audit-level=high
