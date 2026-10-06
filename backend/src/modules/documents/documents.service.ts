@@ -70,6 +70,23 @@ async function allocateDocumentNumber(docType: string, academicYear: string, cam
   throw new DocumentValidationError("Could not allocate a unique document number after concurrent retries.");
 }
 
+async function getOrCreateDocumentNumber(docType: string, referenceId: string, academicYearId?: string): Promise<string> {
+  const existing = await prisma.documentRecord.findFirst({ where: { docType, referenceId }, select: { docNumber: true } });
+  if (existing) return existing.docNumber;
+  let academicYearLabel = academicYearId ? (await prisma.academicYear.findUnique({ where: { id: academicYearId }, select: { label: true } }))?.label : undefined;
+  academicYearLabel ||= await getCurrentAcademicYearLabel();
+  const docNumber = await allocateDocumentNumber(docType, academicYearLabel);
+  try {
+    await prisma.documentRecord.create({ data: { docType, docNumber, referenceId, academicYearId } });
+    return docNumber;
+  } catch (error: any) {
+    if (error?.code === "P2002") {
+      const raced = await prisma.documentRecord.findFirst({ where: { docType, referenceId }, select: { docNumber: true } });
+      if (raced) return raced.docNumber;
+    }
+    throw error;
+  }
+}
 export async function createDocumentRecord(
   input: {
     docType: string;
@@ -91,6 +108,7 @@ export async function createDocumentRecord(
       data: {
         docType: input.docType,
         docNumber,
+        referenceId: input.studentProfileId || input.staffProfileId,
         studentProfileId: input.studentProfileId,
         staffProfileId: input.staffProfileId,
         academicYearId: input.academicYearId,
@@ -140,8 +158,6 @@ export async function listDocumentRecords(filters: {
 export async function generatePrintableDocumentPayload(docType: string, referenceId: string) {
   const header = await getSchoolHeader();
   const issueDate = new Date().toISOString().slice(0, 10);
-  const prefix = header.schoolName.replace(/[^A-Za-z0-9]/g, "").slice(0, 12) || "DOC";
-  const docNumber = `${prefix}-${docType.toUpperCase().replace(/[^A-Z0-9_-]/g, "_")}-${referenceId.slice(0, 8)}`;
 
   switch (docType) {
     case "result_card":
@@ -160,7 +176,7 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
 
       return {
         docType,
-        docNumber,
+        docNumber: await getOrCreateDocumentNumber(docType, referenceId),
         issueDate,
         header,
         title: "Official Student Performance Report Card / نتيجہ کارڈ",
@@ -204,7 +220,7 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
 
       return {
         docType: "fee_receipt",
-        docNumber: `${header.schoolName.replace(/[^A-Za-z0-9]/g, "").slice(0, 12) || "DOC"}-RCPT-${payment.id.slice(0, 8)}`,
+        docNumber: await getOrCreateDocumentNumber("fee_receipt", payment.id, payment.invoice.feeStructure.academicYearId),
         issueDate: payment.paidAt.toISOString().slice(0, 10),
         header,
         title: "Official Fee Payment Receipt / فيس وصولى رسيد",
@@ -241,7 +257,7 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
 
       return {
         docType: "transfer_certificate",
-        docNumber: `${header.schoolName.replace(/[^A-Za-z0-9]/g, "").slice(0, 12) || "DOC"}-TC-${student.id.slice(0, 8)}`,
+        docNumber: await getOrCreateDocumentNumber("transfer_certificate", student.id),
         issueDate,
         header,
         title: "School Leaving / Transfer Certificate (سکول چھوڑنے کا سرٹیفکیٹ)",
@@ -279,7 +295,7 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
 
       return {
         docType: "fee_statement",
-        docNumber: `${header.schoolName.replace(/[^A-Za-z0-9]/g, "").slice(0, 12) || "DOC"}-STMT-${student.id.slice(0, 8)}`,
+        docNumber: await getOrCreateDocumentNumber("fee_statement", student.id),
         issueDate,
         header,
         title: "Student Fee Account Statement / فيس والى تفصيل",
@@ -315,7 +331,7 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
 
       return {
         docType: "attendance_report",
-        docNumber: `${header.schoolName.replace(/[^A-Za-z0-9]/g, "").slice(0, 12) || "DOC"}-ATT-${student.id.slice(0, 8)}`,
+        docNumber: await getOrCreateDocumentNumber("attendance_report", student.id),
         issueDate,
         header,
         title: "Student Attendance Log & Report / حاضرى رپورٹ",
@@ -334,16 +350,7 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
     }
 
     default: {
-      return {
-        docType,
-        docNumber,
-        issueDate,
-        header,
-        title: `${docType.replace(/_/g, " ").toUpperCase()} DOCUMENT`,
-        entity: { id: referenceId },
-        records: [],
-        signatures: [{ title: "Authorized Signatory", name: "____________________" }],
-      };
-    }
+      throw new DocumentValidationError("Unsupported document type: " + docType);
+
   }
 }
