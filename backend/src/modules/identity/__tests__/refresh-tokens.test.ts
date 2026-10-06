@@ -11,6 +11,8 @@ vi.mock("../../../config/env.js", () => ({
   env: {
     jwtAccessSecret: "test",
     jwtRefreshSecret: "test",
+    jwtIssuer: "test-issuer",
+    jwtAudience: "test-audience",
     accessTokenTtlMin: 15,
     refreshTokenTtlDays: 30,
     nodeEnv: "test",
@@ -49,11 +51,9 @@ vi.mock("../../../db/client.js", () => ({
   },
 }));
 
-
 import { refresh, AuthError } from "../auth.service.js";
 
 describe("Refresh Token Rotation Security", () => {
-
   beforeEach(() => {
     mockFindFirst.mockReset();
     mockUpdateMany.mockReset();
@@ -90,7 +90,6 @@ describe("Refresh Token Rotation Security", () => {
       revoked: false,
       expiresAt: new Date(Date.now() + 86400000),
     });
-    // Atomic update returns count: 0 for the second concurrent caller
     mockUpdateMany.mockResolvedValue({ count: 0 });
 
     await expect(refresh("stolen-or-replayed-token")).rejects.toThrow(AuthError);
