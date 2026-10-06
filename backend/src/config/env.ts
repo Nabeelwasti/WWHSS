@@ -64,8 +64,8 @@ const envSchema = z
     if (!isProductionOrPreview) return true;
     if (data.STORAGE_PROVIDER === "local" || data.BACKUP_PROVIDER === "local" || data.BACKUP_PROVIDER === "memory") return false;
     if (!data.S3_BUCKET || !data.S3_ACCESS_KEY_ID || !data.S3_SECRET_ACCESS_KEY) return false;
-    if (!/^https:\/\//i.test(data.CORS_ORIGIN)) return false;
-    if (/localhost|127\.0\.0\.1/i.test(data.CORS_ORIGIN)) return false;
+    const origins = data.CORS_ORIGIN.split(",").map((value) => value.trim()).filter(Boolean);
+    if (origins.length === 0 || origins.some((origin) => !/^https:\/\//i.test(origin) || /localhost|127\.0\.0\.1/i.test(origin))) return false;
     if (!["true", "1"].includes(data.TRUST_PROXY)) return false;
     return true;
   }, {
@@ -98,6 +98,7 @@ export const env = {
   accessTokenTtlMin: rawEnv.ACCESS_TOKEN_TTL_MIN,
   refreshTokenTtlDays: rawEnv.REFRESH_TOKEN_TTL_DAYS,
   corsOrigin: rawEnv.CORS_ORIGIN,
+  corsOrigins: rawEnv.CORS_ORIGIN.split(",").map((value) => value.trim()).filter(Boolean),
   libraryFinePerDay: rawEnv.LIBRARY_FINE_PER_DAY,
   trustProxy: rawEnv.TRUST_PROXY,
   maxDailyAiRequests: rawEnv.MAX_DAILY_AI_REQUESTS,
