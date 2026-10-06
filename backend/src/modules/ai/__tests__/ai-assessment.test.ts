@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Prisma } from "@prisma/client";
 
-const prismaMock = {
-  aiAssessmentTest: { findUnique: vi.fn() },
-  $transaction: vi.fn(),
-};
-
-const askCampusAIMock = vi.fn();
+const { prismaMock, askCampusAIMock } = vi.hoisted(() => ({
+  prismaMock: {
+    aiAssessmentTest: { findUnique: vi.fn() },
+    $transaction: vi.fn(),
+  },
+  askCampusAIMock: vi.fn(),
+}));
 
 vi.mock("../db/client.js", () => ({ prisma: prismaMock }));
 vi.mock("../modules/ai/ai.service.js", () => ({ askCampusAI: askCampusAIMock }));
