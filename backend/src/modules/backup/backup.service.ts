@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { GetObjectCommand, ListObjectsV2Command, PutObjectCommand, DeleteObjectCommand, NoSuchKey, S3Client, S3ServiceException } from "@aws-sdk/client-s3";
 import { prisma } from "../../db/client.js";
 import { env } from "../../config/env.js";
+import { getStorageProvider } from "../storage/storage.service.js";
 
 export class BackupError extends Error {}
 export class BackupNotFoundError extends BackupError {}
@@ -298,11 +299,28 @@ export async function exportDatabaseData() {
     prisma.storageFile.findMany(),
   ]);
 
+  const storageObjects: { storageKey: string; mimeType: string; originalName: string; size: number; dataBase64: string }[] = [];
+  const storageProvider = getStorageProvider();
+  for (const file of storageFiles) {
+    const stored = await storageProvider.getFile(file.storageKey);
+    let buffer = stored.buffer;
+    if (!buffer && stored.filePath) buffer = await fs.promises.readFile(stored.filePath);
+    if (!buffer) throw new BackupError(`Storage object ${file.storageKey} could not be read during backup`);
+    storageObjects.push({
+      storageKey: file.storageKey,
+      mimeType: file.mimeType,
+      originalName: file.originalName,
+      size: file.size,
+      dataBase64: buffer.toString("base64"),
+    });
+  }
+
   return {
     meta: {
       exportedAt: new Date().toISOString(),
       version: BACKUP_SCHEMA_VERSION,
       school: "Workers Welfare Higher Secondary School",
+      storageObjectsIncluded: true,
     },
     tables: {
       users,
@@ -360,6 +378,7 @@ export async function exportDatabaseData() {
       documentSequences,
       storageFiles,
     },
+    storageObjects,
   };
 }
 
@@ -461,6 +480,19 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
   if (!envelope.encrypted || !envelope.data) throw new BackupError("Invalid backup format or unencrypted file");
   let parsed: any; try { parsed=JSON.parse(decryptData(envelope.data, encryptionSecret || env.backupEncryptionKey)); } catch(e) { if(e instanceof BackupError) throw e; throw new BackupError("Backup decryption or JSON validation failed"); }
   if (!parsed.meta || !parsed.tables || typeof parsed.tables !== "object") throw new BackupError("Decrypted backup payload is missing required schema sections");
+  if (envelope.version === BACKUP_SCHEMA_VERSION && parsed.meta.storageObjectsIncluded !== true) {
+    throw new BackupError("Backup is incomplete: actual storage objects are missing");
+  }
+  const storageObjects = Array.isArray(parsed.storageObjects) ? parsed.storageObjects as Array<{storageKey:string;mimeType:string;originalName:string;size:number;dataBase64:string}> : [];
+  if (parsed.meta.storageObjectsIncluded === true) {
+    for (const object of storageObjects) {
+      if (!object || path.basename(object.storageKey) !== object.storageKey || !object.storageKey || typeof object.dataBase64 !== "string") {
+        throw new BackupError("Backup contains an invalid storage object");
+      }
+      const bytes = Buffer.from(object.dataBase64, "base64");
+      if (bytes.length !== object.size) throw new BackupError(`Storage object size mismatch: ${object.storageKey}`);
+    }
+  }
   const tables=parsed.tables as Record<string, unknown>;
   const tableMap: Record<string,string> = { users:"users", roles:"roles", permissions:"permissions", rolePermissions:"role_permissions", departments:"departments", userRoles:"user_roles", refreshTokens:"refresh_tokens", auditLogs:"audit_logs", academicYears:"academic_years", classes:"classes", sections:"sections", subjects:"subjects", studentProfiles:"student_profiles", studentEnrollmentHistory:"student_enrollment_history", staffProfiles:"staff_profiles", parentStudentLinks:"parent_student_links", fundingCategories:"funding_categories", studentFundingRecords:"student_funding_records", feeStructures:"fee_structures", feeInvoices:"fee_invoices", feeWaivers:"fee_waivers", payments:"payments", paymentAdjustments:"payment_adjustments", attendanceRecords:"attendance_records", courses:"courses", courseTeacherAssignments:"course_teacher_assignments", lessons:"lessons", resources:"resources", assignments:"assignments", submissions:"submissions", quizzes:"quizzes", quizQuestions:"quiz_questions", quizAttempts:"quiz_attempts", exams:"exams", examSubjects:"exam_subjects", examResults:"exam_results", aiUsageRecords:"ai_usage_records", aiAssessmentTests:"ai_assessment_tests", aiAssessmentQuestions:"ai_assessment_questions", aiAnswerSheets:"ai_answer_sheets", documentRecords:"document_records", rooms:"rooms", timetableSlots:"timetable_slots", books:"books", bookCopies:"book_copies", bookLoans:"book_loans", cmsPages:"cms_pages", notices:"notices", events:"events", galleryItems:"gallery_items", notifications:"notifications", schoolProfiles:"school_profiles", documentSequences:"document_sequences", storageFiles:"storage_files" };
   const backupVersion = typeof envelope.version === "string" ? envelope.version : "";
@@ -482,6 +514,23 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
     }
     return { success: true, dryRun: true, summary };
   }
+  const storageProvider = getStorageProvider();
+  const newlyCreatedStorageObjects: string[] = [];
+  if (!dryRun && parsed.meta.storageObjectsIncluded === true) {
+    try {
+      for (const object of storageObjects) {
+        const exists = await storageProvider.exists(object.storageKey);
+        if (!exists) {
+          await storageProvider.saveFile(object.storageKey, Buffer.from(object.dataBase64, "base64"), object.mimeType);
+          newlyCreatedStorageObjects.push(object.storageKey);
+        }
+      }
+    } catch (error) {
+      await Promise.allSettled(newlyCreatedStorageObjects.map((key) => storageProvider.deleteFile(key)));
+      throw new BackupError(`Storage object restore failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   const result=await prisma.$transaction(async tx=>{
     const fk=await tx.$queryRaw<Array<{childTable:string,parentTable:string}>>`SELECT child.relname AS "childTable", parent.relname AS "parentTable" FROM pg_constraint c JOIN pg_class child ON child.oid=c.conrelid JOIN pg_class parent ON parent.oid=c.confrelid JOIN pg_namespace n ON n.oid=child.relnamespace WHERE c.contype='f' AND n.nspname='public'`;
     const selected=new Set(Object.values(tableMap)); const deps=new Map<string,Set<string>>(); const children=new Map<string,Set<string>>(); for(const t of selected){deps.set(t,new Set());children.set(t,new Set());} for(const f of fk){if(selected.has(f.childTable)&&selected.has(f.parentTable)&&f.childTable!==f.parentTable){deps.get(f.childTable)!.add(f.parentTable);children.get(f.parentTable)!.add(f.childTable);}}
