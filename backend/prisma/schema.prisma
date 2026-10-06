@@ -831,3 +831,60 @@ model Notification {
   @@index([userId, isRead])
   @@map("notifications")
 }
+
+// ---------- SCHOOL PROFILE / INSTITUTION SETTINGS ----------
+
+model SchoolProfile {
+  id                  String   @id @default("default")
+  schoolName          String
+  schoolUrduName      String?
+  address             String
+  phone               String
+  email               String
+  logoUrl             String?
+  boardRegistration   String?
+  campusInfo          String?
+  principalName       String?
+  currentAcademicYear String?
+  documentPrefix      String?  @default("WWHSS")
+  updatedAt           DateTime @updatedAt
+  createdAt           DateTime @default(now())
+
+  @@map("school_profiles")
+}
+
+// ---------- DOCUMENT NUMBERING SEQUENCE ----------
+
+model DocumentSequence {
+  id           String @id @default(uuid())
+  docType      String
+  academicYear String
+  campus       String @default("MAIN")
+  nextVal      Int    @default(1)
+
+  @@unique([docType, academicYear, campus])
+  @@map("document_sequences")
+}
+
+// ---------- PRIVATE STORAGE METADATA ----------
+
+model StorageFile {
+  id               String   @id @default(uuid())
+  storageKey       String   @unique
+  originalName     String
+  mimeType         String
+  size             Int
+  ownerUserId      String
+  entityType       String?
+  entityId         String?
+  classId          String?
+  sectionId        String?
+  subjectId        String?
+  isPrivate        Boolean  @default(true)
+  createdAt        DateTime @default(now())
+
+  @@index([ownerUserId])
+  @@index([entityType, entityId])
+  @@map("storage_files")
+}
+
