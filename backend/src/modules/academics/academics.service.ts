@@ -182,6 +182,28 @@ export async function enrollStudent(
   });
 }
 
+export async function getStudentEnrollmentHistory(studentProfileId: string) {
+  return prisma.studentEnrollmentHistory.findMany({ where: { studentProfileId }, include: { academicYear: true, class: true, section: true, changedBy: { select: { fullName: true } } }, orderBy: { startDate: "desc" } });
+}
+
+export async function changeStudentPlacement(input: { studentProfileId: string; classId: string; sectionId?: string; academicYearId: string; startDate: string; reason?: string; status?: string }, actorId?: string) {
+  const startDate = new Date(input.startDate); if (Number.isNaN(startDate.getTime())) throw new AcademicsValidationError("Invalid placement start date");
+  return prisma.$transaction(async (tx) => {
+    const student = await tx.studentProfile.findUnique({ where: { id: input.studentProfileId } });
+    const cls = await tx.class.findUnique({ where: { id: input.classId } });
+    const year = await tx.academicYear.findUnique({ where: { id: input.academicYearId } });
+    if (!student || !cls || !year) throw new AcademicsValidationError("Student, class or academic year not found");
+    if (cls.academicYearId !== input.academicYearId) throw new AcademicsValidationError("Class does not belong to academic year");
+    if (input.sectionId) { const section = await tx.section.findUnique({ where: { id: input.sectionId } }); if (!section || section.classId !== input.classId) throw new AcademicsValidationError("Section does not belong to class"); }
+    const current = await tx.studentEnrollmentHistory.findFirst({ where: { studentProfileId: input.studentProfileId, endDate: null }, orderBy: { startDate: "desc" } });
+    if (current && current.startDate < startDate) await tx.studentEnrollmentHistory.update({ where: { id: current.id }, data: { endDate: new Date(startDate.getTime() - 1) , status: "ENDED" } });
+    const history = await tx.studentEnrollmentHistory.create({ data: { studentProfileId: input.studentProfileId, academicYearId: input.academicYearId, classId: input.classId, sectionId: input.sectionId, startDate, status: input.status || "ACTIVE", reason: input.reason, changedByUserId: actorId } });
+    await tx.studentProfile.update({ where: { id: input.studentProfileId }, data: { classId: input.classId, sectionId: input.sectionId } });
+    if (actorId) await tx.auditLog.create({ data: { userId: actorId, action: "student:placement_change", resource: `student:${input.studentProfileId}`, metadata: { classId: input.classId, sectionId: input.sectionId, academicYearId: input.academicYearId, reason: input.reason } } });
+    return history;
+  });
+}
+
 export async function linkGuardian(
   input: { parentUserId: string; studentProfileId: string; relation: string },
   actorId?: string
