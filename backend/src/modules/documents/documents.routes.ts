@@ -1,7 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate.js";
-import { authorize } from "../../middleware/authorize.js";
 import { prisma } from "../../db/client.js";
 import { userHasPermission } from "../identity/permissions.js";
 import {
@@ -69,41 +68,46 @@ async function requireDocumentPermission(userId: string, permissionKey: "documen
   throw new Error(`Forbidden: requires ${permissionKey}`);
 }
 
-documentsRouter.get("/", authorize("documents:view"), async (req, res) => {
+documentsRouter.get("/", async (req, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
   const docType = typeof req.query.docType === "string" ? req.query.docType : undefined;
   const studentProfileId = typeof req.query.studentProfileId === "string" ? req.query.studentProfileId : undefined;
   const staffProfileId = typeof req.query.staffProfileId === "string" ? req.query.staffProfileId : undefined;
   const academicYearId = typeof req.query.academicYearId === "string" ? req.query.academicYearId : undefined;
 
-  if (studentProfileId && req.userId) {
+  if (studentProfileId) {
     const student = await prisma.studentProfile.findUnique({ where: { id: studentProfileId }, select: { classId: true, sectionId: true } });
     if (!student) return res.status(404).json({ error: "Student not found" });
     const allowed = await userHasPermission(req.userId, "documents:view", { studentId: studentProfileId, classId: student.classId ?? undefined, sectionId: student.sectionId ?? undefined });
-    if (!allowed && !(await userHasPermission(req.userId, "documents:view:own", { studentId: studentProfileId }))) return res.status(403).json({ error: "Forbidden" });
-  } else if (staffProfileId && req.userId) {
+    const own = await userHasPermission(req.userId, "documents:view:own", { studentId: studentProfileId });
+    if (!allowed && !own) return res.status(403).json({ error: "Forbidden" });
+  } else if (staffProfileId) {
     const staff = await prisma.staffProfile.findUnique({ where: { id: staffProfileId }, select: { departmentId: true } });
     if (!staff) return res.status(404).json({ error: "Staff profile not found" });
     if (!(await userHasPermission(req.userId, "documents:view", { departmentId: staff.departmentId ?? undefined }))) return res.status(403).json({ error: "Forbidden" });
+  } else if (!(await userHasPermission(req.userId, "documents:view"))) {
+    return res.status(403).json({ error: "A document scope is required for this request" });
   }
 
   const records = await listDocumentRecords({ docType, studentProfileId, staffProfileId, academicYearId });
   res.json({ documents: records });
 });
 
-documentsRouter.post("/", authorize("documents:create"), async (req, res) => {
+documentsRouter.post("/", async (req, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
   const parsed = createDocSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  if (req.userId && parsed.data.studentProfileId) {
+  if (parsed.data.studentProfileId) {
     const student = await prisma.studentProfile.findUnique({ where: { id: parsed.data.studentProfileId }, select: { classId: true, sectionId: true } });
     if (!student) return res.status(404).json({ error: "Student not found" });
     if (!(await userHasPermission(req.userId, "documents:create", { classId: student.classId ?? undefined, sectionId: student.sectionId ?? undefined, studentId: parsed.data.studentProfileId }))) return res.status(403).json({ error: "Forbidden" });
-  }
-
-  if (req.userId && parsed.data.staffProfileId) {
+  } else if (parsed.data.staffProfileId) {
     const staff = await prisma.staffProfile.findUnique({ where: { id: parsed.data.staffProfileId }, select: { departmentId: true } });
     if (!staff) return res.status(404).json({ error: "Staff profile not found" });
     if (!(await userHasPermission(req.userId, "documents:create", { departmentId: staff.departmentId ?? undefined }))) return res.status(403).json({ error: "Forbidden" });
+  } else if (!(await userHasPermission(req.userId, "documents:create"))) {
+    return res.status(403).json({ error: "A document scope is required for this request" });
   }
 
   try {
@@ -115,7 +119,7 @@ documentsRouter.post("/", authorize("documents:create"), async (req, res) => {
   }
 });
 
-documentsRouter.get("/payload/:docType/:referenceId", authenticate, async (req, res) => {
+documentsRouter.get("/payload/:docType/:referenceId", async (req, res) => {
   if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
   try {
     const scope = await resolveDocumentScope(req.params.docType, req.params.referenceId);
