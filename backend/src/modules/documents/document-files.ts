@@ -383,5 +383,5 @@ export function renderDocumentPdf(payload: unknown, title = "WWHS Digital Campus
     if (safe.length === 0) wrapped.push("");
   }
   const font = loadFont();
-  return buildUnicodePdf(font, title, wrapped.slice(0, 180));
+  return buildUnicodePdf(font, wrapped.slice(0, 180));
 }
