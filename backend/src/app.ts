@@ -114,8 +114,28 @@ const healthHandler = async (_req: express.Request, res: express.Response) => {
     res.status(503).json({ status: "degraded", database: "unreachable" });
   }
 };
-app.get("/health", healthHandler);
+app.get("/health", (_req, res) => {
+  res.json({ status: "ok" });
+});
+
+app.get("/ready", async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ status: "ready", database: "connected" });
+  } catch {
+    res.status(503).json({ status: "not_ready" });
+  }
+});
+
 app.get("/api/health", healthHandler);
+app.get("/api/ready", async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ status: "ready", database: "connected" });
+  } catch {
+    res.status(503).json({ status: "not_ready" });
+  }
+});
 
 app.use("/api/auth", authRouter);
 app.use("/api/attendance", attendanceRouter);
