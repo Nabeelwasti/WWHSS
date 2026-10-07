@@ -29,16 +29,15 @@ RUN npm ci --omit=dev
 # here.
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/node_modules/@prisma/client ./node_modules/@prisma/client
-# The runtime image also needs the Prisma CLI and engines because Render's Free
-# service has no paid pre-deploy hook. `migrate deploy` is idempotent and runs
-# before the API process starts so a fresh Neon database is actually usable.
+# Keep Prisma CLI/engines and migration files in the image for the separate
+# controlled migration job. The application process itself never mutates the DB.
 COPY --from=build /app/node_modules/prisma ./node_modules/prisma
 COPY --from=build /app/node_modules/@prisma/engines ./node_modules/@prisma/engines
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
 
 USER wwhs
-EXPOSE 10000
+EXPOSE 8080
 
 # A real container-level health check, not just an exposed port — an
 # orchestrator can see this container is actually serving traffic, not just
@@ -46,4 +45,4 @@ EXPOSE 10000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD node -e "const port=process.env.PORT||4000; fetch(\"http://127.0.0.1:\"+port+\"/health\").then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 
-CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy && node dist/server.js"]
+CMD ["node", "dist/server.js"]
