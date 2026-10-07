@@ -123,7 +123,15 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
       data: { classId: cls.id, academicYearId: ay.id, name: "Term Fee", amount: new Prisma.Decimal("500.00") },
     });
     const invoice = await prisma.feeInvoice.create({
-      data: { feeStructureId: fs.id, studentProfileId: student.id, amountDue: new Prisma.Decimal("500.00"), dueDate: new Date() },
+      data: {
+        invoiceNumber: `INV-TEST-${Date.now()}`,
+        feeStructureId: fs.id,
+        studentProfileId: student.id,
+        amountDue: new Prisma.Decimal("500.00"),
+        billingPeriodStart: new Date("2026-09-01"),
+        billingPeriodEnd: new Date("2026-09-30"),
+        dueDate: new Date("2026-09-15"),
+      },
     });
 
     // Fire 5 concurrent payment attempts of $200 each (Total attempted: $1000 on a $500 balance)
@@ -153,6 +161,38 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
       where: { userId: user.id, action: "finance:payment", resource: `invoice:${invoice.id}` },
     });
     expect(auditLogs.length).toBe(2);
+  });
+
+  it("creates distinct recurring invoices for distinct billing periods and remains idempotent within one period", async () => {
+    const ay = await prisma.academicYear.create({
+      data: { label: `Billing-1791383420328`, startDate: new Date("2026-09-01"), endDate: new Date("2027-06-30") },
+    });
+    const cls = await prisma.class.create({ data: { name: `Billing-1791383420328`, academicYearId: ay.id } });
+    const user = await prisma.user.create({
+      data: { email: `billing-1791383420328@school.edu`, passwordHash: "hash", fullName: "Billing Student" },
+    });
+    await prisma.studentProfile.create({
+      data: { userId: user.id, admissionNo: `ADM-BILL-1791383420328`, classId: cls.id },
+    });
+    const fs = await prisma.feeStructure.create({
+      data: { classId: cls.id, academicYearId: ay.id, name: "Monthly Tuition", amount: new Prisma.Decimal("2000.00") },
+    });
+
+    await generateInvoicesForClass(fs.id, "2026-09-10", user.id, "2026-09-01", "2026-09-30");
+    await generateInvoicesForClass(fs.id, "2026-09-10", user.id, "2026-09-01", "2026-09-30");
+    await generateInvoicesForClass(fs.id, "2026-10-10", user.id, "2026-10-01", "2026-10-31");
+
+    const invoices = await prisma.feeInvoice.findMany({
+      where: { feeStructureId: fs.id },
+      orderBy: { billingPeriodStart: "asc" },
+    });
+
+    expect(invoices).toHaveLength(2);
+    expect(invoices[0].billingPeriodStart.toISOString()).toBe("2026-09-01T00:00:00.000Z");
+    expect(invoices[0].billingPeriodEnd.toISOString()).toBe("2026-09-30T00:00:00.000Z");
+    expect(invoices[1].billingPeriodStart.toISOString()).toBe("2026-10-01T00:00:00.000Z");
+    expect(invoices[1].billingPeriodEnd.toISOString()).toBe("2026-10-31T00:00:00.000Z");
+    expect(invoices[0].invoiceNumber).not.toBe(invoices[1].invoiceNumber);
   });
 
   it("proves concurrent library issueBook calls allow exactly one successful issuance", async () => {
