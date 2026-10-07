@@ -361,6 +361,20 @@ export async function savePrivateFile(
   }
 }
 
+export async function reconcileStorageMetadata(): Promise<{ missingObjects: string[]; orphanObjects: string[] }> {
+  const provider = getStorageProvider();
+  const [metadata, objects] = await Promise.all([
+    prisma.storageFile.findMany({ select: { storageKey: true } }),
+    provider.listFiles(),
+  ]);
+  const metadataKeys = new Set(metadata.map((file) => file.storageKey));
+  const objectKeys = new Set(objects);
+  return {
+    missingObjects: [...metadataKeys].filter((key) => !objectKeys.has(key)).sort(),
+    orphanObjects: [...objectKeys].filter((key) => !metadataKeys.has(key)).sort(),
+  };
+}
+
 export function getPrivateFilePath(filename: string): string {
   ensureStorageDirExists();
   const safeName = path.basename(filename);
