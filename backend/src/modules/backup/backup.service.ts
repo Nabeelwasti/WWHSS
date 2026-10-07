@@ -572,6 +572,7 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
       // application row represented by the backup schema before replaying the backup.
       // The dependency order guarantees children are removed before parents.
       for (const table of [...order].reverse()) {
+        if (table === "audit_logs") continue;
         await tx.$executeRawUnsafe(`DELETE FROM "public"."${table.replace(/"/g, '""')}"`);
       }
     }
