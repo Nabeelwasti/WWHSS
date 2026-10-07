@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate.js";
 import { authorize } from "../../middleware/authorize.js";
+import { userHasPermission } from "../identity/permissions.js";
 import { prisma } from "../../db/client.js";
 import {
   listUsers,
@@ -132,6 +133,7 @@ usersRouter.get("/students/search", authorize("academics:view"), async (req, res
   const status = typeof req.query.status === "string" ? req.query.status : undefined;
   const fundingCategoryId = typeof req.query.fundingCategoryId === "string" ? req.query.fundingCategoryId : undefined;
   const gender = typeof req.query.gender === "string" ? req.query.gender : undefined;
+  const includeSensitive = req.userId ? await userHasPermission(req.userId, "student:view:sensitive") : false;
   const page = typeof req.query.page === "string" ? parseInt(req.query.page, 10) : undefined;
   const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : undefined;
   const sortBy = typeof req.query.sortBy === "string" ? (req.query.sortBy as any) : undefined;
@@ -148,19 +150,23 @@ usersRouter.get("/students/search", authorize("academics:view"), async (req, res
     limit,
     sortBy,
     sortOrder,
+    includeSensitive,
   });
   res.json(result);
 });
 
 usersRouter.get("/students/:studentProfileId", authorize("student:view:full_profile", (req) => ({ studentId: req.params.studentProfileId })), async (req, res) => {
   try {
-    const profile = await getStudentProfileById(req.params.studentProfileId);
+    const includeSensitive = req.userId ? await userHasPermission(req.userId, "student:view:sensitive", { studentId: req.params.studentProfileId }) : false;
+    const profile = await getStudentProfileById(req.params.studentProfileId, includeSensitive);
     res.json({ profile });
   } catch (e) {
     if (e instanceof UserValidationError) return res.status(404).json({ error: e.message });
     throw e;
   }
 });
+
+const SENSITIVE_STUDENT_FIELDS = new Set(["medicalNotes", "bloodGroup", "fundingCategoryId"]);
 
 const updateStudentSchema = z.object({
   registrationNo: z.string().optional(),
@@ -188,6 +194,12 @@ const updateStudentSchema = z.object({
 usersRouter.put("/students/:studentProfileId", authorize("students:manage"), async (req, res) => {
   const parsed = updateStudentSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
+  const requestedSensitiveFields = Object.keys(parsed.data).filter((key) => SENSITIVE_STUDENT_FIELDS.has(key));
+  if (requestedSensitiveFields.length > 0) {
+    const canManageSensitive = await userHasPermission(req.userId, "student:manage:sensitive", { studentId: req.params.studentProfileId });
+    if (!canManageSensitive) return res.status(403).json({ error: "Missing permission: student:manage:sensitive", fields: requestedSensitiveFields });
+  }
   try {
     const updated = await updateStudentProfile(req.params.studentProfileId, parsed.data, req.userId);
     res.json({ profile: updated });
