@@ -198,7 +198,7 @@ function bidiAndShape(text: string): Array<{ cp: number; source: number }> {
 function pdfString(value: string): Buffer { return Buffer.from(value, "ascii"); }
 function pdfHex(value: number): string { return value.toString(16).padStart(4, "0"); }
 
-function buildUnicodePdf(font: FontInfo, title: string, lines: string[]): Buffer {
+function buildUnicodePdf(font: FontInfo, lines: string[]): Buffer {
   const shapedLines = lines.map((line) => bidiAndShape(line));
   const used = new Map<number, number>();
   for (const line of shapedLines) for (const item of line) {
@@ -206,13 +206,15 @@ function buildUnicodePdf(font: FontInfo, title: string, lines: string[]): Buffer
     if (gid) used.set(gid, item.source);
   }
 
-  const widthEntries = [...used.keys()].sort((a,b)=>a-b).map((gid) => `${gid} [${Math.max(1, Math.round(font.width(gid) / font.unitsPerEm * 1000))}]`).join(" ");
-  const w = widthEntries ? `/W [${widthEntries}] ` : "";
-  const toUnicodePairs = [...used.entries()];
+  const widthEntries = [...used.keys()].sort((a, b) => a - b)
+    .map((gid) => `${gid} [${Math.max(1, Math.round(font.width(gid) / font.unitsPerEm * 1000))}]`).join(" ");
+  const widths = widthEntries ? `/W [${widthEntries}] ` : "";
+  const pairs = [...used.entries()];
   const cmapBlocks: string[] = [];
-  for (let i = 0; i < toUnicodePairs.length; i += 100) {
-    const block = toUnicodePairs.slice(i, i + 100);
-    cmapBlocks.push(`${block.length} beginbfchar\n${block.map(([gid, cp]) => `<${pdfHex(gid)}> <${cp.toString(16).padStart(cp > 0xffff ? 6 : 4, "0")}>`).join("\n")}\nendbfchar`);
+  for (let i = 0; i < pairs.length; i += 100) {
+    const block = pairs.slice(i, i + 100);
+    cmapBlocks.push(`${block.length} beginbfchar\n${block.map(([gid, cp]) =>
+      `<${pdfHex(gid)}> <${cp.toString(16).padStart(cp > 0xffff ? 6 : 4, "0")}>`).join("\n")}\nendbfchar`);
   }
   const toUnicode = `/CIDInit /ProcSet findresource begin
 12 dict begin
@@ -229,26 +231,40 @@ CMapName currentdict /CMap defineresource pop
 end
 end`;
 
-  const contentLines: string[] = ["BT", "/F1 11 Tf", "50 800 Td"];
-  let lineIndex = 0;
-  for (const line of shapedLines) {
-    if (lineIndex > 0) contentLines.push("0 -16 Td");
-    const codes = line.map((item) => font.cmap(item.cp)).map(pdfHex).join("");
-    contentLines.push(`<${codes}> Tj`);
-    lineIndex++;
-  }
-  contentLines.push("ET");
-  const content = pdfString(contentLines.join("\n"));
+  const pageLines = 45;
+  const pageCount = Math.max(1, Math.ceil(shapedLines.length / pageLines));
+  const fontObjectNumber = 3 + pageCount * 2;
+  const cidObjectNumber = fontObjectNumber + 1;
+  const descriptorObjectNumber = fontObjectNumber + 2;
+  const fontFileObjectNumber = fontObjectNumber + 3;
+  const unicodeObjectNumber = fontObjectNumber + 4;
 
   const objects: Buffer[] = [];
-  const add = (value: string | Buffer) => { objects.push(Buffer.isBuffer(value) ? value : Buffer.from(value, "binary")); return objects.length; };
-  add("<< /Type /Catalog /Pages 2 0 R >>");
-  add("<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
-  add("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>");
-  add(Buffer.concat([pdfString(`<< /Length ${content.length} >>\nstream\n`), content, pdfString("\nendstream")]));
-  add(`<< /Type /Font /Subtype /Type0 /BaseFont /NotoNaskhArabic /Encoding /Identity-H /DescendantFonts [6 0 R] /ToUnicode 9 0 R >>`);
-  add(`<< /Type /Font /Subtype /CIDFontType2 /BaseFont /NotoNaskhArabic /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor 7 0 R /DW 600 ${w}/CIDToGIDMap /Identity >>`);
-  add(`<< /Type /FontDescriptor /FontName /NotoNaskhArabic /Flags 4 /FontBBox [${font.bbox.join(" ")}] /ItalicAngle 0 /Ascent ${font.ascent} /Descent ${font.descent} /CapHeight 700 /StemV 80 /FontFile2 8 0 R >>`);
+  const add = (value: string | Buffer) => {
+    objects.push(Buffer.isBuffer(value) ? value : Buffer.from(value, "binary"));
+  };
+
+  add(`<< /Type /Catalog /Pages 2 0 R >>`);
+  const kids = Array.from({ length: pageCount }, (_, i) => `${3 + i * 2} 0 R`).join(" ");
+  add(`<< /Type /Pages /Kids [${kids}] /Count ${pageCount} >>`);
+
+  for (let page = 0; page < pageCount; page++) {
+    const chunk = shapedLines.slice(page * pageLines, (page + 1) * pageLines);
+    const contentLines: string[] = ["BT", "/F1 11 Tf", "50 800 Td"];
+    chunk.forEach((line, index) => {
+      if (index > 0) contentLines.push("0 -16 Td");
+      const codes = line.map((item) => font.cmap(item.cp)).map(pdfHex).join("");
+      contentLines.push(`<${codes}> Tj`);
+    });
+    contentLines.push("ET");
+    const content = pdfString(contentLines.join("\n"));
+    add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontObjectNumber} 0 R >> >> /Contents ${4 + page * 2} 0 R >>`);
+    add(Buffer.concat([pdfString(`<< /Length ${content.length} >>\nstream\n`), content, pdfString("\nendstream")]));
+  }
+
+  add(`<< /Type /Font /Subtype /Type0 /BaseFont /NotoNaskhArabic /Encoding /Identity-H /DescendantFonts [${cidObjectNumber} 0 R] /ToUnicode ${unicodeObjectNumber} 0 R >>`);
+  add(`<< /Type /Font /Subtype /CIDFontType2 /BaseFont /NotoNaskhArabic /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor ${descriptorObjectNumber} 0 R /DW 600 ${widths}/CIDToGIDMap /Identity >>`);
+  add(`<< /Type /FontDescriptor /FontName /NotoNaskhArabic /Flags 4 /FontBBox [${font.bbox.join(" ")}] /ItalicAngle 0 /Ascent ${font.ascent} /Descent ${font.descent} /CapHeight 700 /StemV 80 /FontFile2 ${fontFileObjectNumber} 0 R >>`);
   add(Buffer.concat([pdfString(`<< /Length ${font.data.length} /Length1 ${font.data.length} >>\nstream\n`), font.data, pdfString("\nendstream")]));
   add(`<< /Length ${Buffer.byteLength(toUnicode, "ascii")} >>\nstream\n${toUnicode}\nendstream`);
 
