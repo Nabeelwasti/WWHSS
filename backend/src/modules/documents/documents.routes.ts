@@ -4,7 +4,7 @@ import { authenticate } from "../../middleware/authenticate.js";
 import { prisma } from "../../db/client.js";
 import { userHasPermission } from "../identity/permissions.js";
 import { createDocumentRecord, listDocumentRecords, generatePrintableDocumentPayload, DocumentValidationError } from "./documents.service.js";
-import { renderDocumentCsv, renderDocumentHtml, renderDocumentPdf } from "./document-files.js";
+import { renderDocumentCsv, renderDocumentHtml, renderDocumentPdf, renderDocumentXlsx } from "./document-files.js";
 
 export const documentsRouter = Router();
 documentsRouter.use(authenticate);
@@ -108,7 +108,7 @@ documentsRouter.get("/payload/:docType/:referenceId", async (req, res) => {
 
 documentsRouter.get("/file/:format/:docType/:referenceId", async (req, res) => {
   if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
-  const format = z.enum(["pdf", "html", "csv"]).safeParse(req.params.format);
+  const format = z.enum(["pdf", "html", "csv", "xlsx"]).safeParse(req.params.format);
   if (!format.success) return res.status(400).json({ error: "Unsupported document format" });
   try {
     const scope = await resolveDocumentScope(req.params.docType, req.params.referenceId);
