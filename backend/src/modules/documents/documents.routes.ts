@@ -12,10 +12,20 @@ documentsRouter.use(authenticate);
 const createDocSchema = z.object({ docType: z.string().min(1), referenceId: z.string().uuid().optional(), studentProfileId: z.string().uuid().optional(), staffProfileId: z.string().uuid().optional(), academicYearId: z.string().uuid().optional(), metadataJson: z.record(z.any()).optional() });
 
 async function resolveDocumentScope(docType: string, referenceId: string) {
-  if (["result_card", "report_card", "transfer_certificate", "fee_statement", "attendance_report"].includes(docType)) {
+  if ([
+    "result_card", "report_card", "transfer_certificate", "fee_statement", "attendance_report",
+    "transcript", "academic_history", "progress_report", "admission_document", "letter",
+    "funding_report", "financial_summary", "library_card", "loan_report",
+  ].includes(docType)) {
     const student = await prisma.studentProfile.findUnique({ where: { id: referenceId }, select: { id: true, classId: true, sectionId: true } });
     if (!student) throw new DocumentValidationError(`Student ${referenceId} not found`);
     return { studentId: student.id, classId: student.classId ?? undefined, sectionId: student.sectionId ?? undefined };
+  }
+  if (docType === "class_sheet") {
+    return { classId: referenceId };
+  }
+  if (["teacher_timetable", "room_schedule", "exam_schedule", "notice", "event_schedule", "invoice"].includes(docType)) {
+    return {};
   }
   if (docType === "fee_receipt") {
     const payment = await prisma.payment.findUnique({ where: { id: referenceId }, select: { invoice: { select: { studentProfileId: true, student: { select: { classId: true, sectionId: true } } } } } });
@@ -40,6 +50,19 @@ async function requireDocumentPermission(userId: string, permissionKey: "documen
   if (scope.studentId && await userHasPermission(userId, "documents:view:own", { studentId: scope.studentId })) return;
   throw new Error(`Forbidden: requires ${permissionKey}`);
 }
+
+const DOCUMENT_TYPES = [
+  "result_card", "report_card", "transcript", "progress_report", "academic_history",
+  "exam_schedule", "timetable", "attendance_report", "admission_document", "transfer_certificate",
+  "notice", "letter", "invoice", "fee_receipt", "fee_statement", "funding_report", "financial_summary",
+  "library_card", "loan_report", "class_sheet", "teacher_timetable", "room_schedule", "event_schedule",
+] as const;
+
+documentsRouter.get("/types", async (req, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
+  if (!(await userHasPermission(req.userId, "documents:view"))) return res.status(403).json({ error: "Forbidden" });
+  res.json({ documentTypes: DOCUMENT_TYPES });
+});
 
 documentsRouter.get("/", async (req, res) => {
   if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
