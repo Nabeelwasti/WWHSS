@@ -252,14 +252,17 @@ export async function askCampusAI(userId: string, message: string): Promise<stri
     for (const cfg of ordered) {
       try {
         const reply = await callProviderWithResilience(cfg, systemPrompt, truncatedMessage);
-        if (reply.trim()) {\n          await prisma.auditLog.create({ data: { userId, action: "ai:response", metadata: { provider: cfg.type, model: cfg.model, inputChars: truncatedMessage.length, outputChars: reply.length } } });\n          return reply;\n        }
+        if (reply.trim()) {
+          await prisma.auditLog.create({ data: { userId, action: "ai:response", metadata: { provider: cfg.type, model: cfg.model, inputChars: truncatedMessage.length, outputChars: reply.length } } });
+          return reply;\n        }
         failures.push(`${cfg.type}: returned an empty reply`);
       } catch (err: unknown) {
         failures.push(`${cfg.type}: ${sanitizeErrorMessage(err instanceof Error ? err.message : String(err))}`);
       }
     }
     await safeRelease();
-    await prisma.auditLog.create({ data: { userId, action: "ai:providers_failed", metadata: { failures: failures.map((value) => value.slice(0, 160)) } } });\n    console.error("All configured AI providers failed:", failures);
+    await prisma.auditLog.create({ data: { userId, action: "ai:providers_failed", metadata: { failures: failures.map((value) => value.slice(0, 160)) } } });
+    console.error("All configured AI providers failed:", failures);
     throw new Error("The AI assistant is temporarily unavailable — every configured provider failed. Please try again shortly.");
   } catch (err: unknown) {
     await safeRelease();
