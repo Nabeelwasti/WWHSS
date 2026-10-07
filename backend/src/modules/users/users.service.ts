@@ -130,6 +130,8 @@ export interface SearchStudentsOptions {
   sectionId?: string;
   status?: string;
   fundingCategoryId?: string;
+  academicYearId?: string;
+  dateOfBirth?: string;
   gender?: string;
   page?: number;
   limit?: number;
@@ -147,9 +149,18 @@ export async function searchStudentProfiles(options: SearchStudentsOptions = {})
 
   if (options.classId) where.classId = options.classId;
   if (options.sectionId) where.sectionId = options.sectionId;
+  if (options.academicYearId) where.class = { academicYearId: options.academicYearId };
   if (options.status) where.status = options.status;
   if (options.fundingCategoryId) where.fundingCategoryId = options.fundingCategoryId;
   if (options.gender) where.gender = options.gender;
+  if (options.dateOfBirth) {
+    const parsedDate = new Date(`${options.dateOfBirth}T00:00:00.000Z`);
+    if (!Number.isNaN(parsedDate.getTime())) {
+      const nextDate = new Date(parsedDate);
+      nextDate.setUTCDate(nextDate.getUTCDate() + 1);
+      where.dateOfBirth = { gte: parsedDate, lt: nextDate };
+    }
+  }
 
   if (options.query && options.query.trim().length > 0) {
     const q = options.query.trim();
@@ -165,6 +176,7 @@ export async function searchStudentProfiles(options: SearchStudentsOptions = {})
       { guardianPhone: { contains: q, mode: "insensitive" } },
       { user: { phone: { contains: q, mode: "insensitive" } } },
       { boardRegistrationNo: { contains: q, mode: "insensitive" } },
+      ...(options.includeSensitive ? [{ fundingCategory: { name: { contains: q, mode: "insensitive" } } }] : []),
     ];
   }
 
