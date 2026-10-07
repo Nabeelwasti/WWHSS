@@ -203,7 +203,7 @@ Repository configuration intentionally has:
 
 This keeps GitHub pushes from being treated as automatic Vercel releases. GitHub Actions remains the verification gate. Vercel production deployment should be performed deliberately after a release candidate is green.
 
-The frontend's Vercel configuration is the authoritative frontend routing configuration. The old competing repository-level Vercel Services topology is no longer defined.
+The frontend uses `frontend/vercel.ts` as its authoritative routing configuration. `BACKEND_URL` is supplied separately in Vercel Preview and Production environments so `/api/*` always reaches the matching Cloud Run backend. `frontend/vercel.legacy.json` is retained only as an archival copy of the former hardcoded Vercel-backend routing configuration and is not an active configuration file.
 
 ## Release checklist
 
