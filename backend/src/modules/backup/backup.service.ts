@@ -473,8 +473,11 @@ export async function verifyBackupRecovery(
   return { valid: true, summary };
 }
 
-export async function restoreFromBackup(filename: string, encryptionSecret?: string, restoredByUserId?: string, dryRun = false): Promise<{ success: boolean; dryRun: boolean; summary: Record<string, number> }> {
+export type BackupRestoreMode = "DRY_RUN" | "MERGE" | "REPLACE";
+
+export async function restoreFromBackup(filename: string, encryptionSecret?: string, restoredByUserId?: string, mode: BackupRestoreMode = "MERGE"): Promise<{ success: boolean; mode: BackupRestoreMode; summary: Record<string, number> }> {
   if (!restoredByUserId) throw new BackupError("A privileged restoring user is required");
+  if (!["DRY_RUN", "MERGE", "REPLACE"].includes(mode)) throw new BackupError(`Unsupported restore mode: ${mode}`);
   const raw = await getBackupProvider().getBackupPayload(filename);
   let envelope: any; try { envelope=JSON.parse(raw); } catch { throw new BackupError("Invalid backup envelope"); }
   if (!envelope.encrypted || !envelope.data) throw new BackupError("Invalid backup format or unencrypted file");
@@ -503,7 +506,7 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
   const keys=Object.keys(tables);
   for(const k of keys) { if(!tableMap[k] || !Array.isArray(tables[k])) throw new BackupError(`Invalid or unsupported backup table: ${k}`); }
   for(const k of requiredKeys) { if(!(k in tables)) throw new BackupError(`Backup is incomplete: missing table: ${k}`); }
-  if (dryRun) {
+  if (mode === "DRY_RUN") {
     const summary: Record<string, number> = {};
     for (const [key, table] of Object.entries(tableMap)) {
       const rows = tables[key] as Record<string, unknown>[];
@@ -512,17 +515,17 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
       for (const row of rows) if (Object.keys(row).some((name) => !allowed.has(name))) throw new BackupError(`Backup contains unknown column in ${key}`);
       summary[key] = rows.length;
     }
-    return { success: true, dryRun: true, summary };
+    return { success: true, mode, summary };
   }
   const storageProvider = getStorageProvider();
   const newlyCreatedStorageObjects: string[] = [];
-  if (!dryRun && parsed.meta.storageObjectsIncluded === true) {
+  if (parsed.meta.storageObjectsIncluded === true) {
     try {
       for (const object of storageObjects) {
         const exists = await storageProvider.exists(object.storageKey);
-        if (!exists) {
+        if (mode === "REPLACE" || !exists) {
           await storageProvider.saveFile(object.storageKey, Buffer.from(object.dataBase64, "base64"), object.mimeType);
-          newlyCreatedStorageObjects.push(object.storageKey);
+          if (!exists) newlyCreatedStorageObjects.push(object.storageKey);
         }
       }
     } catch (error) {
@@ -537,6 +540,14 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
     const selected=new Set(Object.values(tableMap)); const deps=new Map<string,Set<string>>(); const children=new Map<string,Set<string>>(); for(const t of selected){deps.set(t,new Set());children.set(t,new Set());} for(const f of fk){if(selected.has(f.childTable)&&selected.has(f.parentTable)&&f.childTable!==f.parentTable){deps.get(f.childTable)!.add(f.parentTable);children.get(f.parentTable)!.add(f.childTable);}}
     const ready=[...selected].filter(t=>deps.get(t)!.size===0).sort(); const order:string[]=[]; while(ready.length){const t=ready.shift()!;order.push(t);for(const c of [...children.get(t)!].sort()){deps.get(c)!.delete(t);if(deps.get(c)!.size===0){ready.push(c);ready.sort();}}} if(order.length!==selected.size) throw new BackupError("Backup restore dependency graph contains a foreign-key cycle");
     const reverse=new Map(Object.entries(tableMap).map(([k,v])=>[v,k])); const counts:Record<string,number>={};
+    if (mode === "REPLACE") {
+      // Replacement restore is deliberately explicit and destructive: remove every
+      // application row represented by the backup schema before replaying the backup.
+      // The dependency order guarantees children are removed before parents.
+      for (const table of [...order].reverse()) {
+        await tx.$executeRawUnsafe(`DELETE FROM "public"."${table.replace(/"/g, """")}"`);
+      }
+    }
     for(const table of order){const key=reverse.get(table)!;const rows=tables[key] as Record<string,unknown>[]; if(!rows.length){counts[key]=0;continue;} const cols=await tx.$queryRaw<Array<{columnName:string;dataType:string;udtName:string}>>`SELECT column_name AS "columnName", data_type AS "dataType", udt_name AS "udtName" FROM information_schema.columns WHERE table_schema='public' AND table_name=${table} ORDER BY ordinal_position`; const allowed=new Set(cols.map(c=>c.columnName)); const pk=await tx.$queryRaw<Array<{columnName:string}>>`SELECT kcu.column_name AS "columnName" FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name=kcu.constraint_name AND tc.table_name=kcu.table_name WHERE tc.table_schema='public' AND tc.constraint_type='PRIMARY KEY' AND tc.table_name=${table} ORDER BY kcu.ordinal_position`; if(!pk.length) throw new BackupError(`Table ${table} has no primary key`); let affected=0;
       for(const row of rows){const names=Object.keys(row);if(names.some(n=>!allowed.has(n))) throw new BackupError(`Backup contains unknown column in ${key}`);const values=names.map(n=>{const value=row[n]===undefined?null:row[n];if(value===null)return null;const column=cols.find(c=>c.columnName===n);if(!column)return value;if(column.dataType==="timestamp without time zone"||column.dataType==="timestamp with time zone"){const date=new Date(String(value));if(Number.isNaN(date.getTime()))throw new BackupError(`Invalid datetime value in ${key}.${n}`);return date.toISOString();}if(column.dataType==="json"||column.dataType==="jsonb"){return typeof value==="string"?value:JSON.stringify(value);}return value;});const boundValues: unknown[]=[];const placeholders=names.map((n,i)=>{const column=cols.find(c=>c.columnName===n);const value=values[i];if(value===null)return "NULL";if(!column){boundValues.push(value);return `${boundValues.length}`;}if(column.dataType==="timestamp without time zone"||column.dataType==="timestamp with time zone"){const escaped=String(value).replace(/'/g,"''");return column.dataType==="timestamp without time zone"?"TIMESTAMP '" + escaped + "'":"TIMESTAMPTZ '" + escaped + "'";}if(column.dataType==="date"){return "DATE '" + String(value).replace(/'/g,"''") + "'";}if(column.dataType==="time without time zone"){return "TIME '" + String(value).replace(/'/g,"''") + "'";}boundValues.push(value);const p=`$${boundValues.length}`;if(column.dataType==="json")return p+"::json";if(column.dataType==="jsonb")return p+"::jsonb";if(column.udtName==="uuid")return p+"::uuid";if(column.dataType==="numeric"||column.dataType==="decimal")return p+"::numeric";if(column.dataType==="bigint")return p+"::bigint";if(column.dataType==="integer")return p+"::integer";if(column.dataType==="smallint")return p+"::smallint";if(column.dataType==="double precision")return p+"::double precision";if(column.dataType==="real")return p+"::real";if(column.dataType==="boolean")return p+"::boolean";return p;}).join(",");const qcols=names.map(n=>`"${n.replace(/"/g,'""')}"`).join(",");const conflict=pk.map(x=>`"${x.columnName.replace(/"/g,'""')}"`).join(",");const updates=names.filter(n=>!pk.some(x=>x.columnName===n)).map(n=>`"${n.replace(/"/g,'""')}"=EXCLUDED."${n.replace(/"/g,'""')}"`).join(",");const sql=`INSERT INTO "public"."${table}" (${qcols}) VALUES (${placeholders}) ON CONFLICT (${conflict}) DO ${updates?"UPDATE SET "+updates:"NOTHING"}`; affected+=await tx.$executeRawUnsafe(sql,...boundValues); } counts[key]=affected; if(affected!==rows.length) throw new BackupError(`Restore count mismatch for ${key}`); }
     const sequences = await tx.$queryRaw<Array<{tableName:string;columnName:string;sequenceName:string|null}>>`
@@ -553,9 +564,10 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
       await tx.$executeRawUnsafe(`SELECT setval(${JSON.stringify(sequence.sequenceName)}::regclass, COALESCE((SELECT MAX(${column}) FROM ${table}), 1), true)`);
     }
 
-    await tx.auditLog.create({data:{userId:restoredByUserId,action:"backup:restore",resource:`backup:${safeBackupFilename(filename)}`,metadata:{version:envelope.version,tableCounts:envelope.tableCounts,restoredTables:order}}}); return counts;
+    const restoredUserIds = new Set((tables.users as Record<string, unknown>[]).map((row) => String(row.id)));
+    await tx.auditLog.create({data:{userId:restoredUserIds.has(restoredByUserId) ? restoredByUserId : null,action:"backup:restore",resource:`backup:${safeBackupFilename(filename)}`,metadata:{version:envelope.version,mode,tableCounts:envelope.tableCounts,restoredTables:order,requestedByUserId:restoredByUserId}}}); return counts;
   },{maxWait:10000,timeout:120000});
-    return {success:true,dryRun:false,summary:result};
+    return {success:true,mode,summary:result};
   } catch (error) {
     if (newlyCreatedStorageObjects.length > 0) {
       await Promise.allSettled(newlyCreatedStorageObjects.map((key) => storageProvider.deleteFile(key)));
