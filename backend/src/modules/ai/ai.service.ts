@@ -254,7 +254,7 @@ export async function askCampusAI(userId: string, message: string): Promise<stri
         const reply = await callProviderWithResilience(cfg, systemPrompt, truncatedMessage);
         if (reply.trim()) {
           await prisma.auditLog.create({ data: { userId, action: "ai:response", metadata: { provider: cfg.type, model: cfg.model, inputChars: truncatedMessage.length, outputChars: reply.length } } });
-          return reply;\n        }
+          return reply;        }
         failures.push(`${cfg.type}: returned an empty reply`);
       } catch (err: unknown) {
         failures.push(`${cfg.type}: ${sanitizeErrorMessage(err instanceof Error ? err.message : String(err))}`);
