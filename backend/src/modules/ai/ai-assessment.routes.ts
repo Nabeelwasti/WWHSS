@@ -11,6 +11,9 @@ import {
   listAiAssessmentTests,
   submitAiAnswerSheet,
   gradeAiAnswerSheet,
+  publishAiAssessmentTest,
+  lockAiAssessmentTest,
+  getAiAssessmentAnswerKey,
   AiAssessmentError,
 } from "./ai-assessment.service.js";
 
@@ -73,6 +76,14 @@ aiAssessmentRouter.post("/tests/:testId/generate", authorize("academics:manage",
   }
 });
 
+aiAssessmentRouter.get("/tests/:testId/answer-key", authorize("academics:manage", async (req) => {
+  const test = await prisma.aiAssessmentTest.findUnique({ where: { id: req.params.testId }, select: { classId: true, sectionId: true, subjectId: true } });
+  return { classId: test?.classId, sectionId: test?.sectionId ?? undefined, subjectId: test?.subjectId };
+}), async (req, res) => {
+  try { res.json({ answerKey: await getAiAssessmentAnswerKey(req.params.testId) }); }
+  catch (e) { if (e instanceof AiAssessmentError) return res.status(400).json({ error: e.message }); throw e; }
+});
+
 aiAssessmentRouter.post("/tests/:testId/approve", authorize("academics:manage", async (req) => {
   const test = await prisma.aiAssessmentTest.findUnique({ where: { id: req.params.testId }, select: { classId: true, sectionId: true, subjectId: true } });
   return { classId: test?.classId, sectionId: test?.sectionId ?? undefined, subjectId: test?.subjectId };
@@ -92,6 +103,24 @@ const submitSheetSchema = z.object({
   studentProfileId: z.string().uuid(),
   studentAnswers: z.record(z.string()),
   fileUrl: z.string().max(2048).optional(),
+});
+
+aiAssessmentRouter.post("/tests/:testId/publish", authorize("academics:manage", async (req) => {
+  const test = await prisma.aiAssessmentTest.findUnique({ where: { id: req.params.testId }, select: { classId: true, sectionId: true, subjectId: true } });
+  return { classId: test?.classId, sectionId: test?.sectionId ?? undefined, subjectId: test?.subjectId };
+}), async (req, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
+  try { res.json({ test: await publishAiAssessmentTest(req.params.testId, req.userId) }); }
+  catch (e) { if (e instanceof AiAssessmentError) return res.status(400).json({ error: e.message }); throw e; }
+});
+
+aiAssessmentRouter.post("/tests/:testId/lock", authorize("academics:manage", async (req) => {
+  const test = await prisma.aiAssessmentTest.findUnique({ where: { id: req.params.testId }, select: { classId: true, sectionId: true, subjectId: true } });
+  return { classId: test?.classId, sectionId: test?.sectionId ?? undefined, subjectId: test?.subjectId };
+}), async (req, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
+  try { res.json({ test: await lockAiAssessmentTest(req.params.testId, req.userId) }); }
+  catch (e) { if (e instanceof AiAssessmentError) return res.status(400).json({ error: e.message }); throw e; }
 });
 
 aiAssessmentRouter.post("/answer-sheets", async (req, res) => {
