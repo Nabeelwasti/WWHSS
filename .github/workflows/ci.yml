@@ -134,6 +134,7 @@ jobs:
             -e BACKUP_ENCRYPTION_KEY='ci-backup-secret-at-least-32-characters-long' \
             -e STORAGE_PROVIDER=s3 -e BACKUP_PROVIDER=s3 \
             -e S3_BUCKET=ci-bucket -e S3_REGION=us-east-1 \
+            -e S3_ACCESS_KEY_ID=ci-access-key -e S3_SECRET_ACCESS_KEY=ci-secret-key \
             -e CORS_ORIGIN=https://ci.example.test -e TRUST_PROXY=1 \
             wwhs-backend:ci
           for i in $(seq 1 30); do
