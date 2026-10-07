@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderDocumentCsv, renderDocumentHtml, renderDocumentPdf, renderDocumentXlsx } from "../document-files.js";
+import { renderDocumentCsv, renderDocumentHtml, renderDocumentPdf, renderDocumentXlsx } from "./document-files.js";
 
 describe("document file renderers", () => {
   const payload = {
