@@ -35,6 +35,7 @@ COPY --from=build /app/node_modules/prisma ./node_modules/prisma
 COPY --from=build /app/node_modules/@prisma/engines ./node_modules/@prisma/engines
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
+COPY --from=build /app/assets ./assets
 
 USER wwhs
 EXPOSE 8080
