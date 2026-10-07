@@ -70,6 +70,21 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 
+model BackupRestoreCheckpoint {
+  id          String    @id
+  backupId    String
+  mode        String
+  status      String
+  actorUserId String?
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  error       String?
+
+  @@index([backupId, startedAt])
+  @@index([status, startedAt])
+  @@map("backup_restore_checkpoints")
+}
+
 model Role {
   id          String  @id @default(uuid())
   key         String  @unique
