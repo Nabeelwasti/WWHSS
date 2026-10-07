@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client, S3ServiceException, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client, S3ServiceException, DeleteObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { prisma } from "../../db/client.js";
 import { env } from "../../config/env.js";
 import { userHasPermission } from "../identity/permissions.js";
@@ -55,6 +55,7 @@ export interface StorageProvider {
   getFile(filename: string): Promise<{ buffer?: Buffer; filePath?: string; mimeType?: string }>;
   deleteFile(filename: string): Promise<void>;
   exists(filename: string): Promise<boolean>;
+  listFiles(): Promise<string[]>;
 }
 
 export class LocalStorageProvider implements StorageProvider {
@@ -93,6 +94,13 @@ export class LocalStorageProvider implements StorageProvider {
   async exists(filename: string): Promise<boolean> {
     const fullPath = path.join(this.dir, filename);
     return fs.existsSync(fullPath);
+  }
+
+  async listFiles(): Promise<string[]> {
+    if (!fs.existsSync(this.dir)) return [];
+    return (await fs.promises.readdir(this.dir, { withFileTypes: true }))
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name);
   }
 }
 
@@ -187,6 +195,25 @@ export class S3StorageProvider implements StorageProvider {
       );
     }
   }
+
+  async listFiles(): Promise<string[]> {
+    const keys: string[] = [];
+    let continuationToken: string | undefined;
+    do {
+      const page = await this.client.send(new ListObjectsV2Command({
+        Bucket: this.bucket,
+        Prefix: "storage/",
+        ContinuationToken: continuationToken,
+      }));
+      for (const object of page.Contents ?? []) {
+        if (object.Key?.startsWith("storage/") && object.Key.length > "storage/".length) {
+          keys.push(object.Key.slice("storage/".length));
+        }
+      }
+      continuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
+    } while (continuationToken);
+    return keys;
+  }
 }
 
 
@@ -196,6 +223,7 @@ export class MemoryStorageProvider implements StorageProvider {
   async getFile(filename: string) { const file=this.files.get(filename); if(!file) throw new StorageNotFoundError("File not found"); return { buffer: Buffer.from(file.buffer), mimeType:file.mimeType }; }
   async deleteFile(filename: string) { this.files.delete(filename); }
   async exists(filename: string) { return this.files.has(filename); }
+  async listFiles() { return [...this.files.keys()]; }
 }
 export class CloudStorageProvider extends S3StorageProvider {}
 
