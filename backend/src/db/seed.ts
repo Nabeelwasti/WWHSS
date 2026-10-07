@@ -42,6 +42,7 @@ const PERMISSIONS = [
   "documents:create",
   "documents:print",
   "documents:view:own",
+  "ai:use",
   "ai_assessment:submit",
   "ai_assessment:submit:own",
 ];
@@ -77,6 +78,7 @@ const ROLES: Record<string, string[]> = {
     "timetable:view:own",
     "documents:view",
     "documents:print",
+    "ai:use",
     "ai_assessment:submit",
   ],
   class_teacher: [
@@ -98,6 +100,7 @@ const ROLES: Record<string, string[]> = {
     "grades:view:own",
     "assignments:view:own",
     "timetable:view:own",
+    "ai:use",
     "finance:view:own",
     "exams:view:own",
     "documents:view:own",
