@@ -500,7 +500,9 @@ export async function verifyBackupRecovery(
 
 export type BackupRestoreMode = "DRY_RUN" | "MERGE" | "REPLACE";
 
-export async function restoreFromBackup(filename: string, encryptionSecret?: string, restoredByUserId?: string, mode: BackupRestoreMode = "MERGE"): Promise<{ success: boolean; mode: BackupRestoreMode; summary: Record<string, number> }> {\n  if (!restoredByUserId) throw new BackupError("A privileged restoring user is required");\n  const checkpointId = await createRestoreCheckpoint(filename, mode, restoredByUserId);
+export async function restoreFromBackup(filename: string, encryptionSecret?: string, restoredByUserId?: string, mode: BackupRestoreMode = "MERGE"): Promise<{ success: boolean; mode: BackupRestoreMode; summary: Record<string, number> }> {
+  if (!restoredByUserId) throw new BackupError("A privileged restoring user is required");
+  const checkpointId = await createRestoreCheckpoint(filename, mode, restoredByUserId);
   if (!restoredByUserId) throw new BackupError("A privileged restoring user is required");
   if (!["DRY_RUN", "MERGE", "REPLACE"].includes(mode)) throw new BackupError(`Unsupported restore mode: ${mode}`);
   const raw = await getBackupProvider().getBackupPayload(filename);
@@ -589,7 +591,8 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
       await tx.$executeRawUnsafe(`SELECT setval(${JSON.stringify(sequence.sequenceName)}::regclass, COALESCE((SELECT MAX(${column}) FROM ${table}), 1), true)`);
     }
 
-    await tx.$executeRawUnsafe(`DELETE FROM "public"."refresh_tokens"`);\n    const restoredUserIds = new Set((tables.users as Record<string, unknown>[]).map((row) => String(row.id)));
+    await tx.$executeRawUnsafe(`DELETE FROM "public"."refresh_tokens"`);
+    const restoredUserIds = new Set((tables.users as Record<string, unknown>[]).map((row) => String(row.id)));
     await tx.auditLog.create({data:{userId:restoredUserIds.has(restoredByUserId) ? restoredByUserId : null,action:"backup:restore",resource:`backup:${safeBackupFilename(filename)}`,metadata:{version:envelope.version,mode,tableCounts:envelope.tableCounts,restoredTables:order,requestedByUserId:restoredByUserId}}}); return counts;
   },{maxWait:10000,timeout:120000});
     if (mode === "REPLACE") {
