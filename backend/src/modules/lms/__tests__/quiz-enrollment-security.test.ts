@@ -97,7 +97,7 @@ describe("TimetableSlot-based LMS & Quiz Enrollment Security", () => {
     });
     mockStudentFind.mockResolvedValue({ id: "student-10a", classId: "grade-10", sectionId: "sec-10a", status: "ACTIVE" });
     mockCourseFind.mockResolvedValue({ id: "course-10-physics", classId: "grade-10", subjectId: "subj-physics", class: { academicYearId: "ay-2026" } });
-    mockTimetableFind.mockResolvedValue([{ sectionId: "sec-10a" }]);
+    mockTimetableFind.mockResolvedValue({ id: "slot-1", sectionId: "sec-10a" });
 
     const quiz = await getQuizForTaking("quiz-1", "student-10a");
     expect(quiz.id).toBe("quiz-1");
