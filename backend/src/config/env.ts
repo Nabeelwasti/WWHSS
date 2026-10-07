@@ -53,7 +53,7 @@ const envSchema = z.object({
   if (!["true", "1"].includes(data.TRUST_PROXY)) return false;
   if (data.WEB_RESEARCH_ENABLED && !data.WEB_RESEARCH_API_KEY) return false;
   return true;
-}, { message: "Preview/production requires durable S3-compatible storage/backups, complete S3 credentials, HTTPS CORS, TRUST_PROXY=true/1, and a web-research key when research is enabled" });
+}, { message: "Preview/production requires durable S3-compatible storage/backups, complete optional S3 key-pair credentials when explicit keys are used, HTTPS CORS, TRUST_PROXY=true/1, and a web-research key when research is enabled" });
 
 const parsed = envSchema.safeParse(process.env);
 if (!parsed.success) {
