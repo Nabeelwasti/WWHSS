@@ -227,7 +227,13 @@ export async function listFeeStructures(classId?: string, academicYearId?: strin
   });
 }
 
-export async function generateInvoicesForClass(feeStructureId: string, dueDate: string, actorId?: string) {
+export async function generateInvoicesForClass(
+  feeStructureId: string,
+  dueDate: string,
+  actorId?: string,
+  billingPeriodStartInput?: string,
+  billingPeriodEndInput?: string
+) {
   const feeStructure = await prisma.feeStructure.findUnique({
     where: { id: feeStructureId },
     include: { class: { include: { students: { include: { fundingRecords: { orderBy: { startDate: "desc" } } } } } }, academicYear: true },
@@ -236,6 +242,15 @@ export async function generateInvoicesForClass(feeStructureId: string, dueDate: 
 
   const parsedDueDate = new Date(dueDate);
   if (Number.isNaN(parsedDueDate.getTime())) throw new FinanceValidationError("Invalid due date");
+
+  const billingPeriodStart = new Date(billingPeriodStartInput ?? dueDate);
+  const billingPeriodEnd = new Date(billingPeriodEndInput ?? dueDate);
+  if (Number.isNaN(billingPeriodStart.getTime()) || Number.isNaN(billingPeriodEnd.getTime())) {
+    throw new FinanceValidationError("Invalid billing period");
+  }
+  if (billingPeriodEnd < billingPeriodStart) {
+    throw new FinanceValidationError("Billing period end cannot be before billing period start");
+  }
 
   const baseAmount = feeStructure.amount;
 
@@ -263,16 +278,41 @@ export async function generateInvoicesForClass(feeStructureId: string, dueDate: 
         }
 
         const existingInvoice = await tx.feeInvoice.findUnique({
-          where: { feeStructureId_studentProfileId: { feeStructureId, studentProfileId: student.id } },
+          where: {
+            feeStructureId_studentProfileId_billingPeriodStart_billingPeriodEnd: {
+              feeStructureId,
+              studentProfileId: student.id,
+              billingPeriodStart,
+              billingPeriodEnd,
+            },
+          },
           include: { payments: true, feeWaivers: true },
         });
         const hasManualWaiver = existingInvoice?.feeWaivers.some((w) => !w.reason.startsWith("Automatic Workers Welfare Funding Waiver (")) ?? false;
         const canRecalculate = !existingInvoice || (existingInvoice.payments.length === 0 && !hasManualWaiver);
 
+        const invoiceNumber = `INV-${feeStructureId.slice(0, 8)}-${student.id.slice(0, 8)}-${billingPeriodStart.toISOString().slice(0, 10)}`;
+
         const invoice = await tx.feeInvoice.upsert({
-          where: { feeStructureId_studentProfileId: { feeStructureId, studentProfileId: student.id } },
+          where: {
+            feeStructureId_studentProfileId_billingPeriodStart_billingPeriodEnd: {
+              feeStructureId,
+              studentProfileId: student.id,
+              billingPeriodStart,
+              billingPeriodEnd,
+            },
+          },
           update: { dueDate: parsedDueDate, ...(canRecalculate ? { amountDue: calculatedAmountDue, status: initialStatus } : {}) },
-          create: { feeStructureId, studentProfileId: student.id, amountDue: calculatedAmountDue, dueDate: parsedDueDate, status: initialStatus },
+          create: {
+            invoiceNumber,
+            feeStructureId,
+            studentProfileId: student.id,
+            amountDue: calculatedAmountDue,
+            billingPeriodStart,
+            billingPeriodEnd,
+            dueDate: parsedDueDate,
+            status: initialStatus,
+          },
         });
 
         const automaticReasonPrefix = "Automatic Workers Welfare Funding Waiver (";
@@ -315,7 +355,12 @@ export async function generateInvoicesForClass(feeStructureId: string, dueDate: 
           userId: actorId,
           action: "finance:generate_invoices",
           resource: `fee_structure:${feeStructureId}`,
-          metadata: { generated: invoices.length, dueDate },
+          metadata: {
+            generated: invoices.length,
+            dueDate,
+            billingPeriodStart: billingPeriodStart.toISOString(),
+            billingPeriodEnd: billingPeriodEnd.toISOString(),
+          },
         },
       });
     }
