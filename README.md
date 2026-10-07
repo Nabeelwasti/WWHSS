@@ -189,6 +189,7 @@ See:
 - `docs/ARCHITECTURE.md`
 - `docs/DATA_CLASSIFICATION.md`
 - `docs/RELEASE_RUNBOOK.md`
+- `docs/COMPETITOR_BENCHMARK.md`
 
 ## Vercel deployment policy
 
