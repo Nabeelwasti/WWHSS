@@ -567,6 +567,19 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
     const restoredUserIds = new Set((tables.users as Record<string, unknown>[]).map((row) => String(row.id)));
     await tx.auditLog.create({data:{userId:restoredUserIds.has(restoredByUserId) ? restoredByUserId : null,action:"backup:restore",resource:`backup:${safeBackupFilename(filename)}`,metadata:{version:envelope.version,mode,tableCounts:envelope.tableCounts,restoredTables:order,requestedByUserId:restoredByUserId}}}); return counts;
   },{maxWait:10000,timeout:120000});
+    if (mode === "REPLACE") {
+      // Object storage is not transactional with PostgreSQL, so reconcile it
+      // immediately after the committed database replacement. The preflight
+      // above has already validated and uploaded every backup object.
+      const backupKeys = new Set(storageObjects.map((object) => object.storageKey));
+      const currentKeys = await storageProvider.listFiles();
+      for (const key of currentKeys) {
+        if (!backupKeys.has(key)) await storageProvider.deleteFile(key);
+      }
+      for (const object of storageObjects) {
+        await storageProvider.saveFile(object.storageKey, Buffer.from(object.dataBase64, "base64"), object.mimeType);
+      }
+    }
     return {success:true,mode,summary:result};
   } catch (error) {
     if (newlyCreatedStorageObjects.length > 0) {
