@@ -318,6 +318,7 @@ export async function gradeAiAnswerSheet(
 ) {
   const sheet = await prisma.aiAnswerSheet.findUnique({ where: { id: sheetId }, include: { test: true } });
   if (!sheet) throw new AiAssessmentError(`Answer sheet ${sheetId} not found`);
+  if (sheet.test.status === "LOCKED") throw new AiAssessmentError("Locked assessments cannot be graded or changed.");
   if (input.finalScore > sheet.test.totalMarks.toNumber()) throw new AiAssessmentError(`Final score cannot exceed the assessment total of ${sheet.test.totalMarks.toNumber()}.`);
 
   return prisma.$transaction(async (tx) => {
