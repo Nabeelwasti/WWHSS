@@ -121,6 +121,33 @@ jobs:
         run: docker build -t wwhs-backend:ci ./backend
       - name: Validate Dockerfile build (frontend)
         run: docker build -t wwhs-frontend:ci ./frontend
+      - name: Smoke-test production backend container
+        run: |
+          docker run -d --rm --name wwhs-backend-smoke -p 18080:8080 \
+            -e NODE_ENV=production \
+            -e PORT=8080 \
+            -e DATABASE_URL='postgresql://ci:ci@127.0.0.1:5432/ci' \
+            -e JWT_ACCESS_SECRET='ci-access-secret-at-least-32-characters-long' \
+            -e JWT_REFRESH_SECRET='ci-refresh-secret-at-least-32-characters-long' \
+            -e JWT_ISSUER='ci-issuer' \
+            -e JWT_AUDIENCE='ci-audience' \
+            -e BACKUP_ENCRYPTION_KEY='ci-backup-secret-at-least-32-characters-long' \
+            -e STORAGE_PROVIDER=s3 -e BACKUP_PROVIDER=s3 \
+            -e S3_BUCKET=ci-bucket -e S3_REGION=us-east-1 \
+            -e CORS_ORIGIN=https://ci.example.test -e TRUST_PROXY=1 \
+            wwhs-backend:ci
+          for i in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:18080/health; then exit 0; fi
+            sleep 1
+          done
+          docker logs wwhs-backend-smoke
+          exit 1
+      - name: Validate Vercel release configuration
+        run: |
+          test -f frontend/vercel.ts
+          test -f frontend/vercel.legacy.json
+          ! grep -R "wwhss-backend-nabeel-wasti.vercel.app" frontend/vercel.ts
+          grep -q '"deploymentEnabled": false' vercel.json
 
   browser-e2e:
     runs-on: ubuntu-latest
