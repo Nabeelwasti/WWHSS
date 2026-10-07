@@ -344,20 +344,25 @@ model FeeStructure {
 }
 
 model FeeInvoice {
-  id               String   @id @default(uuid())
-  feeStructureId   String
-  studentProfileId String
-  amountDue        Decimal  @db.Decimal(10, 2)
-  dueDate          DateTime
-  status           String   @default("draft") // draft | issued | partial | paid | overdue | waived | cancelled | void | written_off | refunded
-  createdAt        DateTime @default(now())
+  id                  String   @id @default(uuid())
+  invoiceNumber       String   @unique
+  feeStructureId      String
+  studentProfileId    String
+  amountDue           Decimal  @db.Decimal(10, 2)
+  billingPeriodStart  DateTime
+  billingPeriodEnd    DateTime
+  dueDate             DateTime
+  status              String   @default("draft") // draft | issued | partial | paid | overdue | waived | cancelled | void | written_off | refunded
+  createdAt           DateTime @default(now())
 
   feeStructure FeeStructure   @relation(fields: [feeStructureId], references: [id])
   student      StudentProfile @relation(fields: [studentProfileId], references: [id])
   payments     Payment[]
   feeWaivers   FeeWaiver[]
 
-  @@unique([feeStructureId, studentProfileId])
+  @@unique([feeStructureId, studentProfileId, billingPeriodStart, billingPeriodEnd])
+  @@index([studentProfileId, billingPeriodStart, billingPeriodEnd])
+  @@index([feeStructureId, billingPeriodStart, billingPeriodEnd])
   @@map("fee_invoices")
 }
 
