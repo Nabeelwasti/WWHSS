@@ -68,6 +68,8 @@ export async function userHasPermission(
         "documents:view",
         "documents:create",
         "documents:print",
+        "student:view:sensitive",
+        "student:manage:sensitive",
       ];
       const userRoles = await prisma.userRole.findMany({
         where: { userId },
