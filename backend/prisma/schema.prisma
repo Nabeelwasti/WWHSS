@@ -371,9 +371,9 @@ model FeeInvoice {
   payments     Payment[]
   feeWaivers   FeeWaiver[]
 
-  @@unique([feeStructureId, studentProfileId, billingPeriodStart, billingPeriodEnd], map: "fee_invoices_feeStructureId_studentProfileId_billingPeriodStart_billingPeriodEnd_key")
-  @@index([studentProfileId, billingPeriodStart, billingPeriodEnd], map: "fee_invoices_studentProfileId_billingPeriodStart_billingPeriodEnd_idx")
-  @@index([feeStructureId, billingPeriodStart, billingPeriodEnd], map: "fee_invoices_feeStructureId_billingPeriodStart_billingPeriodEnd_idx")
+  @@unique([feeStructureId, studentProfileId, billingPeriodStart, billingPeriodEnd], map: "fee_inv_bill_period_uq")
+  @@index([studentProfileId, billingPeriodStart, billingPeriodEnd], map: "fee_inv_student_period_idx")
+  @@index([feeStructureId, billingPeriodStart, billingPeriodEnd], map: "fee_inv_structure_period_idx")
   @@map("fee_invoices")
 }
 
