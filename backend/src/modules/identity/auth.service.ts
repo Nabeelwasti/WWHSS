@@ -38,7 +38,13 @@ export async function refresh(presentedToken: string) {
   return prisma.$transaction(async (tx) => {
     const record = await tx.refreshToken.findFirst({ where: { tokenHash: hash } });
 
-    if (!record || record.revoked || record.expiresAt < now) {
+    if (!record || record.expiresAt < now) {
+      throw new AuthError("Invalid or expired refresh token");
+    }
+
+    if (record.revoked) {
+      await tx.refreshToken.updateMany({ where: { userId: record.userId, revoked: false }, data: { revoked: true } });
+      await tx.auditLog.create({ data: { userId: record.userId, action: "auth:refresh_reuse_detected", metadata: { refreshTokenId: record.id } } });
       throw new AuthError("Invalid or expired refresh token");
     }
 
