@@ -37,6 +37,7 @@ Preview and production must provide real values for:
 - `S3_SECRET_ACCESS_KEY`
 - `CORS_ORIGIN` using HTTPS
 - `TRUST_PROXY=true` or `1`
+- `WEB_RESEARCH_ENABLED=false` unless a real `WEB_RESEARCH_API_KEY` is intentionally configured
 
 Do not commit real credentials. Preview and production should point at separate PostgreSQL databases. Refresh cookies are Secure/HttpOnly on both Vercel preview and production deployments.
 
@@ -95,7 +96,7 @@ Vercel's current documentation supports Express and external-origin rewrites, wh
 1. Create/select a Google Cloud project and enable Cloud Run, Artifact Registry, and Cloud Build.
 2. Deploy `backend/` from source or build the existing Dockerfile. Keep the service at `min-instances=0` for the free-first deployment and set a conservative `max-instances` (for example 3) until database capacity is measured.
 3. Configure `PORT` through Cloud Run (it is injected automatically), `NODE_ENV=production`, and all hosted environment variables below.
-4. Use Neon's pooled PostgreSQL connection string for application traffic; run `npm run prisma:deploy` against the production `DATABASE_URL` as a controlled release/migration step before serving a schema-dependent revision.
+4. Use Neon's pooled PostgreSQL connection string for application traffic; run `npm run prisma:deploy` against the target database as a controlled release/migration step before serving a schema-dependent revision. Application builds intentionally do **not** run migrations.
 5. Seed the initial administrator once with `npm run seed` using a strong `ADMIN_EMAIL` and `ADMIN_PASSWORD`; never use the development default in production.
 6. Set `CORS_ORIGIN` to the exact HTTPS Vercel production origin. Do not use `*`.
 7. Set `TRUST_PROXY=true` (Cloud Run is behind a managed proxy).
@@ -103,9 +104,9 @@ Vercel's current documentation supports Express and external-origin rewrites, wh
 9. Configure the Vercel frontend project to rewrite `/api/:path*` to the Cloud Run API URL. Keep the SPA fallback rewrite after the API rewrite.
 10. Verify `/health`, login, refresh, logout, one authorized read, one authorized write, one private-file upload/download, and backup creation/verification against the hosted database before declaring production live.
 
-### Vercel function compatibility boundary
+### Vercel deployment boundary
 
-The application intentionally keeps private file uploads at 10 MB in its own API contract. Vercel Functions have a 4.5 MB request/response payload limit, so the recommended architecture does not route large file bodies through a Vercel Function. Cloud Run is the API runtime for the current 10 MB upload contract; if the backend is ever moved to Vercel Functions, the upload path must be converted to direct object-storage uploads rather than silently lowering or removing the existing capability.
+The application intentionally keeps private file uploads at 10 MB. The recommended production backend is Cloud Run, where the existing upload contract is preserved. A Vercel-hosted backend must not be treated as feature-equivalent: Vercel Functions have a 4.5 MB request/response payload limit. If Vercel Services are used for the backend, large uploads must use an authorized direct-to-object-storage upload flow before that topology is considered production-equivalent; the repository must never silently reduce the 10 MB contract.
 
 ### Database separation
 
