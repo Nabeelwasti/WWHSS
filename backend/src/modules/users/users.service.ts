@@ -176,7 +176,7 @@ export async function searchStudentProfiles(options: SearchStudentsOptions = {})
       { guardianPhone: { contains: q, mode: "insensitive" } },
       { user: { phone: { contains: q, mode: "insensitive" } } },
       { boardRegistrationNo: { contains: q, mode: "insensitive" } },
-      ...(options.includeSensitive ? [{ fundingCategory: { name: { contains: q, mode: "insensitive" } } }] : []),
+      ...(options.includeSensitive ? [{ fundingCategory: { name: { contains: q, mode: Prisma.QueryMode.insensitive } } }] : []),
     ];
   }
 
