@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "npx prisma generate && if [ \"$VERCEL\" = \"1\" ]; then npx prisma migrate deploy; fi && tsc -p tsconfig.json",
+    "build": "npx prisma generate && if [ \"$VERCEL\" = \"1\" ]; then npx prisma migrate deploy; if [ \"$SEED_ADMIN_ON_DEPLOY\" = \"true\" ]; then npm run seed; fi; fi && tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "prisma:migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
