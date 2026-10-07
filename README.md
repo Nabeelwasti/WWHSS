@@ -188,6 +188,7 @@ See:
 - `docs/DISASTER_RECOVERY.md`
 - `docs/ARCHITECTURE.md`
 - `docs/DATA_CLASSIFICATION.md`
+- `docs/RELEASE_RUNBOOK.md`
 
 ## Vercel deployment policy
 
