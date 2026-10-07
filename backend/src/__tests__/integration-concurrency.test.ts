@@ -543,7 +543,17 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
     await generateInvoicesForClass(fee.id, "2026-10-31");
     await generateInvoicesForClass(fee.id, "2026-10-31");
 
-    const invoice = await prisma.feeInvoice.findUnique({ where: { feeStructureId_studentProfileId: { feeStructureId: fee.id, studentProfileId: student.id } }, include: { feeWaivers: true } });
+    const invoice = await prisma.feeInvoice.findUnique({
+      where: {
+        feeStructureId_studentProfileId_billingPeriodStart_billingPeriodEnd: {
+          feeStructureId: fee.id,
+          studentProfileId: student.id,
+          billingPeriodStart: new Date("2026-10-31"),
+          billingPeriodEnd: new Date("2026-10-31"),
+        },
+      },
+      include: { feeWaivers: true },
+    });
     expect(invoice?.feeWaivers.filter((w) => w.reason.startsWith("Automatic Workers Welfare Funding Waiver (")).length).toBe(1);
     expect(invoice?.feeWaivers[0]?.amount.toString()).toBe("1000");
   });
