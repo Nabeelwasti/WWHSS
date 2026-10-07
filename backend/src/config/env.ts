@@ -33,7 +33,7 @@ const envSchema = z.object({
   MAX_DAILY_AI_REQUESTS: z.coerce.number().int().min(1).default(100),
   MAX_AI_INPUT_CHARS: z.coerce.number().int().min(10).default(2000),
   MAX_AI_OUTPUT_TOKENS: z.coerce.number().int().min(10).default(800),
-  WEB_RESEARCH_ENABLED: z.preprocess((value) => value === undefined ? isProductionOrPreview : value === true || value === "true" || value === "1", z.boolean()),
+  WEB_RESEARCH_ENABLED: z.preprocess((value) => value === undefined ? false : value === true || value === "true" || value === "1", z.boolean()),
   WEB_RESEARCH_API_KEY: z.string().optional(),
   WEB_RESEARCH_ENDPOINT: z.string().url().default("https://api.search.brave.com/res/v1/web/search"),
 }).refine((data) => {
