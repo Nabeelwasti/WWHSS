@@ -9,6 +9,7 @@ import {
   exportDatabaseData,
   getBackupProvider,
   BackupError,
+  type BackupRestoreMode,
 } from "./backup.service.js";
 
 export const backupRouter = Router();
@@ -80,10 +81,26 @@ backupRouter.post("/verify/:filename", authorize("backup:view"), async (req, res
 });
 
 backupRouter.post("/restore/:filename", authorize("backup:restore"), async (req, res) => {
-  const dryRun = req.body?.dryRun === true;
-  if (!dryRun && req.body?.confirm !== "RESTORE") return res.status(400).json({ error: "Destructive restore requires confirm: RESTORE; run a dryRun first." });
+  const requestedMode = req.body?.mode;
+  const mode: BackupRestoreMode =
+    requestedMode === "DRY_RUN" || requestedMode === "MERGE" || requestedMode === "REPLACE"
+      ? requestedMode
+      : req.body?.dryRun === true
+        ? "DRY_RUN"
+        : "MERGE";
+
+  if (mode === "DRY_RUN") {
+    // DRY_RUN never mutates the database or storage and requires no confirmation token.
+  } else if (mode === "MERGE") {
+    if (req.body?.confirm !== "RESTORE_MERGE") {
+      return res.status(400).json({ error: "Merge restore requires confirm: RESTORE_MERGE; run DRY_RUN first." });
+    }
+  } else if (req.body?.confirm !== "RESTORE_REPLACE") {
+    return res.status(400).json({ error: "Replacement restore is destructive and requires confirm: RESTORE_REPLACE; run DRY_RUN first." });
+  }
+
   try {
-    const result = await restoreFromBackup(req.params.filename, undefined, req.userId!, dryRun);
+    const result = await restoreFromBackup(req.params.filename, undefined, req.userId!, mode);
     res.json({ restore: result });
   } catch (e) {
     if (e instanceof BackupError) return res.status(400).json({ error: e.message });
