@@ -502,7 +502,6 @@ export type BackupRestoreMode = "DRY_RUN" | "MERGE" | "REPLACE";
 
 export async function restoreFromBackup(filename: string, encryptionSecret?: string, restoredByUserId?: string, mode: BackupRestoreMode = "MERGE"): Promise<{ success: boolean; mode: BackupRestoreMode; summary: Record<string, number> }> {
   if (!restoredByUserId) throw new BackupError("A privileged restoring user is required");
-  const checkpointId = await createRestoreCheckpoint(filename, mode, restoredByUserId);
   if (!restoredByUserId) throw new BackupError("A privileged restoring user is required");
   if (!["DRY_RUN", "MERGE", "REPLACE"].includes(mode)) throw new BackupError(`Unsupported restore mode: ${mode}`);
   const raw = await getBackupProvider().getBackupPayload(filename);
@@ -544,6 +543,7 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
     }
     return { success: true, mode, summary };
   }
+  const checkpointId = await createRestoreCheckpoint(filename, mode, restoredByUserId);
   const storageProvider = getStorageProvider();
   const newlyCreatedStorageObjects: string[] = [];
   if (parsed.meta.storageObjectsIncluded === true) {
