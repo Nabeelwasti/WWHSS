@@ -132,6 +132,8 @@ usersRouter.get("/students/search", authorize("academics:view"), async (req, res
   const sectionId = typeof req.query.sectionId === "string" ? req.query.sectionId : undefined;
   const status = typeof req.query.status === "string" ? req.query.status : undefined;
   const fundingCategoryId = typeof req.query.fundingCategoryId === "string" ? req.query.fundingCategoryId : undefined;
+  const academicYearId = typeof req.query.academicYearId === "string" ? req.query.academicYearId : undefined;
+  const dateOfBirth = typeof req.query.dateOfBirth === "string" ? req.query.dateOfBirth : undefined;
   const gender = typeof req.query.gender === "string" ? req.query.gender : undefined;
   const includeSensitive = req.userId ? await userHasPermission(req.userId, "student:view:sensitive") : false;
   const page = typeof req.query.page === "string" ? parseInt(req.query.page, 10) : undefined;
@@ -145,6 +147,8 @@ usersRouter.get("/students/search", authorize("academics:view"), async (req, res
     sectionId,
     status,
     fundingCategoryId,
+    academicYearId,
+    dateOfBirth,
     gender,
     page,
     limit,
