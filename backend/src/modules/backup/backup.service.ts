@@ -545,7 +545,7 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
       // application row represented by the backup schema before replaying the backup.
       // The dependency order guarantees children are removed before parents.
       for (const table of [...order].reverse()) {
-        await tx.$executeRawUnsafe(`DELETE FROM "public"."${table.replace(/"/g, """")}"`);
+        await tx.$executeRawUnsafe(`DELETE FROM "public"."${table.replace(/"/g, '""')}"`);
       }
     }
     for(const table of order){const key=reverse.get(table)!;const rows=tables[key] as Record<string,unknown>[]; if(!rows.length){counts[key]=0;continue;} const cols=await tx.$queryRaw<Array<{columnName:string;dataType:string;udtName:string}>>`SELECT column_name AS "columnName", data_type AS "dataType", udt_name AS "udtName" FROM information_schema.columns WHERE table_schema='public' AND table_name=${table} ORDER BY ordinal_position`; const allowed=new Set(cols.map(c=>c.columnName)); const pk=await tx.$queryRaw<Array<{columnName:string}>>`SELECT kcu.column_name AS "columnName" FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name=kcu.constraint_name AND tc.table_name=kcu.table_name WHERE tc.table_schema='public' AND tc.constraint_type='PRIMARY KEY' AND tc.table_name=${table} ORDER BY kcu.ordinal_position`; if(!pk.length) throw new BackupError(`Table ${table} has no primary key`); let affected=0;
