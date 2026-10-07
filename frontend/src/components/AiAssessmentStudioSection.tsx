@@ -6,6 +6,7 @@ export function AiAssessmentStudioSection() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [answerKey, setAnswerKey] = useState<any | null>(null);
 
   async function refreshTests() {
     try {
@@ -28,6 +29,7 @@ export function AiAssessmentStudioSection() {
         title: String(form.get("title")),
         classId: String(form.get("classId")),
         subjectId: String(form.get("subjectId")),
+        sectionId: String(form.get("sectionId") || "") || undefined,
         topic: String(form.get("topic")),
         difficulty: String(form.get("difficulty")),
         durationMin: parseInt(String(form.get("durationMin")), 10),
@@ -52,6 +54,35 @@ export function AiAssessmentStudioSection() {
       setError(e instanceof ApiError ? e.message : "AI question generation failed.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handlePublishTest(testId: string) {
+    try {
+      await api.publishAiAssessmentTest(testId);
+      setNotice("Assessment published. Student submissions are now allowed.");
+      refreshTests();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not publish assessment.");
+    }
+  }
+
+  async function handleLockTest(testId: string) {
+    try {
+      await api.lockAiAssessmentTest(testId);
+      setNotice("Assessment locked. Further grading/mutation is blocked.");
+      refreshTests();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not lock assessment.");
+    }
+  }
+
+  async function handleAnswerKey(testId: string) {
+    try {
+      const result = await api.getAiAssessmentAnswerKey(testId);
+      setAnswerKey(result.answerKey);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not load the approved answer key.");
     }
   }
 
@@ -81,6 +112,7 @@ export function AiAssessmentStudioSection() {
         <input className="input" name="topic" placeholder="Topic (e.g. Newton's Laws)" required />
         <input className="input" name="classId" placeholder="Class ID (UUID)" required />
         <input className="input" name="subjectId" placeholder="Subject ID (UUID)" required />
+        <input className="input" name="sectionId" placeholder="Section ID (optional UUID)" />
         <select className="input" name="difficulty" defaultValue="MEDIUM">
           <option value="EASY">EASY</option>
           <option value="MEDIUM">MEDIUM</option>
@@ -133,12 +165,47 @@ export function AiAssessmentStudioSection() {
                         Approve Test
                       </button>
                     )}
+                    {t.status === "APPROVED" && (
+                      <button onClick={() => handlePublishTest(t.id)} className="btn btn-primary btn-sm">
+                        Publish
+                      </button>
+                    )}
+                    {["APPROVED", "PUBLISHED", "LOCKED"].includes(t.status) && (
+                      <button onClick={() => handleAnswerKey(t.id)} className="btn btn-ghost btn-sm">
+                        Answer Key
+                      </button>
+                    )}
+                    {t.status === "PUBLISHED" && (
+                      <button onClick={() => handleLockTest(t.id)} className="btn btn-ghost btn-sm">
+                        Lock
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+      )}
+      {answerKey && (
+        <div className="card" role="dialog" aria-label="Approved assessment answer key" style={{ marginTop: 16 }}>
+          <div className="flex justify-between gap-2">
+            <div>
+              <h3 className="card-title">{answerKey.title} — Answer Key</h3>
+              <p className="text-sm text-muted">{answerKey.class} · {answerKey.subject} · {answerKey.totalMarks} marks · {answerKey.durationMin} min</p>
+            </div>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAnswerKey(null)}>Close</button>
+          </div>
+          <ol>
+            {(answerKey.questions || []).map((q: any) => (
+              <li key={q.id} style={{ marginBottom: 8 }}>
+                <strong>Q{q.orderIndex} · {q.questionType} · {q.marks} marks</strong>
+                <div className="text-sm">Answer: {q.correctAnswer}</div>
+                {q.markingScheme && <div className="text-sm text-muted">Marking: {q.markingScheme}</div>}
+              </li>
+            ))}
+          </ol>
+        </div>
       )}
     </section>
   );
