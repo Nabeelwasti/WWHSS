@@ -281,6 +281,99 @@ end`;
   return Buffer.concat([pdf, Buffer.from(xref, "ascii")]);
 }
 
+function crc32(data: Buffer): number {
+  let crc = 0xffffffff;
+  for (const byte of data) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function xmlEscape(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+}
+
+function buildZip(files: Array<[string, string]>): Buffer {
+  const local: Buffer[] = [];
+  const central: Buffer[] = [];
+  let offset = 0;
+  for (const [name, value] of files) {
+    const nameBuf = Buffer.from(name, "utf8");
+    const data = Buffer.from(value, "utf8");
+    const crc = crc32(data);
+    const header = Buffer.alloc(30);
+    header.writeUInt32LE(0x04034b50, 0);
+    header.writeUInt16LE(20, 4);
+    header.writeUInt16LE(0, 6);
+    header.writeUInt16LE(0, 8);
+    header.writeUInt16LE(0, 10);
+    header.writeUInt16LE(0, 12);
+    header.writeUInt32LE(crc, 14);
+    header.writeUInt32LE(data.length, 18);
+    header.writeUInt32LE(data.length, 22);
+    header.writeUInt16LE(nameBuf.length, 26);
+    header.writeUInt16LE(0, 28);
+    const localEntry = Buffer.concat([header, nameBuf, data]);
+    local.push(localEntry);
+
+    const cd = Buffer.alloc(46);
+    cd.writeUInt32LE(0x02014b50, 0);
+    cd.writeUInt16LE(20, 4);
+    cd.writeUInt16LE(20, 6);
+    cd.writeUInt16LE(0, 8);
+    cd.writeUInt16LE(0, 10);
+    cd.writeUInt16LE(0, 12);
+    cd.writeUInt16LE(0, 14);
+    cd.writeUInt32LE(crc, 16);
+    cd.writeUInt32LE(data.length, 20);
+    cd.writeUInt32LE(data.length, 24);
+    cd.writeUInt16LE(nameBuf.length, 28);
+    cd.writeUInt16LE(0, 30);
+    cd.writeUInt16LE(0, 32);
+    cd.writeUInt16LE(0, 34);
+    cd.writeUInt16LE(0, 36);
+    cd.writeUInt32LE(0, 38);
+    cd.writeUInt32LE(offset, 42);
+    central.push(Buffer.concat([cd, nameBuf]));
+    offset += localEntry.length;
+  }
+  const centralData = Buffer.concat(central);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(0, 4);
+  end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(files.length, 8);
+  end.writeUInt16LE(files.length, 10);
+  end.writeUInt32LE(centralData.length, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...local, centralData, end]);
+}
+
+export function renderDocumentXlsx(payload: unknown, title = "WWHS Digital Campus Document"): Buffer {
+  const rows = [["Field", "Value"], ...flatten(payload)];
+  const cells = rows.map((row, rowIndex) => {
+    const excelRow = rowIndex + 1;
+    return row.map((value, colIndex) => {
+      const ref = `${String.fromCharCode(65 + colIndex)}${excelRow}`;
+      return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xmlEscape(String(value))}</t></is></c>`;
+    }).join("");
+  }).join("");
+  const safeTitle = xmlEscape(title.slice(0, 31));
+  const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension ref="A1:B${rows.length}"/><sheetViews><sheetView workbookViewId="0" rightToLeft="0"/></sheetViews><sheetFormatPr defaultRowHeight="18"/><cols><col min="1" max="1" width="34" customWidth="1"/><col min="2" max="2" width="70" customWidth="1"/></cols><sheetData>${cells}</sheetData><pageMargins left="0.25" right="0.25" top="0.5" bottom="0.5" header="0.2" footer="0.2"/></worksheet>`;
+  const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><fileVersion appName="Microsoft Office Excel"/><workbookPr/><bookViews><workbookView xWindow="0" yWindow="0" windowWidth="20000" windowHeight="12000"/></bookViews><sheets><sheet name="${safeTitle || "Document"}" sheetId="1" r:id="rId1"/></sheets></workbook>`;
+  const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`;
+  const rootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
+  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`;
+  return buildZip([
+    ["[Content_Types].xml", contentTypes],
+    ["_rels/.rels", rootRels],
+    ["xl/workbook.xml", workbook],
+    ["xl/_rels/workbook.xml.rels", rels],
+    ["xl/worksheets/sheet1.xml", sheet],
+  ]);
+}
+
 export function renderDocumentPdf(payload: unknown, title = "WWHS Digital Campus Document"): Buffer {
   const lines: string[] = [title, "", ...flatten(payload).map(([key, value]) => `${key}: ${value}`)];
   const wrapped: string[] = [];
