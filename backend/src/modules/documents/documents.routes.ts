@@ -13,7 +13,7 @@ const createDocSchema = z.object({ docType: z.string().min(1), referenceId: z.st
 
 async function resolveDocumentScope(docType: string, referenceId: string) {
   if ([
-    "result_card", "report_card", "transfer_certificate", "fee_statement", "attendance_report",
+    "result_card", "report_card", "transfer_certificate", "fee_statement", "attendance_report", "timetable",
     "transcript", "academic_history", "progress_report", "admission_document", "letter",
     "funding_report", "financial_summary", "library_card", "loan_report",
   ].includes(docType)) {
