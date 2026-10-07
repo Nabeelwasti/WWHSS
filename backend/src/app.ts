@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-import helmetModule from "helmet";
+import { createRequire } from "node:module";
 import { rateLimit } from "express-rate-limit";
 import crypto from "node:crypto";
 import "./middleware/express-async-errors.js";
@@ -26,7 +26,8 @@ import { storageRouter } from "./modules/storage/storage.routes.js";
 import { parentRouter } from "./modules/parent/parent.routes.js";
 import { schoolRouter } from "./modules/school/school.routes.js";
 
-const helmet = helmetModule;
+const require = createRequire(import.meta.url);
+const helmet = require("helmet") as (options?: Record<string, unknown>) => express.RequestHandler;
 
 export const app = express();
 
