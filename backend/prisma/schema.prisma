@@ -2,8 +2,7 @@
 // Includes Identity, Academics, Staff, Student Profiles, Funding/Fees, LMS, AI Assessment Studio, Documents, Timetable, Library, CMS, Notifications.
 
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["extendedIndexes"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -372,9 +371,9 @@ model FeeInvoice {
   payments     Payment[]
   feeWaivers   FeeWaiver[]
 
-  @@unique([feeStructureId, studentProfileId, billingPeriodStart, billingPeriodEnd])
-  @@index([studentProfileId, billingPeriodStart, billingPeriodEnd])
-  @@index([feeStructureId, billingPeriodStart, billingPeriodEnd])
+  @@unique([feeStructureId, studentProfileId, billingPeriodStart, billingPeriodEnd], map: "fee_invoices_feeStructureId_studentProfileId_billingPeriodStart_billingPeriodEnd_key")
+  @@index([studentProfileId, billingPeriodStart, billingPeriodEnd], map: "fee_invoices_studentProfileId_billingPeriodStart_billingPeriodEnd_idx")
+  @@index([feeStructureId, billingPeriodStart, billingPeriodEnd], map: "fee_invoices_feeStructureId_billingPeriodStart_billingPeriodEnd_idx")
   @@map("fee_invoices")
 }
 
