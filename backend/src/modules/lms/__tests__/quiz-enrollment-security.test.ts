@@ -6,7 +6,8 @@ vi.mock("../../../db/client.js", () => ({
     course: { findUnique: vi.fn() },
     quiz: { findUnique: vi.fn() },
     quizQuestion: { findMany: vi.fn() },
-    timetableSlot: { findMany: vi.fn() },
+    timetableSlot: { findFirst: vi.fn() },
+    studentEnrollmentHistory: { findFirst: vi.fn() },
     quizAttempt: { create: vi.fn() },
     assignment: { findUnique: vi.fn() },
     submission: { upsert: vi.fn() },
@@ -27,7 +28,8 @@ const mockStudentFind = prisma.studentProfile.findUnique as unknown as ReturnTyp
 const mockCourseFind = prisma.course.findUnique as unknown as ReturnType<typeof vi.fn>;
 const mockQuizFind = prisma.quiz.findUnique as unknown as ReturnType<typeof vi.fn>;
 const mockQuestionsFind = prisma.quizQuestion.findMany as unknown as ReturnType<typeof vi.fn>;
-const mockTimetableFind = prisma.timetableSlot.findMany as unknown as ReturnType<typeof vi.fn>;
+const mockTimetableFind = prisma.timetableSlot.findFirst as unknown as ReturnType<typeof vi.fn>;
+const mockEnrollmentFind = prisma.studentEnrollmentHistory.findFirst as unknown as ReturnType<typeof vi.fn>;
 const mockAttemptCreate = prisma.quizAttempt.create as unknown as ReturnType<typeof vi.fn>;
 
 describe("TimetableSlot-based LMS & Quiz Enrollment Security", () => {
@@ -37,14 +39,16 @@ describe("TimetableSlot-based LMS & Quiz Enrollment Security", () => {
     mockQuizFind.mockReset();
     mockQuestionsFind.mockReset();
     mockTimetableFind.mockReset();
+    mockEnrollmentFind.mockReset();
+    mockEnrollmentFind.mockResolvedValue({ id: "enrollment-1" });
     mockAttemptCreate.mockReset();
 
     mockAttemptCreate.mockImplementation(async ({ data }: { data: unknown }) => data);
   });
 
   it("REJECTS a student from a DIFFERENT class trying to access a course/quiz", async () => {
-    mockStudentFind.mockResolvedValue({ id: "student-1", classId: "grade-9", sectionId: "sec-9a" });
-    mockCourseFind.mockResolvedValue({ id: "course-10-physics", classId: "grade-10", subjectId: "subj-physics" });
+    mockStudentFind.mockResolvedValue({ id: "student-1", classId: "grade-9", sectionId: "sec-9a", status: "ACTIVE" });
+    mockCourseFind.mockResolvedValue({ id: "course-10-physics", classId: "grade-10", subjectId: "subj-physics", class: { academicYearId: "ay-2026" } });
 
     await expect(
       verifyStudentCourseEnrollment("student-1", "course-10-physics")
@@ -53,11 +57,11 @@ describe("TimetableSlot-based LMS & Quiz Enrollment Security", () => {
 
   it("REJECTS a student in the SAME class whose section is NOT scheduled for the subject in TimetableSlot", async () => {
     // Student is in Grade 10 Section B
-    mockStudentFind.mockResolvedValue({ id: "student-10b", classId: "grade-10", sectionId: "sec-10b" });
-    mockCourseFind.mockResolvedValue({ id: "course-10-physics", classId: "grade-10", subjectId: "subj-physics" });
+    mockStudentFind.mockResolvedValue({ id: "student-10b", classId: "grade-10", sectionId: "sec-10b", status: "ACTIVE" });
+    mockCourseFind.mockResolvedValue({ id: "course-10-physics", classId: "grade-10", subjectId: "subj-physics", class: { academicYearId: "ay-2026" } });
 
     // TimetableSlot shows Physics is ONLY scheduled for Grade 10 Section A
-    mockTimetableFind.mockResolvedValue([{ sectionId: "sec-10a" }]);
+    mockTimetableFind.mockResolvedValue(null);
 
     await expect(
       verifyStudentCourseEnrollment("student-10b", "course-10-physics")
@@ -65,9 +69,9 @@ describe("TimetableSlot-based LMS & Quiz Enrollment Security", () => {
   });
 
   it("ALLOWS a student whose section IS scheduled for the subject in TimetableSlot", async () => {
-    mockStudentFind.mockResolvedValue({ id: "student-10a", classId: "grade-10", sectionId: "sec-10a" });
-    mockCourseFind.mockResolvedValue({ id: "course-10-physics", classId: "grade-10", subjectId: "subj-physics" });
-    mockTimetableFind.mockResolvedValue([{ sectionId: "sec-10a" }]);
+    mockStudentFind.mockResolvedValue({ id: "student-10a", classId: "grade-10", sectionId: "sec-10a", status: "ACTIVE" });
+    mockCourseFind.mockResolvedValue({ id: "course-10-physics", classId: "grade-10", subjectId: "subj-physics", class: { academicYearId: "ay-2026" } });
+    mockTimetableFind.mockResolvedValue({ id: "slot-1", sectionId: "sec-10a" });
 
     await expect(
       verifyStudentCourseEnrollment("student-10a", "course-10-physics")
@@ -76,9 +80,9 @@ describe("TimetableSlot-based LMS & Quiz Enrollment Security", () => {
 
   it("REJECTS taking a quiz for a non-enrolled section student", async () => {
     mockQuizFind.mockResolvedValue({ id: "quiz-1", courseId: "course-10-physics" });
-    mockStudentFind.mockResolvedValue({ id: "student-10b", classId: "grade-10", sectionId: "sec-10b" });
-    mockCourseFind.mockResolvedValue({ id: "course-10-physics", classId: "grade-10", subjectId: "subj-physics" });
-    mockTimetableFind.mockResolvedValue([{ sectionId: "sec-10a" }]); // only section A scheduled
+    mockStudentFind.mockResolvedValue({ id: "student-10b", classId: "grade-10", sectionId: "sec-10b", status: "ACTIVE" });
+    mockCourseFind.mockResolvedValue({ id: "course-10-physics", classId: "grade-10", subjectId: "subj-physics", class: { academicYearId: "ay-2026" } });
+    mockTimetableFind.mockResolvedValue(null); // only section A is not scheduled for this student
 
     await expect(
       getQuizForTaking("quiz-1", "student-10b")
@@ -91,8 +95,8 @@ describe("TimetableSlot-based LMS & Quiz Enrollment Security", () => {
       courseId: "course-10-physics",
       questions: [{ id: "q1", prompt: "Speed of light?", choices: ["300k", "100k"] }],
     });
-    mockStudentFind.mockResolvedValue({ id: "student-10a", classId: "grade-10", sectionId: "sec-10a" });
-    mockCourseFind.mockResolvedValue({ id: "course-10-physics", classId: "grade-10", subjectId: "subj-physics" });
+    mockStudentFind.mockResolvedValue({ id: "student-10a", classId: "grade-10", sectionId: "sec-10a", status: "ACTIVE" });
+    mockCourseFind.mockResolvedValue({ id: "course-10-physics", classId: "grade-10", subjectId: "subj-physics", class: { academicYearId: "ay-2026" } });
     mockTimetableFind.mockResolvedValue([{ sectionId: "sec-10a" }]);
 
     const quiz = await getQuizForTaking("quiz-1", "student-10a");
@@ -102,8 +106,8 @@ describe("TimetableSlot-based LMS & Quiz Enrollment Security", () => {
 
   it("REJECTS quiz submission for invalid question IDs or out-of-bounds choice indexes", async () => {
     mockQuizFind.mockResolvedValue({ id: "quiz-1", courseId: "course-10-physics" });
-    mockStudentFind.mockResolvedValue({ id: "student-10a", classId: "grade-10", sectionId: "sec-10a" });
-    mockCourseFind.mockResolvedValue({ id: "course-10-physics", classId: "grade-10", subjectId: "subj-physics" });
+    mockStudentFind.mockResolvedValue({ id: "student-10a", classId: "grade-10", sectionId: "sec-10a", status: "ACTIVE" });
+    mockCourseFind.mockResolvedValue({ id: "course-10-physics", classId: "grade-10", subjectId: "subj-physics", class: { academicYearId: "ay-2026" } });
     mockTimetableFind.mockResolvedValue([{ sectionId: "sec-10a" }]);
     mockQuestionsFind.mockResolvedValue([{ id: "q1", choices: ["A", "B"], correctIndex: 0 }]);
 
