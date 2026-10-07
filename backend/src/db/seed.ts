@@ -43,6 +43,7 @@ const PERMISSIONS = [
   "documents:print",
   "documents:view:own",
   "ai:use",
+  "storage:upload",
   "ai_assessment:submit",
   "ai_assessment:submit:own",
 ];
@@ -50,6 +51,7 @@ const PERMISSIONS = [
 const ROLES: Record<string, string[]> = {
   super_admin: PERMISSIONS,
   principal: [
+    "storage:upload",
     "ai:use",
     "attendance:view:class",
     "grades:view:own",
@@ -71,6 +73,7 @@ const ROLES: Record<string, string[]> = {
     "documents:print",
   ],
   teacher: [
+    "storage:upload",
     "ai:use",
     "attendance:mark",
     "attendance:view:class",
@@ -84,6 +87,7 @@ const ROLES: Record<string, string[]> = {
     "ai_assessment:submit",
   ],
   class_teacher: [
+    "storage:upload",
     "ai:use",
     "attendance:mark",
     "attendance:view:class",
