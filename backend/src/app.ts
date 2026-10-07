@@ -4,7 +4,6 @@ import cookieParser from "cookie-parser";
 import { createRequire } from "node:module";
 import { rateLimit } from "express-rate-limit";
 import crypto from "node:crypto";
-import "node:process";
 import "./middleware/express-async-errors.js";
 import { env } from "./config/env.js";
 import { prisma } from "./db/client.js";
@@ -50,15 +49,16 @@ app.set(
 
 app.use(helmet());
 
-function isAllowedCorsOrigin(origin: string | undefined, req: express.Request): boolean {
+function isConfiguredCorsOriginAllowed(origin: string | undefined): boolean {
   if (!origin) return true;
-  const sameOrigin = `${req.protocol}://${req.get("host")}`;
-  return env.corsOrigins.includes(origin) || origin === sameOrigin || (env.vercelUrl ? origin === `https://${env.vercelUrl}` : false);
+  return env.corsOrigins.includes(origin) || (env.vercelUrl ? origin === `https://${env.vercelUrl}` : false);
 }
 
 app.use((req, _res, next) => {
   const origin = req.headers.origin;
-  if (isAllowedCorsOrigin(origin, req)) return next();
+  if (!origin) return next();
+  const sameOrigin = `${req.protocol}://${req.get("host")}`;
+  if (origin === sameOrigin || isConfiguredCorsOriginAllowed(origin)) return next();
   const error = new Error("CORS origin is not allowed");
   (error as Error & { status?: number }).status = 403;
   return next(error);
@@ -67,7 +67,7 @@ app.use((req, _res, next) => {
 app.use(cors({
   credentials: true,
   origin(origin, callback) {
-    if (isAllowedCorsOrigin(origin, { protocol: "https", get: () => "" } as express.Request)) return callback(null, true);
+    if (isConfiguredCorsOriginAllowed(origin)) return callback(null, true);
     callback(new Error("CORS origin is not allowed"));
   },
 }));
