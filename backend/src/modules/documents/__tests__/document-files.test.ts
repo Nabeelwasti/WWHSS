@@ -5,7 +5,7 @@ describe("document file renderers", () => {
   const payload = { student: { name: "Test Student", rollNo: "12" }, amount: 123.45 };
   it("produces a valid PDF header and EOF marker", () => {
     const pdf = renderDocumentPdf(payload, "Test Document");
-    expect(pdf.subarray(0, 8).toString("binary")).toContain("%PDF-1.4");
+    expect(pdf.subarray(0, 8).toString("ascii")).toContain("%PDF-1.7");
     expect(pdf.toString("binary").endsWith("%%EOF\n")).toBe(true);
   });
   it("produces downloadable HTML with escaped content", () => {
