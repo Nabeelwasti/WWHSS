@@ -478,13 +478,16 @@ export const api = {
   listCmsAdminPages: () => request<{ pages: { id: string; slug: string; title: string; isPublished: boolean }[] }>("/cms/admin/pages"),
 
   // ---- Student Master Profiles & Search ----
-  searchStudents: (params: { query?: string; classId?: string; sectionId?: string; status?: string; gender?: string; page?: number; limit?: number }) => {
+  searchStudents: (params: { query?: string; classId?: string; sectionId?: string; academicYearId?: string; fundingCategoryId?: string; status?: string; gender?: string; dateOfBirth?: string; page?: number; limit?: number }) => {
     const q = new URLSearchParams();
     if (params.query) q.set("query", params.query);
     if (params.classId) q.set("classId", params.classId);
     if (params.sectionId) q.set("sectionId", params.sectionId);
+    if (params.academicYearId) q.set("academicYearId", params.academicYearId);
+    if (params.fundingCategoryId) q.set("fundingCategoryId", params.fundingCategoryId);
     if (params.status) q.set("status", params.status);
     if (params.gender) q.set("gender", params.gender);
+    if (params.dateOfBirth) q.set("dateOfBirth", params.dateOfBirth);
     if (params.page) q.set("page", params.page.toString());
     if (params.limit) q.set("limit", params.limit.toString());
     return request<{ students: unknown[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(`/users/students/search?${q.toString()}`);
