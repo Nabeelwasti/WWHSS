@@ -31,6 +31,31 @@ export function ensureBackupDirExists() {
   }
 }
 
+async function createRestoreCheckpoint(backupId: string, mode: BackupRestoreMode, actorUserId: string): Promise<string> {
+  const id = crypto.randomUUID();
+  await prisma.$executeRaw`
+    INSERT INTO "backup_restore_checkpoints" ("id","backupId","mode","status","actorUserId")
+    VALUES (${id}, ${backupId}, ${mode}, 'STARTED', ${actorUserId})
+  `;
+  return id;
+}
+
+async function updateRestoreCheckpoint(id: string, status: "STORAGE_STAGED" | "DATABASE_COMMITTED" | "COMPLETE" | "FAILED", error?: string): Promise<void> {
+  if (status === "COMPLETE" || status === "FAILED") {
+    await prisma.$executeRaw`
+      UPDATE "backup_restore_checkpoints"
+      SET "status"=${status}, "completedAt"=CURRENT_TIMESTAMP, "error"=${error ?? null}
+      WHERE "id"=${id}
+    `;
+    return;
+  }
+  await prisma.$executeRaw`
+    UPDATE "backup_restore_checkpoints"
+    SET "status"=${status}
+    WHERE "id"=${id}
+  `;
+}
+
 export interface BackupMetadata {
   id: string;
   createdAt: string;
@@ -475,7 +500,7 @@ export async function verifyBackupRecovery(
 
 export type BackupRestoreMode = "DRY_RUN" | "MERGE" | "REPLACE";
 
-export async function restoreFromBackup(filename: string, encryptionSecret?: string, restoredByUserId?: string, mode: BackupRestoreMode = "MERGE"): Promise<{ success: boolean; mode: BackupRestoreMode; summary: Record<string, number> }> {
+export async function restoreFromBackup(filename: string, encryptionSecret?: string, restoredByUserId?: string, mode: BackupRestoreMode = "MERGE"): Promise<{ success: boolean; mode: BackupRestoreMode; summary: Record<string, number> }> {\n  const checkpointId = await createRestoreCheckpoint(filename, mode, restoredByUserId || "unknown");
   if (!restoredByUserId) throw new BackupError("A privileged restoring user is required");
   if (!["DRY_RUN", "MERGE", "REPLACE"].includes(mode)) throw new BackupError(`Unsupported restore mode: ${mode}`);
   const raw = await getBackupProvider().getBackupPayload(filename);
@@ -548,7 +573,7 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
         await tx.$executeRawUnsafe(`DELETE FROM "public"."${table.replace(/"/g, '""')}"`);
       }
     }
-    for(const table of order){const key=reverse.get(table)!;const rows=tables[key] as Record<string,unknown>[]; if(!rows.length){counts[key]=0;continue;} const cols=await tx.$queryRaw<Array<{columnName:string;dataType:string;udtName:string}>>`SELECT column_name AS "columnName", data_type AS "dataType", udt_name AS "udtName" FROM information_schema.columns WHERE table_schema='public' AND table_name=${table} ORDER BY ordinal_position`; const allowed=new Set(cols.map(c=>c.columnName)); const pk=await tx.$queryRaw<Array<{columnName:string}>>`SELECT kcu.column_name AS "columnName" FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name=kcu.constraint_name AND tc.table_name=kcu.table_name WHERE tc.table_schema='public' AND tc.constraint_type='PRIMARY KEY' AND tc.table_name=${table} ORDER BY kcu.ordinal_position`; if(!pk.length) throw new BackupError(`Table ${table} has no primary key`); let affected=0;
+    for(const table of order){const key=reverse.get(table)!; if (key === "refreshTokens") { counts[key] = 0; continue; } const rows=tables[key] as Record<string,unknown>[]; if(!rows.length){counts[key]=0;continue;} const cols=await tx.$queryRaw<Array<{columnName:string;dataType:string;udtName:string}>>`SELECT column_name AS "columnName", data_type AS "dataType", udt_name AS "udtName" FROM information_schema.columns WHERE table_schema='public' AND table_name=${table} ORDER BY ordinal_position`; const allowed=new Set(cols.map(c=>c.columnName)); const pk=await tx.$queryRaw<Array<{columnName:string}>>`SELECT kcu.column_name AS "columnName" FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name=kcu.constraint_name AND tc.table_name=kcu.table_name WHERE tc.table_schema='public' AND tc.constraint_type='PRIMARY KEY' AND tc.table_name=${table} ORDER BY kcu.ordinal_position`; if(!pk.length) throw new BackupError(`Table ${table} has no primary key`); let affected=0;
       for(const row of rows){const names=Object.keys(row);if(names.some(n=>!allowed.has(n))) throw new BackupError(`Backup contains unknown column in ${key}`);const values=names.map(n=>{const value=row[n]===undefined?null:row[n];if(value===null)return null;const column=cols.find(c=>c.columnName===n);if(!column)return value;if(column.dataType==="timestamp without time zone"||column.dataType==="timestamp with time zone"){const date=new Date(String(value));if(Number.isNaN(date.getTime()))throw new BackupError(`Invalid datetime value in ${key}.${n}`);return date.toISOString();}if(column.dataType==="json"||column.dataType==="jsonb"){return typeof value==="string"?value:JSON.stringify(value);}return value;});const boundValues: unknown[]=[];const placeholders=names.map((n,i)=>{const column=cols.find(c=>c.columnName===n);const value=values[i];if(value===null)return "NULL";if(!column){boundValues.push(value);return `${boundValues.length}`;}if(column.dataType==="timestamp without time zone"||column.dataType==="timestamp with time zone"){const escaped=String(value).replace(/'/g,"''");return column.dataType==="timestamp without time zone"?"TIMESTAMP '" + escaped + "'":"TIMESTAMPTZ '" + escaped + "'";}if(column.dataType==="date"){return "DATE '" + String(value).replace(/'/g,"''") + "'";}if(column.dataType==="time without time zone"){return "TIME '" + String(value).replace(/'/g,"''") + "'";}boundValues.push(value);const p=`$${boundValues.length}`;if(column.dataType==="json")return p+"::json";if(column.dataType==="jsonb")return p+"::jsonb";if(column.udtName==="uuid")return p+"::uuid";if(column.dataType==="numeric"||column.dataType==="decimal")return p+"::numeric";if(column.dataType==="bigint")return p+"::bigint";if(column.dataType==="integer")return p+"::integer";if(column.dataType==="smallint")return p+"::smallint";if(column.dataType==="double precision")return p+"::double precision";if(column.dataType==="real")return p+"::real";if(column.dataType==="boolean")return p+"::boolean";return p;}).join(",");const qcols=names.map(n=>`"${n.replace(/"/g,'""')}"`).join(",");const conflict=pk.map(x=>`"${x.columnName.replace(/"/g,'""')}"`).join(",");const updates=names.filter(n=>!pk.some(x=>x.columnName===n)).map(n=>`"${n.replace(/"/g,'""')}"=EXCLUDED."${n.replace(/"/g,'""')}"`).join(",");const sql=`INSERT INTO "public"."${table}" (${qcols}) VALUES (${placeholders}) ON CONFLICT (${conflict}) DO ${updates?"UPDATE SET "+updates:"NOTHING"}`; affected+=await tx.$executeRawUnsafe(sql,...boundValues); } counts[key]=affected; if(affected!==rows.length) throw new BackupError(`Restore count mismatch for ${key}`); }
     const sequences = await tx.$queryRaw<Array<{tableName:string;columnName:string;sequenceName:string|null}>>`
       SELECT table_name AS "tableName", column_name AS "columnName",
@@ -564,7 +589,7 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
       await tx.$executeRawUnsafe(`SELECT setval(${JSON.stringify(sequence.sequenceName)}::regclass, COALESCE((SELECT MAX(${column}) FROM ${table}), 1), true)`);
     }
 
-    const restoredUserIds = new Set((tables.users as Record<string, unknown>[]).map((row) => String(row.id)));
+    await tx.$executeRawUnsafe(`DELETE FROM "public"."refresh_tokens"`);\n    const restoredUserIds = new Set((tables.users as Record<string, unknown>[]).map((row) => String(row.id)));
     await tx.auditLog.create({data:{userId:restoredUserIds.has(restoredByUserId) ? restoredByUserId : null,action:"backup:restore",resource:`backup:${safeBackupFilename(filename)}`,metadata:{version:envelope.version,mode,tableCounts:envelope.tableCounts,restoredTables:order,requestedByUserId:restoredByUserId}}}); return counts;
   },{maxWait:10000,timeout:120000});
     if (mode === "REPLACE") {
