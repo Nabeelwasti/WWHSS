@@ -50,6 +50,7 @@ const PERMISSIONS = [
 const ROLES: Record<string, string[]> = {
   super_admin: PERMISSIONS,
   principal: [
+    "ai:use",
     "attendance:view:class",
     "grades:view:own",
     "student:view:full_profile",
@@ -70,6 +71,7 @@ const ROLES: Record<string, string[]> = {
     "documents:print",
   ],
   teacher: [
+    "ai:use",
     "attendance:mark",
     "attendance:view:class",
     "grades:enter",
@@ -82,6 +84,7 @@ const ROLES: Record<string, string[]> = {
     "ai_assessment:submit",
   ],
   class_teacher: [
+    "ai:use",
     "attendance:mark",
     "attendance:view:class",
     "grades:enter",
