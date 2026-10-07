@@ -113,6 +113,12 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
       if (!student) throw new DocumentValidationError(`Student ${referenceId} not found`);
       return { docType, docNumber: await getOrCreateDocumentNumber(docType, student.id), issueDate, header, title: "Student Fee Account Statement / فيس والى تفصيل", entity: { name: student.user.fullName, admissionNo: student.admissionNo, className: student.class?.name || "N/A", fundingCategory: student.fundingCategory?.name || "Standard" }, records: student.feeInvoices.map((inv) => ({ invoiceName: inv.feeStructure.name, dueDate: inv.dueDate.toISOString().slice(0, 10), amountDue: inv.amountDue.toNumber(), paid: inv.payments.filter((p) => p.status !== "reversed").reduce((s, p) => s + p.amount.toNumber() - p.adjustments.reduce((a, x) => a + x.amount.toNumber(), 0), 0), waived: inv.feeWaivers.reduce((s, w) => s + w.amount.toNumber(), 0), status: inv.status.toUpperCase() })), signatures: [{ title: "Accounts Officer", name: null, status: "PENDING_SIGNATURE" }] };
     }
+    case "timetable": {
+      const student = await prisma.studentProfile.findUnique({ where: { id: referenceId }, include: { user: { select: { fullName: true } }, class: true, section: true } });
+      if (!student) throw new DocumentValidationError(`Student ${referenceId} not found`);
+      const slots = await prisma.timetableSlot.findMany({ where: { classId: student.classId ?? undefined, sectionId: student.sectionId ?? undefined }, include: { subject: true, teacher: { select: { fullName: true } }, room: true }, orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }] });
+      return { docType, docNumber: await getOrCreateDocumentNumber(docType, student.id), issueDate, header, title: "Student Timetable / طلبہ ٹائم ٹیبل", entity: { name: student.user.fullName, admissionNo: student.admissionNo, className: student.class?.name || "N/A", sectionName: student.section?.name || "N/A" }, records: slots.map((s) => ({ dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime, subject: s.subject.name, teacher: s.teacher.fullName, room: s.room?.name || "N/A" })) };
+    }
     case "attendance_report": {
       const student = await prisma.studentProfile.findUnique({ where: { id: referenceId }, include: { user: { select: { fullName: true } }, class: true, section: true, attendanceRecords: { orderBy: { date: "desc" }, take: 30 } } });
       if (!student) throw new DocumentValidationError(`Student ${referenceId} not found`);
