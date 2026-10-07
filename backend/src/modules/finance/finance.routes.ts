@@ -106,12 +106,27 @@ financeRouter.post("/fee-structures", authorize("finance:manage"), async (req, r
   }
 });
 
-const generateSchema = z.object({ feeStructureId: z.string().uuid(), dueDate: z.string() });
+const generateSchema = z.object({
+  feeStructureId: z.string().uuid(),
+  dueDate: z.string(),
+  billingPeriodStart: z.string().optional(),
+  billingPeriodEnd: z.string().optional(),
+}).superRefine((value, ctx) => {
+  if ((value.billingPeriodStart && !value.billingPeriodEnd) || (!value.billingPeriodStart && value.billingPeriodEnd)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["billingPeriodStart"], message: "billingPeriodStart and billingPeriodEnd must be supplied together" });
+  }
+});
 financeRouter.post("/generate-invoices", authorize("finance:manage"), async (req, res) => {
   const parsed = generateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   try {
-    const invoices = await generateInvoicesForClass(parsed.data.feeStructureId, parsed.data.dueDate, req.userId);
+    const invoices = await generateInvoicesForClass(
+      parsed.data.feeStructureId,
+      parsed.data.dueDate,
+      req.userId,
+      parsed.data.billingPeriodStart,
+      parsed.data.billingPeriodEnd
+    );
     res.status(201).json({ generated: invoices.length });
   } catch (e) {
     if (e instanceof FinanceValidationError) return res.status(400).json({ error: e.message });
