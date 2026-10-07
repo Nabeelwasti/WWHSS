@@ -407,7 +407,7 @@ export const api = {
   createFeeStructure: (input: { classId: string; academicYearId: string; name: string; amount: number }) =>
     request("/finance/fee-structures", { method: "POST", body: JSON.stringify(input) }),
 
-  generateInvoices: (input: { feeStructureId: string; dueDate: string }) =>
+  generateInvoices: (input: { feeStructureId: string; dueDate: string; billingPeriodStart?: string; billingPeriodEnd?: string }) =>
     request<{ generated: number }>("/finance/generate-invoices", { method: "POST", body: JSON.stringify(input) }),
 
   recordPayment: (input: { invoiceId: string; amount: number; method: string }) =>
