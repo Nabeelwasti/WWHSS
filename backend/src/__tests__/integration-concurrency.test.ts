@@ -25,6 +25,7 @@ let createTimetableSlot: typeof import("../modules/timetable/timetable.service.j
 let refresh: typeof import("../modules/identity/auth.service.js").refresh;
 let reserveAiQuota: typeof import("../modules/ai/ai.service.js").reserveAiQuota;
 let releaseAiQuota: typeof import("../modules/ai/ai.service.js").releaseAiQuota;
+let verifyStudentCourseEnrollment: typeof import("../modules/lms/lms.service.js").verifyStudentCourseEnrollment;
 let hashRefreshToken: typeof import("../modules/identity/tokens.js").hashRefreshToken;
 
 describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
@@ -49,6 +50,7 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
     refresh = authModule.refresh;
     reserveAiQuota = aiModule.reserveAiQuota;
     releaseAiQuota = aiModule.releaseAiQuota;
+    verifyStudentCourseEnrollment = (await import("../modules/lms/lms.service.js")).verifyStudentCourseEnrollment;
     hashRefreshToken = tokenModule.hashRefreshToken;
 
     await prisma.$connect();
@@ -58,6 +60,51 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
     if (prisma) {
       await prisma.$disconnect();
     }
+  });
+
+  it("enforces active class, section, academic-year, and subject enrollment before LMS content access", async () => {
+    const ay = await prisma.academicYear.create({
+      data: { label: `LMS-1791379402125`, startDate: new Date("2026-09-01"), endDate: new Date("2027-06-30"), isActive: true },
+    });
+    const cls = await prisma.class.create({ data: { name: `LMS-1791379402125`, academicYearId: ay.id } });
+    const section = await prisma.section.create({ data: { name: "A", classId: cls.id } });
+    const subject = await prisma.subject.create({ data: { name: `LMS Subject 1791379402125` } });
+    const course = await prisma.course.create({ data: { title: "Protected Course", classId: cls.id, subjectId: subject.id } });
+    const user = await prisma.user.create({
+      data: { email: `lms-1791379402125@school.edu`, passwordHash: "hash", fullName: "LMS Student" },
+    });
+    const student = await prisma.studentProfile.create({
+      data: { userId: user.id, admissionNo: `LMS-1791379402125`, classId: cls.id, sectionId: section.id, status: "ACTIVE" },
+    });
+
+    await expect(verifyStudentCourseEnrollment(student.id, course.id)).rejects.toThrow(/active enrollment record/i);
+
+    await prisma.studentEnrollmentHistory.create({
+      data: {
+        studentProfileId: student.id,
+        academicYearId: ay.id,
+        classId: cls.id,
+        sectionId: section.id,
+        startDate: new Date("2026-09-01"),
+      },
+    });
+    await expect(verifyStudentCourseEnrollment(student.id, course.id)).rejects.toThrow(/not enrolled in this course's subject/i);
+
+    await prisma.timetableSlot.create({
+      data: {
+        classId: cls.id,
+        sectionId: section.id,
+        subjectId: subject.id,
+        dayOfWeek: "MONDAY",
+        startTime: "09:00",
+        endTime: "10:00",
+      },
+    });
+
+    await expect(verifyStudentCourseEnrollment(student.id, course.id)).resolves.toBeUndefined();
+
+    await prisma.studentProfile.update({ where: { id: student.id }, data: { status: "WITHDRAWN" } });
+    await expect(verifyStudentCourseEnrollment(student.id, course.id)).rejects.toThrow(/active class\/section enrollment/i);
   });
 
   it("proves concurrent finance payments cannot overpay and verifies exact payment count, amounts, invoice status and audit logs", async () => {
