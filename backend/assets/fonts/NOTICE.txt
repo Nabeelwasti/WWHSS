@@ -1,0 +1,5 @@
+Noto Naskh Arabic Regular
+Copyright Google LLC.
+Licensed under the SIL Open Font License, Version 1.1 (OFL-1.1).
+The font is bundled in base64 form so official PDFs can embed a Unicode Arabic/Urdu-capable font without relying on host-installed fonts.
+Source: https://github.com/frappe/fonts/tree/master/usr_share_fonts/noto
