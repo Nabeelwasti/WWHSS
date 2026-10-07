@@ -30,7 +30,7 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET" || url.origin !== self.location.origin) return;
 
   // Never cache API/private school data, including future nested API paths.
-  if (url.pathname === "/api" || url.pathname.startsWith("/api/") || url.pathname.startsWith("/documents/") || url.pathname.startsWith("/uploads/")) {
+  if (url.pathname === "/api" || url.pathname.startsWith("/api") || url.pathname.startsWith("/documents/") || url.pathname.startsWith("/uploads/")) {
     event.respondWith(fetch(request, { cache: "no-store" }));
     return;
   }
