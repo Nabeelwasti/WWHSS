@@ -550,6 +550,15 @@ export const api = {
   approveAiAssessmentTest: (testId: string) =>
     request<{ test: unknown }>(`/ai/assessment/tests/${testId}/approve`, { method: "POST" }),
 
+  publishAiAssessmentTest: (testId: string) =>
+    request<{ test: unknown }>(`/ai/assessment/tests/${testId}/publish`, { method: "POST" }),
+
+  lockAiAssessmentTest: (testId: string) =>
+    request<{ test: unknown }>(`/ai/assessment/tests/${testId}/lock`, { method: "POST" }),
+
+  getAiAssessmentAnswerKey: (testId: string) =>
+    request<{ answerKey: unknown }>(`/ai/assessment/tests/${testId}/answer-key`),
+
   submitAiAnswerSheet: (input: Record<string, unknown>) =>
     request<{ answerSheet: unknown }>("/ai/assessment/answer-sheets", { method: "POST", body: JSON.stringify(input) }),
 
