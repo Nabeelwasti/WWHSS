@@ -187,39 +187,51 @@ export async function verifyStudentCourseEnrollment(studentProfileId: string, co
   const [student, course] = await Promise.all([
     prisma.studentProfile.findUnique({
       where: { id: studentProfileId },
-      select: { id: true, classId: true, sectionId: true },
+      select: { id: true, classId: true, sectionId: true, status: true },
     }),
     prisma.course.findUnique({
       where: { id: courseId },
-      select: { id: true, classId: true, subjectId: true },
+      select: { id: true, classId: true, subjectId: true, class: { select: { academicYearId: true } } },
     }),
   ]);
 
-  if (!course) {
-    throw new NotFoundError(`Course ${courseId} not found`);
-  }
-  if (!student || !student.classId) {
-    throw new LmsValidationError("Student profile or enrollment record not found");
+  if (!course) throw new NotFoundError(`Course ${courseId} not found`);
+  if (!student || !student.classId || !student.sectionId || student.status !== "ACTIVE") {
+    throw new LmsValidationError("Student does not have an active class/section enrollment");
   }
 
-  // 1. Class alignment
+  // 1. The student's current profile must align with the course class.
   if (student.classId !== course.classId) {
     throw new LmsValidationError("Student is not enrolled in the class for this course");
   }
 
-  // 2. TimetableSlot-based section/subject enrollment check
-  if (student.sectionId) {
-    const classSubjectSlots = await prisma.timetableSlot.findMany({
-      where: { classId: course.classId, subjectId: course.subjectId },
-      select: { sectionId: true },
-    });
+  // 2. Require a live enrollment-history record for the course's academic year.
+  // The profile alone is not sufficient proof of current LMS entitlement.
+  const activeEnrollment = await prisma.studentEnrollmentHistory.findFirst({
+    where: {
+      studentProfileId,
+      academicYearId: course.class.academicYearId,
+      classId: course.classId,
+      sectionId: student.sectionId,
+      endDate: null,
+    },
+    select: { id: true },
+  });
+  if (!activeEnrollment) {
+    throw new LmsValidationError("Student has no active enrollment record for this course's academic year");
+  }
 
-    if (classSubjectSlots.length > 0) {
-      const sectionEnrolled = classSubjectSlots.some((slot) => slot.sectionId === student.sectionId);
-      if (!sectionEnrolled) {
-        throw new LmsValidationError("Student's section is not enrolled in this course's subject");
-      }
-    }
+  // 3. The student's exact section must be scheduled/enrolled for this subject.
+  const sectionSubjectEnrollment = await prisma.timetableSlot.findFirst({
+    where: {
+      classId: course.classId,
+      sectionId: student.sectionId,
+      subjectId: course.subjectId,
+    },
+    select: { id: true },
+  });
+  if (!sectionSubjectEnrollment) {
+    throw new LmsValidationError("Student's section is not enrolled in this course's subject");
   }
 }
 
