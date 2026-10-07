@@ -195,6 +195,42 @@ export async function approveAiAssessmentTest(testId: string, actorId: string) {
   });
 }
 
+export async function publishAiAssessmentTest(testId: string, actorId: string) {
+  const test = await prisma.aiAssessmentTest.findUnique({ where: { id: testId }, include: { questions: true } });
+  if (!test) throw new AiAssessmentError(`Assessment Test ${testId} not found`);
+  if (test.status === "PUBLISHED") return test;
+  if (test.status !== "APPROVED") throw new AiAssessmentError("Only an approved assessment can be published.");
+  if (!test.questions.length) throw new AiAssessmentError("An assessment cannot be published without questions.");
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.aiAssessmentTest.update({ where: { id: testId }, data: { status: "PUBLISHED" }, include: { class: true, subject: true, questions: { orderBy: { orderIndex: "asc" } } } });
+    await tx.auditLog.create({ data: { userId: actorId, action: "ai_assessment:publish_test", resource: `test:${testId}` } });
+    return updated;
+  });
+}
+
+export async function lockAiAssessmentTest(testId: string, actorId: string) {
+  const test = await prisma.aiAssessmentTest.findUnique({ where: { id: testId } });
+  if (!test) throw new AiAssessmentError(`Assessment Test ${testId} not found`);
+  if (test.status === "LOCKED") return test;
+  if (test.status !== "PUBLISHED") throw new AiAssessmentError("Only a published assessment can be locked.");
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.aiAssessmentTest.update({ where: { id: testId }, data: { status: "LOCKED" }, include: { class: true, subject: true, questions: { orderBy: { orderIndex: "asc" } } } });
+    await tx.auditLog.create({ data: { userId: actorId, action: "ai_assessment:lock_test", resource: `test:${testId}` } });
+    return updated;
+  });
+}
+
+export async function getAiAssessmentAnswerKey(testId: string) {
+  const test = await prisma.aiAssessmentTest.findUnique({ where: { id: testId }, include: { class: true, subject: true, questions: { orderBy: { orderIndex: "asc" } } } });
+  if (!test) throw new AiAssessmentError(`Assessment Test ${testId} not found`);
+  if (!["APPROVED", "PUBLISHED", "LOCKED"].includes(test.status)) throw new AiAssessmentError("The answer key is only available after teacher approval.");
+  return {
+    id: test.id, title: test.title, class: test.class.name, subject: test.subject.name, totalMarks: test.totalMarks.toNumber(),
+    durationMin: test.durationMin, language: test.language, status: test.status,
+    questions: test.questions.map((q) => ({ id: q.id, version: q.version, orderIndex: q.orderIndex, questionType: q.questionType, correctAnswer: q.correctAnswer, markingScheme: q.markingScheme, marks: q.marks.toNumber() })),
+  };
+}
+
 export async function listAiAssessmentTests(filters: { classId?: string; subjectId?: string; status?: string }) {
   return prisma.aiAssessmentTest.findMany({
     where: filters,
@@ -221,7 +257,7 @@ export async function submitAiAnswerSheet(
   });
   if (!test) throw new AiAssessmentError(`Test ${input.testId} not found`);
 
-  if (test.status !== "APPROVED") throw new AiAssessmentError("Only an approved assessment can accept answer sheets.");
+  if (!["APPROVED", "PUBLISHED"].includes(test.status)) throw new AiAssessmentError("Only an approved or published assessment can accept answer sheets.");
   const student = await prisma.studentProfile.findUnique({ where: { id: input.studentProfileId }, select: { id: true, userId: true, classId: true, sectionId: true } });
   if (!student) throw new AiAssessmentError(`Student ${input.studentProfileId} not found`);
   if (student.classId !== test.classId || (test.sectionId && student.sectionId !== test.sectionId)) throw new AiAssessmentError("The student is not enrolled in this assessment's class/section.");
