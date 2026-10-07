@@ -134,6 +134,44 @@ async function callProvider(cfg: ProviderConfig, systemPrompt: string, userMessa
   return callOpenAiCompatible(cfg, systemPrompt, userMessage);
 }
 
+const providerFailures = new Map<string, { failures: number; openedUntil: number }>();
+const PROVIDER_MAX_FAILURES = 3;
+const PROVIDER_COOLDOWN_MS = 30_000;
+
+function providerKey(cfg: ProviderConfig): string {
+  return `${cfg.type}:${cfg.model}:${cfg.type === "openai_compatible" ? cfg.baseUrl : "default"}`;
+}
+
+function isRetryableProviderError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  const match = message.match(/error (429|5\\d\\d)\\b/i);
+  return Boolean(match);
+}
+
+async function callProviderWithResilience(cfg: ProviderConfig, systemPrompt: string, userMessage: string): Promise<string> {
+  const key = providerKey(cfg);
+  const state = providerFailures.get(key);
+  if (state && state.openedUntil > Date.now()) throw new Error("AI provider circuit is temporarily open");
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const reply = await callProvider(cfg, systemPrompt, userMessage);
+      if (reply.length > env.maxAiOutputTokens * 6) throw new Error("AI provider returned an oversized response");
+      providerFailures.delete(key);
+      return reply;
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableProviderError(error) || attempt === 2) break;
+      await new Promise((resolve) => setTimeout(resolve, 250 * 2 ** attempt));
+    }
+  }
+  const next = providerFailures.get(key) ?? { failures: 0, openedUntil: 0 };
+  next.failures += 1;
+  if (next.failures >= PROVIDER_MAX_FAILURES) next.openedUntil = Date.now() + PROVIDER_COOLDOWN_MS;
+  providerFailures.set(key, next);
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
 interface WebResearchResult {
   title: string;
   url: string;
@@ -213,15 +251,15 @@ export async function askCampusAI(userId: string, message: string): Promise<stri
     const failures: string[] = [];
     for (const cfg of ordered) {
       try {
-        const reply = await callProvider(cfg, systemPrompt, truncatedMessage);
-        if (reply.trim()) return reply;
+        const reply = await callProviderWithResilience(cfg, systemPrompt, truncatedMessage);
+        if (reply.trim()) {\n          await prisma.auditLog.create({ data: { userId, action: "ai:response", metadata: { provider: cfg.type, model: cfg.model, inputChars: truncatedMessage.length, outputChars: reply.length } } });\n          return reply;\n        }
         failures.push(`${cfg.type}: returned an empty reply`);
       } catch (err: unknown) {
         failures.push(`${cfg.type}: ${sanitizeErrorMessage(err instanceof Error ? err.message : String(err))}`);
       }
     }
     await safeRelease();
-    console.error("All configured AI providers failed:", failures);
+    await prisma.auditLog.create({ data: { userId, action: "ai:providers_failed", metadata: { failures: failures.map((value) => value.slice(0, 160)) } } });\n    console.error("All configured AI providers failed:", failures);
     throw new Error("The AI assistant is temporarily unavailable — every configured provider failed. Please try again shortly.");
   } catch (err: unknown) {
     await safeRelease();
