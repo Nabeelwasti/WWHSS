@@ -135,6 +135,7 @@ export interface SearchStudentsOptions {
   limit?: number;
   sortBy?: "fullName" | "admissionNo" | "rollNumber" | "status";
   sortOrder?: "asc" | "desc";
+  includeSensitive?: boolean;
 }
 
 export async function searchStudentProfiles(options: SearchStudentsOptions = {}) {
@@ -185,7 +186,7 @@ export async function searchStudentProfiles(options: SearchStudentsOptions = {})
         user: { select: { id: true, email: true, fullName: true, phone: true, photoUrl: true } },
         class: true,
         section: true,
-        fundingCategory: true,
+        ...(options.includeSensitive ? { fundingCategory: true } : {}),
         guardians: { include: { parent: { select: { id: true, fullName: true, email: true, phone: true } } } },
       },
       orderBy,
@@ -206,7 +207,7 @@ export async function searchStudentProfiles(options: SearchStudentsOptions = {})
   };
 }
 
-export async function getStudentProfileById(studentProfileId: string) {
+export async function getStudentProfileById(studentProfileId: string, includeSensitive = false) {
   const profile = await prisma.studentProfile.findUnique({
     where: { id: studentProfileId },
     include: {
@@ -221,7 +222,9 @@ export async function getStudentProfileById(studentProfileId: string) {
     },
   });
   if (!profile) throw new UserValidationError(`Student profile ${studentProfileId} not found`);
-  return profile;
+  if (includeSensitive) return profile;
+  const { bloodGroup: _bloodGroup, medicalNotes: _medicalNotes, fundingCategory: _fundingCategory, fundingRecords: _fundingRecords, ...safeProfile } = profile;
+  return { ...safeProfile, sensitiveFieldsRedacted: true };
 }
 
 export async function updateStudentProfile(
