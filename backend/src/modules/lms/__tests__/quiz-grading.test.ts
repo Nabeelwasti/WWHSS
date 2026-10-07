@@ -10,7 +10,8 @@ vi.mock("../../../db/client.js", () => ({
     studentProfile: { findUnique: vi.fn() },
     course: { findUnique: vi.fn() },
     quiz: { findUnique: vi.fn() },
-    timetableSlot: { findMany: vi.fn() },
+    timetableSlot: { findFirst: vi.fn() },
+    studentEnrollmentHistory: { findFirst: vi.fn() },
   },
 }));
 
@@ -22,7 +23,8 @@ const mockedCreate = prisma.quizAttempt.create as unknown as ReturnType<typeof v
 const mockStudentFind = prisma.studentProfile.findUnique as unknown as ReturnType<typeof vi.fn>;
 const mockCourseFind = prisma.course.findUnique as unknown as ReturnType<typeof vi.fn>;
 const mockQuizFind = prisma.quiz.findUnique as unknown as ReturnType<typeof vi.fn>;
-const mockTimetableFind = prisma.timetableSlot.findMany as unknown as ReturnType<typeof vi.fn>;
+const mockTimetableFind = prisma.timetableSlot.findFirst as unknown as ReturnType<typeof vi.fn>;
+const mockEnrollmentFind = prisma.studentEnrollmentHistory.findFirst as unknown as ReturnType<typeof vi.fn>;
 
 describe("submitQuizAttempt (auto-grading)", () => {
   beforeEach(() => {
@@ -32,19 +34,21 @@ describe("submitQuizAttempt (auto-grading)", () => {
     mockCourseFind.mockReset();
     mockQuizFind.mockReset();
     mockTimetableFind.mockReset();
+    mockEnrollmentFind.mockReset();
 
     mockedCreate.mockImplementation(async ({ data }: { data: unknown }) => data);
 
     // Setup valid student enrollment for existing auto-grading unit tests
-    mockStudentFind.mockResolvedValue({ id: "student-1", classId: "grade-10", sectionId: "sec-10a" });
-    mockCourseFind.mockResolvedValue({ id: "course-1", classId: "grade-10", subjectId: "subj-1" });
+    mockStudentFind.mockResolvedValue({ id: "student-1", classId: "grade-10", sectionId: "sec-10a", status: "ACTIVE" });
+    mockCourseFind.mockResolvedValue({ id: "course-1", classId: "grade-10", subjectId: "subj-1", class: { academicYearId: "ay-1" } });
     mockQuizFind.mockImplementation(async ({ where }: { where: { id: string } }) => {
       if (where.id === "empty-quiz" || where.id === "quiz-1") {
         return { id: where.id, courseId: "course-1" };
       }
       return null;
     });
-    mockTimetableFind.mockResolvedValue([{ sectionId: "sec-10a" }]);
+    mockEnrollmentFind.mockResolvedValue({ id: "enrollment-1" });
+    mockTimetableFind.mockResolvedValue({ id: "slot-1" });
   });
 
   it("scores 100 when every answer matches the real correct index", async () => {
