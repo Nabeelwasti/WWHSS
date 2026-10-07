@@ -2,6 +2,7 @@ import { prisma } from "../../db/client.js";
 import { env } from "../../config/env.js";
 import { getStudentEngagementSummary } from "../attendance/attendance.service.js";
 import { Prisma } from "@prisma/client";
+import { requirePermission } from "../identity/permissions.js";
 
 export class AiConfigError extends Error {}
 
@@ -168,6 +169,7 @@ async function buildPersonalContext(userId: string): Promise<string> {
 }
 
 export async function askCampusAI(userId: string, message: string): Promise<string> {
+  await requirePermission(userId, "ai:use");
   const today = new Date().toISOString().slice(0, 10);
   await reserveAiQuota(userId, today);
   let quotaReleased = false;
