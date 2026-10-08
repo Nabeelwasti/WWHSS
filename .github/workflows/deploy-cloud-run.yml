@@ -140,8 +140,15 @@ jobs:
           ACCESS_TOKEN="$(sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p' /tmp/login.json)"
           test -n "$ACCESS_TOKEN"
 
-          curl --fail --silent --show-error -H "Origin: $FRONTEND_ORIGIN" -H "Authorization: Bearer $ACCESS_TOKEN" "$REVISION_URL/api/auth/me" >/tmp/me.json
+          UNAUTH_STATUS="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' -H "Origin: $FRONTEND_ORIGIN" "$REVISION_URL/api/school/profile")"
+          test "$UNAUTH_STATUS" = "401"
+
+          curl --fail --silent --show-error --dump-header /tmp/me.headers -H "Origin: $FRONTEND_ORIGIN" -H "Authorization: Bearer $ACCESS_TOKEN" "$REVISION_URL/api/auth/me" >/tmp/me.json
+          grep -qi "^access-control-allow-origin: $FRONTEND_ORIGIN" /tmp/me.headers
           grep -q '"user"' /tmp/me.json
+
+          curl --fail --silent --show-error -H "Origin: $FRONTEND_ORIGIN" -H "Authorization: Bearer $ACCESS_TOKEN" "$REVISION_URL/api/school/profile" >/tmp/school.json
+          grep -q '"profile"' /tmp/school.json
 
           curl --fail --silent --show-error -H "Origin: $FRONTEND_ORIGIN" --cookie /tmp/cookies.txt --cookie-jar /tmp/cookies.txt -X POST "$REVISION_URL/api/auth/refresh" >/tmp/refresh.json
           grep -q '"accessToken"' /tmp/refresh.json
