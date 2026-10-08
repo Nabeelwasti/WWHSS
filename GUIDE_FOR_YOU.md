@@ -14,9 +14,9 @@ There is no fake-data fallback. If the backend is unavailable, the frontend show
 
 Hosted:
 
-`Browser → Vercel frontend → same-origin /api proxy → Vercel Express backend → PostgreSQL + private S3/R2`
+`Browser → Vercel/static frontend → HTTPS Cloud Run Express backend → PostgreSQL + private S3/R2`
 
-The frontend API client still supports an explicit `VITE_API_BASE_URL` when a separate backend origin is intentionally required. When it is empty, the Vercel frontend proxy is the authoritative hosted path; this avoids a frontend/backend origin mismatch and keeps refresh cookies same-site.
+The frontend API client supports an explicit `VITE_API_BASE_URL` for the hosted Cloud Run backend. Same-origin `/api` remains supported for Docker/self-hosting. Cross-origin hosted browser deployments must use HTTPS CORS and `AUTH_COOKIE_CROSS_SITE=true`.
 
 Local/self-hosted:
 
