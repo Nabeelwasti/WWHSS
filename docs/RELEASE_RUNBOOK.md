@@ -4,7 +4,7 @@
 
 Browser → Vercel/static frontend → Cloud Run Express API → managed PostgreSQL + private S3/R2.
 
-Preview and Production must use isolated databases, storage locations and secrets. The Vercel frontend normally reaches the backend through the same-origin `/api/*` proxy; `VITE_API_BASE_URL` is optional for an intentionally direct backend origin.
+Preview and Production must use isolated databases, storage locations and secrets. Hosted Vercel builds use `VITE_API_BASE_URL` to reach the matching Cloud Run backend. Docker/self-hosted deployments continue to use same-origin `/api`.
 
 ## Release order
 
