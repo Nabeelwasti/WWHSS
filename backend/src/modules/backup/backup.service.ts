@@ -547,11 +547,19 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
   const checkpointId = await createRestoreCheckpoint(filename, mode, restoredByUserId);
   const storageProvider = getStorageProvider();
   const newlyCreatedStorageObjects: string[] = [];
+  const replacedStorageSnapshots = new Map<string, { buffer: Buffer; mimeType: string }>();
+  let databaseCommitted = false;
   if (parsed.meta.storageObjectsIncluded === true) {
     try {
       for (const object of storageObjects) {
         const exists = await storageProvider.exists(object.storageKey);
         if (mode === "REPLACE" || !exists) {
+          if (mode === "REPLACE" && exists) {
+            const previous = await storageProvider.getFile(object.storageKey);
+            const previousBuffer = previous.buffer ?? (previous.filePath ? await fs.promises.readFile(previous.filePath) : undefined);
+            if (!previousBuffer) throw new BackupError(`Existing storage object ${object.storageKey} could not be snapshotted for safe replacement`);
+            replacedStorageSnapshots.set(object.storageKey, { buffer: previousBuffer, mimeType: previous.mimeType ?? object.mimeType });
+          }
           await storageProvider.saveFile(object.storageKey, Buffer.from(object.dataBase64, "base64"), object.mimeType);
           if (!exists) newlyCreatedStorageObjects.push(object.storageKey);
         }
@@ -561,7 +569,7 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
       await updateRestoreCheckpoint(checkpointId, "FAILED", `Storage staging failed: ${error instanceof Error ? error.message : String(error)}`);
       throw new BackupError(`Storage object restore failed: ${error instanceof Error ? error.message : String(error)}`);
     }
-    await updateRestoreCheckpoint(checkpointId, "STORAGE_STAGED");
+    
   }
   await updateRestoreCheckpoint(checkpointId, "STORAGE_STAGED");
 
@@ -600,6 +608,7 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
     const restoredUserIds = new Set((tables.users as Record<string, unknown>[]).map((row) => String(row.id)));
     await tx.auditLog.create({data:{userId:restoredUserIds.has(restoredByUserId) ? restoredByUserId : null,action:"backup:restore",resource:`backup:${safeBackupFilename(filename)}`,metadata:{version:envelope.version,mode,tableCounts:envelope.tableCounts,restoredTables:order,requestedByUserId:restoredByUserId}}}); return counts;
   },{maxWait:10000,timeout:120000});
+    databaseCommitted = true;
     await updateRestoreCheckpoint(checkpointId, "DATABASE_COMMITTED");
     if (mode === "REPLACE") {
       // Object storage is not transactional with PostgreSQL, so reconcile it
@@ -618,8 +627,9 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
     return {success:true,mode,summary:result};
   } catch (error) {
     await updateRestoreCheckpoint(checkpointId, "FAILED", error instanceof Error ? error.message : String(error)).catch(() => undefined);
-    if (newlyCreatedStorageObjects.length > 0) {
+    if (!databaseCommitted) {
       await Promise.allSettled(newlyCreatedStorageObjects.map((key) => storageProvider.deleteFile(key)));
+      await Promise.allSettled([...replacedStorageSnapshots.entries()].map(([key, snapshot]) => storageProvider.saveFile(key, snapshot.buffer, snapshot.mimeType)));
     }
     throw error;
   }
