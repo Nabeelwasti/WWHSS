@@ -40,7 +40,7 @@ const MIME_EXTENSIONS: Record<string, Set<string>> = {
 
 
 function assertSafeStorageKey(filename: string): void {
-  if (!filename || filename.length > 255 || path.isAbsolute(filename) || filename.includes("\\\\") || filename.includes("/")) {
+  if (!filename || filename.length > 255 || path.isAbsolute(filename) || filename.includes("\\") || filename.includes("/")) {
     throw new StorageValidationError("Invalid storage object key");
   }
   if (filename === "." || filename === ".." || filename.includes("..")) {
