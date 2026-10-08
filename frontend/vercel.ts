@@ -1,9 +1,4 @@
-type VercelConfig = {
-  rewrites: Array<{ source: string; destination: string }>;
-  headers: Array<{ source: string; headers: Array<{ key: string; value: string }> }>;
-};
-
-export const config: VercelConfig = {
+export const config = {
   headers: [
     {
       source: "/(.*)",
