@@ -46,11 +46,24 @@ const PERMISSIONS = [
   "storage:upload",
   "ai_assessment:submit",
   "ai_assessment:submit:own",
+  "hr:view",
+  "hr:manage",
+  "payroll:view",
+  "payroll:manage",
+  "admissions:view",
+  "admissions:manage",
+  "transport:view",
+  "transport:manage",
+  "inventory:view",
+  "inventory:manage",
+  "ptm:view",
+  "ptm:manage",
 ];
 
 const ROLES: Record<string, string[]> = {
   super_admin: PERMISSIONS,
   principal: [
+    "hr:view", "hr:manage", "payroll:view", "payroll:manage", "admissions:view", "admissions:manage", "transport:view", "transport:manage", "inventory:view", "inventory:manage", "ptm:view", "ptm:manage",
     "storage:upload",
     "ai:use",
     "attendance:view:class",
@@ -73,6 +86,7 @@ const ROLES: Record<string, string[]> = {
     "documents:print",
   ],
   teacher: [
+    "ptm:view", "ptm:manage",
     "storage:upload",
     "ai:use",
     "attendance:mark",
@@ -87,6 +101,7 @@ const ROLES: Record<string, string[]> = {
     "ai_assessment:submit",
   ],
   class_teacher: [
+    "ptm:view", "ptm:manage",
     "storage:upload",
     "ai:use",
     "attendance:mark",
@@ -100,7 +115,7 @@ const ROLES: Record<string, string[]> = {
     "documents:print",
     "ai_assessment:submit",
   ],
-  accountant: ["finance:view", "finance:manage", "documents:view", "documents:print"],
+  accountant: ["finance:view", "finance:manage", "payroll:view", "payroll:manage", "documents:view", "documents:print"],
   librarian: ["library:view", "library:manage"],
   student: [
     "attendance:view:own",
