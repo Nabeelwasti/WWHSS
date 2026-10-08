@@ -56,6 +56,10 @@ jobs:
           test -n "$CLOUD_RUN_REGION"
           test -n "${{ secrets.WIF_PROVIDER }}"
           test -n "${{ secrets.WIF_SERVICE_ACCOUNT }}"
+          test -n "${{ secrets.PRODUCTION_DATABASE_URL }}"
+          test -n "${{ secrets.PRODUCTION_SMOKE_EMAIL }}"
+          test -n "${{ secrets.PRODUCTION_SMOKE_PASSWORD }}"
+          test -n "${{ vars.PRODUCTION_FRONTEND_ORIGIN }}"
 
       - name: Authenticate to Google Cloud
         id: auth
@@ -82,7 +86,6 @@ jobs:
         run: docker push "${IMAGE}"
 
       - name: Apply production migrations
-        if: ${{ inputs.apply_migrations }}
         working-directory: backend
         env:
           DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
@@ -100,23 +103,57 @@ jobs:
           image: ${{ env.IMAGE }}
           flags: >-
             --allow-unauthenticated
+            --no-traffic
             --min-instances=0
             --max-instances=3
 
-      - name: Verify deployed revision
+      - name: Resolve deployed revision URL
+        id: revision
         run: |
           set -euo pipefail
-          DEPLOYED_IMAGE="$(gcloud run services describe "${CLOUD_RUN_SERVICE}" --region "${CLOUD_RUN_REGION}" --format='value(spec.template.spec.containers[0].image)')"
+          REVISION="$(gcloud run services describe "$CLOUD_RUN_SERVICE" --region "$CLOUD_RUN_REGION" --format='value(status.latestCreatedRevisionName)')"
+          test -n "$REVISION"
+          REVISION_URL="$(gcloud run revisions describe "$REVISION" --region "$CLOUD_RUN_REGION" --format='value(status.url)')"
+          test -n "$REVISION_URL"
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+          echo "url=$REVISION_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Verify deployed revision image
+        run: |
+          set -euo pipefail
+          DEPLOYED_IMAGE="$(gcloud run services describe "$CLOUD_RUN_SERVICE" --region "$CLOUD_RUN_REGION" --format='value(spec.template.spec.containers[0].image)')"
           test "$DEPLOYED_IMAGE" = "$IMAGE"
 
-      - name: Verify production health
+      - name: Verify production readiness
+        env:
+          REVISION_URL: ${{ steps.revision.outputs.url }}
+          SMOKE_EMAIL: ${{ secrets.PRODUCTION_SMOKE_EMAIL }}
+          SMOKE_PASSWORD: ${{ secrets.PRODUCTION_SMOKE_PASSWORD }}
+          FRONTEND_ORIGIN: ${{ vars.PRODUCTION_FRONTEND_ORIGIN }}
         run: |
           set -euo pipefail
-          URL="${{ steps.deploy.outputs.url }}"
-          test -n "$URL"
-          curl --fail --silent --show-error --retry 10 --retry-delay 5 "${URL}/health" | tee /tmp/health.json
-          curl --fail --silent --show-error --retry 10 --retry-delay 5 "${URL}/ready" | tee /tmp/ready.json
-          curl --fail --silent --show-error --retry 10 --retry-delay 5 "${URL}/api/health" | tee /tmp/api-health.json
+          curl --fail --silent --show-error --retry 10 --retry-delay 5 "$REVISION_URL/health" | tee /tmp/health.json
+          curl --fail --silent --show-error --retry 10 --retry-delay 5 "$REVISION_URL/ready" | tee /tmp/ready.json
+          curl --fail --silent --show-error --retry 10 --retry-delay 5 "$REVISION_URL/api/health" | tee /tmp/api-health.json
           grep -q '"status":"ok"' /tmp/health.json
           grep -q '"status":"ready"' /tmp/ready.json
           grep -q '"status":"ok"' /tmp/api-health.json
+
+          rm -f /tmp/cookies.txt
+          LOGIN_HEADERS="$(curl --fail --silent --show-error --include --cookie-jar /tmp/cookies.txt             -H "Origin: $FRONTEND_ORIGIN"             -H "Content-Type: application/json"             --data "{"email":"$SMOKE_EMAIL","password":"$SMOKE_PASSWORD"}"             "$REVISION_URL/api/auth/login")"
+          echo "$LOGIN_HEADERS" | grep -qi '^HTTP/.* 200 '
+          ACCESS_TOKEN="$(printf '%s' "$LOGIN_HEADERS" | sed -n 's/^.*"accessToken":"\([^"]*\)".*$/\1/p' | head -n1)"
+          test -n "$ACCESS_TOKEN"
+
+          curl --fail --silent --show-error             -H "Origin: $FRONTEND_ORIGIN"             -H "Authorization: Bearer $ACCESS_TOKEN"             "$REVISION_URL/api/auth/me" >/tmp/me.json
+          grep -q '"user"' /tmp/me.json
+
+          curl --fail --silent --show-error             -H "Origin: $FRONTEND_ORIGIN"             --cookie /tmp/cookies.txt             --cookie-jar /tmp/cookies.txt             -X POST "$REVISION_URL/api/auth/refresh" >/tmp/refresh.json
+          grep -q '"accessToken"' /tmp/refresh.json
+
+          curl --fail --silent --show-error             -H "Origin: $FRONTEND_ORIGIN"             --cookie /tmp/cookies.txt             -X POST "$REVISION_URL/api/auth/logout" >/dev/null
+
+      - name: Promote verified revision
+        run: |
+          set -euo pipefail
+          gcloud run services update-traffic "$CLOUD_RUN_SERVICE"             --region "$CLOUD_RUN_REGION"             --to-revisions "${{ steps.revision.outputs.revision }}=100"
