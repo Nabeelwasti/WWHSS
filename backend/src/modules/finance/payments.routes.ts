@@ -5,13 +5,193 @@ import { Prisma } from "@prisma/client";
 import { authenticate } from "../../middleware/authenticate.js";
 import { authorize } from "../../middleware/authorize.js";
 import { prisma } from "../../db/client.js";
-import { recordPayment } from "./finance.service.js";
 
-export const paymentsRouter=Router();
+export const paymentsRouter = Router();
 
-const createSchema=z.object({invoiceId:z.string().uuid(),provider:z.enum(["MANUAL","JAZZCASH","EASYPAISA","BANK","CARD","OTHER"]),amount:z.number().positive(),externalReference:z.string().max(200).optional(),checkoutUrl:z.string().url().max(2048).optional(),expiresAt:z.string().datetime({offset:true}).optional(),metadata:z.record(z.unknown()).optional()});
-paymentsRouter.post("/intents",authenticate,authorize("finance:manage"),async(req,res)=>{const p=createSchema.safeParse(req.body);if(!p.success)return res.status(400).json({error:p.error.flatten()});const invoice=await prisma.feeInvoice.findUnique({where:{id:p.data.invoiceId},include:{payments:true,feeWaivers:true}});if(!invoice)return res.status(404).json({error:"Invoice not found"});const paid=invoice.payments.filter(x=>x.status!=="reversed").reduce((a,x)=>a.add(x.amount),new Prisma.Decimal(0));const waived=invoice.feeWaivers.reduce((a,x)=>a.add(x.amount),new Prisma.Decimal(0));const remaining=new Prisma.Decimal(invoice.amountDue).sub(waived).sub(paid);const amount=new Prisma.Decimal(p.data.amount);if(amount.gt(remaining))return res.status(400).json({error:"Payment intent exceeds the remaining invoice balance"});const intent=await prisma.paymentIntent.create({data:{invoiceId:p.data.invoiceId,provider:p.data.provider,amount,externalReference:p.data.externalReference,checkoutUrl:p.data.checkoutUrl,expiresAt:p.data.expiresAt?new Date(p.data.expiresAt):undefined,metadata:p.data.metadata as Prisma.InputJsonValue | undefined}});res.status(201).json({intent});});
+const providers = ["MANUAL", "JAZZCASH", "EASYPAISA", "BANK", "CARD", "OTHER"] as const;
+const createSchema = z.object({
+  invoiceId: z.string().uuid(),
+  provider: z.enum(providers),
+  amount: z.number().positive().finite(),
+  externalReference: z.string().trim().min(1).max(200).optional(),
+  checkoutUrl: z.string().url().max(2048).optional(),
+  expiresAt: z.string().datetime({ offset: true }).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+}).superRefine((value, ctx) => {
+  if (value.expiresAt && new Date(value.expiresAt).getTime() <= Date.now()) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["expiresAt"], message: "expiresAt must be in the future" });
+  }
+});
 
-function verifySignature(raw:Buffer,signature:string,secret:string){const expected=crypto.createHmac("sha256",secret).update(raw).digest("hex");const actual=Buffer.from(signature);const wanted=Buffer.from(expected);return actual.length===wanted.length&&crypto.timingSafeEqual(actual,wanted);}
-const allowedWebhookProviders = new Set(["MANUAL","JAZZCASH","EASYPAISA","BANK","CARD","OTHER"]);
-paymentsRouter.post("/webhooks/:provider",async(req,res)=>{const provider=req.params.provider.toUpperCase();if(!allowedWebhookProviders.has(provider))return res.status(404).json({error:"Unsupported payment provider"});const secret=process.env["PAYMENT_WEBHOOK_SECRET_"+provider]||process.env.PAYMENT_WEBHOOK_SECRET;if(!secret)return res.status(503).json({error:"Payment webhook is not configured"});const signature=typeof req.headers["x-payment-signature"]==="string"?req.headers["x-payment-signature"]:"";const raw=(req as typeof req & { rawBody?: Buffer }).rawBody;if(!raw)return res.status(400).json({error:"Signed raw request body is required"});if(!signature||!verifySignature(raw,signature,secret))return res.status(401).json({error:"Invalid payment signature"});const p=z.object({intentId:z.string().uuid(),status:z.enum(["SUCCEEDED","FAILED","CANCELLED"]),externalReference:z.string().max(200).optional()}).safeParse(req.body);if(!p.success)return res.status(400).json({error:p.error.flatten()});try{const result=await prisma.$transaction(async tx=>{const intent=await tx.paymentIntent.findUnique({where:{id:p.data.intentId}});if(!intent||intent.provider!==provider)return null;if(intent.expiresAt&&intent.expiresAt.getTime()<Date.now()&&intent.status==="PENDING")return null;const claimed=await tx.paymentIntent.updateMany({where:{id:intent.id,status:"PENDING"},data:{status:p.data.status,externalReference:p.data.externalReference||intent.externalReference}});if(claimed.count===0){return tx.paymentIntent.findUnique({where:{id:intent.id}});}const updated=await tx.paymentIntent.findUnique({where:{id:intent.id}});if(!updated)throw new Error("Payment intent disappeared during webhook processing");if(p.data.status==="SUCCEEDED"){const existing=await tx.payment.findFirst({where:{invoiceId:intent.invoiceId,method:"ONLINE:"+provider,status:"posted",amount:intent.amount}});if(!existing){await tx.payment.create({data:{invoiceId:intent.invoiceId,amount:intent.amount,method:"ONLINE:"+provider,status:"posted"}});const inv=await tx.feeInvoice.findUnique({where:{id:intent.invoiceId},include:{payments:true,feeWaivers:true}});if(inv){const paid=inv.payments.filter(x=>x.status!=="reversed").reduce((a,x)=>a.add(x.amount),new Prisma.Decimal(0));const waived=inv.feeWaivers.reduce((a,x)=>a.add(x.amount),new Prisma.Decimal(0));await tx.feeInvoice.update({where:{id:inv.id},data:{status:paid.add(waived).gte(inv.amountDue)?"paid":"partial"}});}}}return updated;});if(!result)return res.status(404).json({error:"Payment intent not found"});res.json({intent:result});}catch(e){res.status(400).json({error:e instanceof Error?e.message:"Webhook processing failed"});}});
+const webhookSchema = z.object({
+  intentId: z.string().uuid(),
+  status: z.enum(["SUCCEEDED", "FAILED", "CANCELLED"]),
+  externalReference: z.string().trim().min(1).max(200).optional(),
+});
+
+function verifySignature(raw: Buffer, signature: string, secret: string): boolean {
+  const expected = crypto.createHmac("sha256", secret).update(raw).digest("hex");
+  const actual = Buffer.from(signature.trim(), "utf8");
+  const wanted = Buffer.from(expected, "utf8");
+  return actual.length === wanted.length && crypto.timingSafeEqual(actual, wanted);
+}
+
+function providerSecret(provider: string): string | undefined {
+  return process.env[`PAYMENT_WEBHOOK_SECRET_${provider}`] || process.env.PAYMENT_WEBHOOK_SECRET;
+}
+
+paymentsRouter.post("/intents", authenticate, authorize("finance:manage"), async (req, res) => {
+  const parsed = createSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  try {
+    const intent = await prisma.$transaction(async (tx) => {
+      // Serialize intent creation per invoice so concurrent requests cannot reserve
+      // more than the remaining balance.
+      await tx.$queryRaw`SELECT id FROM "fee_invoices" WHERE id = ${parsed.data.invoiceId} FOR UPDATE`;
+      const invoice = await tx.feeInvoice.findUnique({
+        where: { id: parsed.data.invoiceId },
+        include: { payments: true, feeWaivers: true },
+      });
+      if (!invoice) throw new Error("Invoice not found");
+
+      const paid = invoice.payments
+        .filter((payment) => payment.status !== "reversed")
+        .reduce((sum, payment) => sum.add(payment.amount), new Prisma.Decimal(0));
+      const waived = invoice.feeWaivers.reduce((sum, waiver) => sum.add(waiver.amount), new Prisma.Decimal(0));
+      const pending = await tx.paymentIntent.findMany({
+        where: { invoiceId: invoice.id, status: "PENDING" },
+        select: { amount: true },
+      });
+      const pendingAmount = pending.reduce((sum, item) => sum.add(item.amount), new Prisma.Decimal(0));
+      const remaining = new Prisma.Decimal(invoice.amountDue).sub(waived).sub(paid).sub(pendingAmount);
+      const amount = new Prisma.Decimal(parsed.data.amount);
+      if (amount.gt(remaining)) throw new Error("Payment intent exceeds the remaining invoice balance");
+
+      return tx.paymentIntent.create({
+        data: {
+          invoiceId: invoice.id,
+          provider: parsed.data.provider,
+          amount,
+          externalReference: parsed.data.externalReference,
+          checkoutUrl: parsed.data.checkoutUrl,
+          expiresAt: parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : undefined,
+          metadata: parsed.data.metadata as Prisma.InputJsonValue | undefined,
+        },
+      });
+    });
+
+    return res.status(201).json({ intent });
+  } catch (error) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : "Unable to create payment intent" });
+  }
+});
+
+const allowedWebhookProviders = new Set<string>(providers);
+
+paymentsRouter.post("/webhooks/:provider", async (req, res) => {
+  const provider = req.params.provider.toUpperCase();
+  if (!allowedWebhookProviders.has(provider)) return res.status(404).json({ error: "Unsupported payment provider" });
+
+  const secret = providerSecret(provider);
+  if (!secret) return res.status(503).json({ error: "Payment webhook is not configured" });
+
+  const signature = typeof req.headers["x-payment-signature"] === "string"
+    ? req.headers["x-payment-signature"]
+    : "";
+  const raw = (req as typeof req & { rawBody?: Buffer }).rawBody;
+  if (!raw) return res.status(400).json({ error: "Signed raw request body is required" });
+  if (!signature || !verifySignature(raw, signature, secret)) {
+    return res.status(401).json({ error: "Invalid payment signature" });
+  }
+
+  const parsed = webhookSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      // Lock the invoice for the entire settlement decision. This makes webhook
+      // delivery safe even when multiple intents for the same invoice settle at once.
+      const lockedInvoice = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "fee_invoices" WHERE id = ${parsed.data.intentId}::uuid
+      `;
+      void lockedInvoice;
+
+      const intent = await tx.paymentIntent.findUnique({ where: { id: parsed.data.intentId } });
+      if (!intent || intent.provider !== provider) return null;
+
+      await tx.$queryRaw`SELECT id FROM "fee_invoices" WHERE id = ${intent.invoiceId} FOR UPDATE`;
+
+      const current = await tx.paymentIntent.findUnique({ where: { id: intent.id } });
+      if (!current) return null;
+      if (current.status !== "PENDING") return current;
+
+      if (current.expiresAt && current.expiresAt.getTime() < Date.now()) {
+        const cancelled = await tx.paymentIntent.update({
+          where: { id: current.id },
+          data: { status: "CANCELLED" },
+        });
+        return cancelled;
+      }
+
+      const claimed = await tx.paymentIntent.updateMany({
+        where: { id: current.id, status: "PENDING" },
+        data: {
+          status: parsed.data.status,
+          externalReference: parsed.data.externalReference || current.externalReference,
+        },
+      });
+      if (claimed.count !== 1) return tx.paymentIntent.findUnique({ where: { id: current.id } });
+
+      const updated = await tx.paymentIntent.findUnique({ where: { id: current.id } });
+      if (!updated) throw new Error("Payment intent disappeared during webhook processing");
+
+      if (parsed.data.status === "SUCCEEDED") {
+        const invoice = await tx.feeInvoice.findUnique({
+          where: { id: current.invoiceId },
+          include: { payments: true, feeWaivers: true },
+        });
+        if (!invoice) throw new Error("Invoice not found for payment intent");
+
+        const paid = invoice.payments
+          .filter((payment) => payment.status !== "reversed")
+          .reduce((sum, payment) => sum.add(payment.amount), new Prisma.Decimal(0));
+        const waived = invoice.feeWaivers.reduce((sum, waiver) => sum.add(waiver.amount), new Prisma.Decimal(0));
+        const remaining = new Prisma.Decimal(invoice.amountDue).sub(waived).sub(paid);
+        if (updated.amount.gt(remaining)) {
+          throw new Error("Payment would exceed the remaining invoice balance");
+        }
+
+        await tx.payment.create({
+          data: {
+            invoiceId: current.invoiceId,
+            amount: updated.amount,
+            method: "ONLINE:" + provider,
+            status: "posted",
+            paymentIntentId: current.id,
+          },
+        });
+
+        const newPaid = paid.add(updated.amount);
+        await tx.feeInvoice.update({
+          where: { id: invoice.id },
+          data: { status: newPaid.add(waived).gte(invoice.amountDue) ? "paid" : "partial" },
+        });
+        await tx.auditLog.create({
+          data: {
+            action: "finance:payment_webhook",
+            resource: `payment_intent:${current.id}`,
+            metadata: { provider, status: parsed.data.status, invoiceId: current.invoiceId, amount: updated.amount.toString() },
+          },
+        });
+      }
+
+      return updated;
+    });
+
+    if (!result) return res.status(404).json({ error: "Payment intent not found" });
+    return res.json({ intent: result });
+  } catch (error) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : "Webhook processing failed" });
+  }
+});
