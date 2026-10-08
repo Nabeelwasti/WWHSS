@@ -439,6 +439,21 @@
       ]
     }
   },
+  "/api/operations/payroll/periods/{id}/approve": {
+    "post": {
+      "summary": "Approve payroll period",
+      "responses": {
+        "200": {
+          "description": "Approved"
+        }
+      },
+      "security": [
+        {
+          "bearerAuth": []
+        }
+      ]
+    }
+  },
   "/api/operations/payroll/records": {
     "post": {
       "summary": "Create payroll record",
