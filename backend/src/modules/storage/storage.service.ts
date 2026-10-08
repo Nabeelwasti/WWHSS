@@ -406,7 +406,8 @@ export function getPrivateFilePath(filename: string): string {
 export async function getPrivateFileContent(filename: string, requesterUserId: string) {
   if (!requesterUserId) throw new StorageAuthorizationError("An authenticated requester is required");
 
-  const safeName = path.basename(filename);
+  assertSafeStorageKey(filename);
+  const safeName = filename;
   const file = await prisma.storageFile.findUnique({ where: { storageKey: safeName } });
   if (!file) throw new StorageNotFoundError("File not found");
 
@@ -445,6 +446,7 @@ export async function getPrivateFileContent(filename: string, requesterUserId: s
 
   const provider = getStorageProvider();
   const fileData = await provider.getFile(safeName);
+  fileData.mimeType = file.mimeType;
 
   await prisma.auditLog.create({
     data: {
@@ -463,7 +465,8 @@ export async function getPrivateFileContent(filename: string, requesterUserId: s
 
 export async function deletePrivateFile(filename: string, requesterUserId: string) {
   if (!requesterUserId) throw new StorageAuthorizationError("An authenticated requester is required");
-  const safeName = path.basename(filename);
+  assertSafeStorageKey(filename);
+  const safeName = filename;
   const file = await prisma.storageFile.findUnique({ where: { storageKey: safeName } });
   if (!file) throw new StorageNotFoundError("File not found");
   if (file.ownerUserId !== requesterUserId) {
