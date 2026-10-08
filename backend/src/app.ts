@@ -114,6 +114,10 @@ const healthHandler = async (_req: express.Request, res: express.Response) => {
     res.status(503).json({ status: "degraded", database: "unreachable" });
   }
 };
+app.get("/", (_req, res) => {
+  res.json({ service: "wwhss-api", status: "ok" });
+});
+
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
