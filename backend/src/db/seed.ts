@@ -58,12 +58,14 @@ const PERMISSIONS = [
   "inventory:manage",
   "ptm:view",
   "ptm:manage",
+  "asset:view",
+  "asset:manage",
 ];
 
 const ROLES: Record<string, string[]> = {
   super_admin: PERMISSIONS,
   principal: [
-    "hr:view", "hr:manage", "payroll:view", "payroll:manage", "admissions:view", "admissions:manage", "transport:view", "transport:manage", "inventory:view", "inventory:manage", "ptm:view", "ptm:manage",
+    "hr:view", "hr:manage", "payroll:view", "payroll:manage", "admissions:view", "admissions:manage", "transport:view", "transport:manage", "inventory:view", "inventory:manage", "asset:view", "asset:manage", "ptm:view", "ptm:manage",
     "storage:upload",
     "ai:use",
     "attendance:view:class",
