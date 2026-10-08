@@ -30,7 +30,8 @@ export async function assertCanManageUser(actorId: string, targetUserId: string)
     highestRoleLevel(actorId),
     highestRoleLevel(targetUserId),
   ]);
-  if (targetLevel >= actorLevel) {
+  const actorIsSuperAdmin = actorLevel >= ROLE_LEVELS.super_admin;
+  if (!actorIsSuperAdmin && targetLevel >= actorLevel) {
     throw new UserValidationError("You cannot manage a user with an equal or higher privileged role.");
   }
 }
@@ -46,10 +47,11 @@ export async function assertCanAssignRole(actorId: string, targetUserId: string,
     highestRoleLevel(targetUserId),
   ]);
 
-  if (requestedLevel >= actorLevel) {
+  const actorIsSuperAdmin = actorLevel >= ROLE_LEVELS.super_admin;
+  if (!actorIsSuperAdmin && requestedLevel >= actorLevel) {
     throw new UserValidationError("You cannot grant a role with privilege equal to or higher than your own.");
   }
-  if (targetLevel >= actorLevel) {
+  if (!actorIsSuperAdmin && targetLevel >= actorLevel) {
     throw new UserValidationError("You cannot modify a user with an equal or higher privileged role.");
   }
 }
