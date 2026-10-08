@@ -31,6 +31,7 @@ const envSchema = z.object({
   AUTH_COOKIE_CROSS_SITE: z.preprocess((value) => value === undefined ? false : value === true || value === "true" || value === "1", z.boolean()),
   LIBRARY_FINE_PER_DAY: z.coerce.number().min(0).default(5),
   TRUST_PROXY: z.string().default("0"),
+  ALLOW_LOCAL_PERSISTENCE: z.preprocess((value) => value === undefined ? false : value === true || value === "true" || value === "1", z.boolean()),
   MAX_DAILY_AI_REQUESTS: z.coerce.number().int().min(1).default(100),
   MAX_AI_INPUT_CHARS: z.coerce.number().int().min(10).default(2000),
   MAX_AI_OUTPUT_TOKENS: z.coerce.number().int().min(10).default(800),
@@ -48,9 +49,10 @@ const envSchema = z.object({
   return true;
 }, { message: "Default/development JWT secrets, issuer, or audience cannot be used in production or preview deployments" }).refine((data) => {
   if (!isProductionOrPreview) return true;
-  if (data.STORAGE_PROVIDER === "local" || data.BACKUP_PROVIDER === "local" || data.BACKUP_PROVIDER === "memory") return false;
+  const durablePersistenceRequired = isVercelDeployment || !data.ALLOW_LOCAL_PERSISTENCE;
+  if (durablePersistenceRequired && (data.STORAGE_PROVIDER === "local" || data.BACKUP_PROVIDER === "local" || data.BACKUP_PROVIDER === "memory")) return false;
+  if (durablePersistenceRequired && !data.S3_BUCKET) return false;
   if (data.AUTH_COOKIE_CROSS_SITE && data.CORS_ORIGIN.split(",").some((origin) => !/^https:\/\//i.test(origin.trim()))) return false;
-  if (!data.S3_BUCKET) return false;
   if (!!data.S3_ACCESS_KEY_ID !== !!data.S3_SECRET_ACCESS_KEY) return false;
   if (data.S3_ENDPOINT && !/^https:\/\//i.test(data.S3_ENDPOINT)) return false;
   const origins = data.CORS_ORIGIN.split(",").map((value) => value.trim()).filter(Boolean);
@@ -84,6 +86,7 @@ export const env = {
   s3Region: rawEnv.S3_REGION,
   s3AccessKeyId: rawEnv.S3_ACCESS_KEY_ID,
   s3SecretAccessKey: rawEnv.S3_SECRET_ACCESS_KEY,
+  allowLocalPersistence: rawEnv.ALLOW_LOCAL_PERSISTENCE,
   s3Endpoint: rawEnv.S3_ENDPOINT,
   accessTokenTtlMin: rawEnv.ACCESS_TOKEN_TTL_MIN,
   refreshTokenTtlDays: rawEnv.REFRESH_TOKEN_TTL_DAYS,
