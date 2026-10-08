@@ -2,7 +2,7 @@
 
 ## Production topology
 
-Browser → Vercel frontend/proxy → Express API → managed PostgreSQL + private S3/R2.
+Browser → Vercel/static frontend → Cloud Run Express API → managed PostgreSQL + private S3/R2.
 
 Preview and Production must use isolated databases, storage locations and secrets. The Vercel frontend normally reaches the backend through the same-origin `/api/*` proxy; `VITE_API_BASE_URL` is optional for an intentionally direct backend origin.
 
