@@ -118,7 +118,7 @@ export async function assignStudentFundingRecord(
       where: {
         studentProfileId: input.studentProfileId,
         startDate: { lt: endDate ?? new Date("9999-12-31T23:59:59.999Z") },
-        OR: [{ endDate: null }, ...(endDate ? [{ endDate: { gt: startDate } }] : [])],
+        OR: [{ endDate: null }, { endDate: { gt: startDate } }],
       },
     });
     if (overlap) throw new FinanceValidationError("Funding period overlaps an existing effective funding record");
