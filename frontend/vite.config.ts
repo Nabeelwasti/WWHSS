@@ -10,7 +10,7 @@ function swVersionPlugin(): Plugin {
       const swPath = path.resolve(__dirname, "dist/sw.js");
       if (fs.existsSync(swPath)) {
         let content = fs.readFileSync(swPath, "utf-8");
-        const buildVersion = process.env.BUILD_VERSION || `v-${Date.now()}`;
+        const buildVersion = process.env.BUILD_VERSION || "local";
         content = content.replace(/const VERSION = "[^"]+";/, `const VERSION = "${buildVersion}";`);
         fs.writeFileSync(swPath, content);
       }
