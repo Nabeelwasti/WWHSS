@@ -627,7 +627,7 @@ model Payment {
   invoice        FeeInvoice @relation(fields: [invoiceId], references: [id])
   receivedByUser User?      @relation("ReceivedPayments", fields: [receivedByUserId], references: [id])
   adjustments   PaymentAdjustment[]
-  paymentIntent PaymentIntent? @relation("IntentPayment")
+  paymentIntent PaymentIntent? @relation("IntentPayment", fields: [paymentIntentId], references: [id], onDelete: SetNull)
 
   @@map("payments")
 }
