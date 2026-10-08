@@ -110,7 +110,7 @@ Before real school data, configure at least:
 - S3 credentials only when the provider requires them; if one explicit credential is set, set the pair
 - HTTPS CORS_ORIGIN
 - TRUST_PROXY=true or 1
-- VITE_API_BASE_URL only when intentionally using a direct backend origin
+- VITE_API_BASE_URL required for hosted Vercel builds and must point to the matching Cloud Run HTTPS backend
 - AUTH_COOKIE_CROSS_SITE=true only when intentionally cross-origin
 
 Web research stays disabled unless deliberately configured.
