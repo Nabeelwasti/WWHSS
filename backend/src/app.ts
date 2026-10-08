@@ -109,10 +109,12 @@ const generalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 600, standar
 app.use("/api", generalLimiter);
 const expensiveOperationLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 60, standardHeaders: true, legacyHeaders: false, message: { error: "This operation is temporarily rate-limited. Please try again later." } });
 const backupOperationLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false, message: { error: "Backup operations are temporarily rate-limited. Please try again later." } });
+const paymentWebhookLimiter = rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: true, legacyHeaders: false, message: { error: "Payment webhook rate limit exceeded. Please retry later." } });
 app.use("/api/storage/upload", expensiveOperationLimiter);
 app.use("/api/documents", expensiveOperationLimiter);
 app.use("/api/ai/assessment", expensiveOperationLimiter);
 app.use("/api/backup", backupOperationLimiter);
+app.use("/api/payments/webhooks", paymentWebhookLimiter);
 
 const healthHandler = async (_req: express.Request, res: express.Response) => {
   try {
@@ -169,6 +171,11 @@ app.use("/api/parent", parentRouter);
 app.use("/api/school", schoolRouter);
 app.use("/api/operations", operationsRouter);
 app.use("/api/payments", paymentsRouter);
+
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/")) return res.status(404).json({ error: "Route not found", requestId: res.getHeader("X-Request-ID") });
+  return next();
+});
 
 app.use((err: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   const status = typeof err === "object" && err && "status" in err && typeof (err as { status?: unknown }).status === "number"
