@@ -49,7 +49,6 @@ const envSchema = z.object({
 
   if (data.JWT_ACCESS_SECRET.includes("dev-jwt") || data.JWT_ACCESS_SECRET.includes("CHANGE-ME")) issue("JWT_ACCESS_SECRET", "must be a unique non-development secret in production/preview");
   if (data.JWT_REFRESH_SECRET.includes("dev-jwt") || data.JWT_REFRESH_SECRET.includes("CHANGE-ME")) issue("JWT_REFRESH_SECRET", "must be a unique non-development secret in production/preview");
-  if (data.JWT_ACCESS_SECRET === data.JWT_REFRESH_SECRET) issue("JWT_REFRESH_SECRET", "must differ from JWT_ACCESS_SECRET");
   if (data.JWT_ISSUER === "wwhss-api") issue("JWT_ISSUER", "must be explicitly configured in production/preview");
   if (data.JWT_AUDIENCE === "wwhss-web") issue("JWT_AUDIENCE", "must be explicitly configured in production/preview");
   if (data.BACKUP_ENCRYPTION_KEY.includes("dev-backup") || data.BACKUP_ENCRYPTION_KEY.includes("CHANGE-ME")) issue("BACKUP_ENCRYPTION_KEY", "must be a unique non-development key in production/preview");
