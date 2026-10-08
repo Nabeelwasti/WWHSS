@@ -253,7 +253,7 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
       const secondWebhook = await webhook(secondIntent.id);
       expect(secondWebhook.status).toBe(200);
 
-      const payments = await prisma.payment.findMany({ where: { invoiceId: invoice.id }, orderBy: { createdAt: "asc" } });
+      const payments = await prisma.payment.findMany({ where: { invoiceId: invoice.id } });
       expect(payments).toHaveLength(2);
       expect(payments.map((payment) => payment.paymentIntentId).sort()).toEqual([firstIntent.id, secondIntent.id].sort());
 
