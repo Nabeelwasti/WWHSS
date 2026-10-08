@@ -74,7 +74,7 @@ app.use(cors({
     callback(new Error("CORS origin is not allowed"));
   },
 }));
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({\n  limit: "1mb",\n  verify: (req, _res, buf) => {\n    (req as express.Request & { rawBody?: Buffer }).rawBody = Buffer.from(buf);\n  },\n}));
 app.use(cookieParser());
 
 app.use((req, res, next) => {
