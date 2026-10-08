@@ -1,10 +1,6 @@
 export const config = {
   rewrites: [
     {
-      source: "/api/:path*",
-      destination: "https://wwhss-backend-nabeel-wasti.vercel.app/api/:path*",
-    },
-    {
       source: "/(.*)",
       destination: "/index.html",
     },
