@@ -30,7 +30,7 @@ The repository root `vercel.json` is the supported repo-root Vercel configuratio
 
 A Vercel project can instead set Root Directory to `frontend/`; `frontend/vercel.ts` is provided for that supported layout.
 
-Vercel frontend deployments use the repository's `/api/*` proxy to the stable backend service. `VITE_API_BASE_URL` is optional and is used only when an operator intentionally chooses a direct backend origin.
+Vercel frontend deployments use the SPA fallback only. Hosted production uses the required `VITE_API_BASE_URL` to call the matching Cloud Run HTTPS backend directly; same-origin `/api` remains supported for Docker/self-hosting.
 
 Do not place secrets, tokens or credentials in frontend code or Vite environment variables.
 
