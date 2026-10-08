@@ -81,8 +81,9 @@ AI-generated assessment content is never replaced by fabricated placeholder ques
 
 ## Recommended free-first hosted topology
 
-- Frontend: Vercel Hobby.
+- Frontend: Vercel Pro/Enterprise for a commercial deployment, or another commercial static host/CDN.
 - Backend: Google Cloud Run using `backend/Dockerfile`. Cloud Run is preferred over forcing the stateful Express server into a serverless-only deployment model.
+- Vercel Hobby is not a commercial production option under Vercel's current terms; do not sell or operate the product commercially on Hobby.
 - Database: Neon PostgreSQL via Vercel Marketplace or directly from Neon.
 - Object storage: Cloudflare R2 using the existing S3-compatible storage provider.
 - API routing: hosted Vercel builds use `VITE_API_BASE_URL` to call the matching Cloud Run origin directly; the browser preserves cookie credentials. Same-origin `/api` remains the default for Docker/self-hosting. When frontend and backend are intentionally cross-origin, set `AUTH_COOKIE_CROSS_SITE=true` and use `SameSite=None; Secure` cookies.
