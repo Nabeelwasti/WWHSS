@@ -741,5 +741,30 @@
         }
       }
     }
+  },
+  "/api/payments/intents": {
+    "post": {
+      "summary": "Create a provider-neutral online payment intent",
+      "security": [
+        {
+          "bearerAuth": []
+        }
+      ],
+      "responses": {
+        "201": {
+          "description": "Payment intent created"
+        }
+      }
+    }
+  },
+  "/api/payments/webhooks/{provider}": {
+    "post": {
+      "summary": "Process a signed payment provider webhook",
+      "responses": {
+        "200": {
+          "description": "Webhook processed"
+        }
+      }
+    }
   }
 }
