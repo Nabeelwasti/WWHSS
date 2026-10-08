@@ -683,5 +683,63 @@
         }
       }
     }
+  },
+  "/api/operations/inventory/low-stock": {
+    "get": {
+      "summary": "List inventory items at or below reorder level",
+      "security": [
+        {
+          "bearerAuth": []
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Low stock items"
+        }
+      }
+    }
+  },
+  "/api/operations/assets": {
+    "get": {
+      "summary": "List assigned school assets",
+      "security": [
+        {
+          "bearerAuth": []
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Assets"
+        }
+      }
+    },
+    "post": {
+      "summary": "Assign an asset to a staff member or student",
+      "security": [
+        {
+          "bearerAuth": []
+        }
+      ],
+      "responses": {
+        "201": {
+          "description": "Asset assigned"
+        }
+      }
+    }
+  },
+  "/api/operations/assets/{id}/return": {
+    "post": {
+      "summary": "Return an assigned school asset",
+      "security": [
+        {
+          "bearerAuth": []
+        }
+      ],
+      "responses": {
+        "200": {
+          "description": "Asset returned"
+        }
+      }
+    }
   }
 }
