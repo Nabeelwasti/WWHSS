@@ -29,6 +29,11 @@ Vercel remains an excellent frontend/proxy layer. A Vercel-hosted backend is pos
 - RBAC with class, section, subject, department, student/self and guardian scope
 - Academic years, classes, sections, subjects and enrollment history
 - Student and staff management
+- Enterprise HR, staff leave approval and payroll periods/records
+- Admissions enquiry pipeline with lifecycle tracking
+- Transport vehicles, routes and student assignments
+- Inventory stock, movements, reorder thresholds and audit trail
+- Parent-teacher meeting scheduling with conflict detection
 - Attendance with transactional enrollment validation
 - LMS courses, lessons, resources, assignments, submissions and quizzes
 - Server-side quiz grading with protected answer keys
