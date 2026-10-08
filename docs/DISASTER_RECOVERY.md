@@ -36,3 +36,16 @@ Losing the encryption key makes encrypted backups unrecoverable.
 - Keep at least one off-site encrypted backup.
 - Define and periodically measure RPO and RTO.
 - After restoring, verify admin login, refresh-token rotation, role permissions, and audit logging.
+
+
+## Restore checkpoint lifecycle
+
+Every MERGE/REPLACE restore is preceded by a read-only DRY_RUN validation. A real restore records:
+
+1. `STARTED` after envelope/schema validation.
+2. `STORAGE_STAGED` after all backup objects required for the restore are present.
+3. `DATABASE_COMMITTED` only after the PostgreSQL transaction commits and sequences are synchronized.
+4. `COMPLETE` only after post-commit storage reconciliation succeeds.
+5. `FAILED` on any failure, with the failure message retained for operators.
+
+Historical refresh-token/session rows are never restored. The restore explicitly invalidates refresh sessions so an old backup cannot revive a previous login session.
