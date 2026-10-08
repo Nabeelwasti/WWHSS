@@ -28,6 +28,7 @@ const envSchema = z.object({
   ACCESS_TOKEN_TTL_MIN: z.coerce.number().int().min(1).max(1440).default(15),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
+  AUTH_COOKIE_CROSS_SITE: z.preprocess((value) => value === undefined ? false : value === true || value === "true" || value === "1", z.boolean()),
   LIBRARY_FINE_PER_DAY: z.coerce.number().min(0).default(5),
   TRUST_PROXY: z.string().default("0"),
   MAX_DAILY_AI_REQUESTS: z.coerce.number().int().min(1).default(100),
@@ -47,6 +48,7 @@ const envSchema = z.object({
 }, { message: "Default/development JWT secrets, issuer, or audience cannot be used in production or preview deployments" }).refine((data) => {
   if (!isProductionOrPreview) return true;
   if (data.STORAGE_PROVIDER === "local" || data.BACKUP_PROVIDER === "local" || data.BACKUP_PROVIDER === "memory") return false;
+  if (data.AUTH_COOKIE_CROSS_SITE && data.CORS_ORIGIN.split(",").some((origin) => !/^https:\/\//i.test(origin.trim()))) return false;
   if (!data.S3_BUCKET || !data.S3_ACCESS_KEY_ID || !data.S3_SECRET_ACCESS_KEY) return false;
   const origins = data.CORS_ORIGIN.split(",").map((value) => value.trim()).filter(Boolean);
   if (origins.length === 0 || origins.some((origin) => !/^https:\/\//i.test(origin) || /localhost|127\.0\.0\.1/i.test(origin))) return false;
@@ -83,6 +85,7 @@ export const env = {
   accessTokenTtlMin: rawEnv.ACCESS_TOKEN_TTL_MIN,
   refreshTokenTtlDays: rawEnv.REFRESH_TOKEN_TTL_DAYS,
   corsOrigin: rawEnv.CORS_ORIGIN,
+  authCookieCrossSite: rawEnv.AUTH_COOKIE_CROSS_SITE,
   corsOrigins: rawEnv.CORS_ORIGIN.split(",").map((value) => value.trim()).filter(Boolean),
   libraryFinePerDay: rawEnv.LIBRARY_FINE_PER_DAY,
   trustProxy: rawEnv.TRUST_PROXY,
