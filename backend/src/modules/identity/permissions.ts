@@ -40,7 +40,11 @@ export async function userHasPermission(
       if (!grantedKeys.includes(permissionKey)) continue;
 
       const roleIsUnscoped = !ur.classId && !ur.sectionId && !ur.subjectId && !ur.departmentId;
-      if (roleIsUnscoped) return true;
+      const permissionRequiresScope = permissionKey.endsWith(":scoped");
+      if (roleIsUnscoped) {
+        if (permissionRequiresScope) continue;
+        return true;
+      }
       if (requestedScopeIsEmpty) continue;
 
       if (scopeMatches(ur, scope)) return true;
@@ -71,7 +75,11 @@ export async function userHasPermission(
         if (!grantedKeys.includes(permissionKey)) continue;
 
         const roleIsUnscoped = !ur.classId && !ur.sectionId && !ur.subjectId && !ur.departmentId;
-        if (roleIsUnscoped) return true;
+        const permissionRequiresScope = permissionKey.endsWith(":scoped");
+        if (roleIsUnscoped) {
+          if (permissionRequiresScope) continue;
+          return true;
+        }
 
         if (scopeMatches(ur, {
           classId: studentProfile.classId ?? undefined,
