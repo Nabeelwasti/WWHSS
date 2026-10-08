@@ -115,8 +115,20 @@ documentsRouter.get("/file/:format/:docType/:referenceId", async (req, res) => {
     try { await requireDocumentPermission(req.userId, "documents:print", scope); } catch { return res.status(403).json({ error: "Forbidden: document is outside your permitted scope" }); }
     const payload = await generatePrintableDocumentPayload(req.params.docType, req.params.referenceId);
     const title = `${req.params.docType.replace(/[_-]+/g, " ")} — WWHS Digital Campus`;
-    const output = format.data === "pdf" ? renderDocumentPdf(payload, title) : format.data === "html" ? renderDocumentHtml(payload, title) : renderDocumentCsv(payload);
-    const mime = format.data === "pdf" ? "application/pdf" : format.data === "html" ? "text/html; charset=utf-8" : "text/csv; charset=utf-8";
+    const output = format.data === "pdf"
+      ? renderDocumentPdf(payload, title)
+      : format.data === "html"
+      ? renderDocumentHtml(payload, title)
+      : format.data === "xlsx"
+      ? renderDocumentXlsx(payload, title)
+      : renderDocumentCsv(payload);
+    const mime = format.data === "pdf"
+      ? "application/pdf"
+      : format.data === "html"
+      ? "text/html; charset=utf-8"
+      : format.data === "xlsx"
+      ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      : "text/csv; charset=utf-8";
     res.setHeader("Content-Type", mime); res.setHeader("Content-Length", output.byteLength); res.setHeader("Cache-Control", "private, no-store"); res.setHeader("Content-Disposition", `attachment; filename="${req.params.docType}-${req.params.referenceId}.${format.data}"`); res.send(output);
   } catch (e) { if (e instanceof DocumentValidationError) return res.status(404).json({ error: e.message }); throw e; }
 });
