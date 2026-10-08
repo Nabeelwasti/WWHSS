@@ -8,10 +8,10 @@ WWHSS Digital Campus is a production-oriented school management platform for Wor
 Browser
   │
   ▼
-Vercel frontend
-  │ /api/*
+Vercel Vite frontend
+  │ configured VITE_API_BASE_URL (or same-origin /api for Docker/self-hosting)
   ▼
-Cloud Run / Docker backend
+Cloud Run / Docker Express backend
   │
   ├── PostgreSQL (managed)
   ├── S3/R2 durable object storage
@@ -97,9 +97,9 @@ Preview and production require real values for:
 - BACKUP_PROVIDER=s3 or cloud
 - S3_BUCKET
 - S3_REGION
-- S3_ACCESS_KEY_ID
-- S3_SECRET_ACCESS_KEY
+- S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY are optional as a pair when the S3-compatible provider supplies workload/instance credentials; if one is set, the other is required.
 - CORS_ORIGIN=https://...
+- AUTH_COOKIE_CROSS_SITE=true only when the browser and backend are intentionally cross-origin; otherwise leave it false.
 - TRUST_PROXY=true or 1
 
 Web research is **off unless deliberately enabled**:
@@ -205,7 +205,7 @@ Repository configuration intentionally has:
 
 This keeps GitHub pushes from being treated as automatic Vercel releases. GitHub Actions remains the verification gate. Vercel production deployment should be performed deliberately after a release candidate is green.
 
-The frontend uses `frontend/vercel.ts` as its authoritative routing configuration. `BACKEND_URL` is supplied separately in Vercel Preview and Production environments so `/api/*` always reaches the matching Cloud Run backend. `frontend/vercel.legacy.json` is retained only as an archival copy of the former hardcoded Vercel-backend routing configuration and is not an active configuration file.
+The repository root `vercel.json` is the supported Vercel configuration for the repo-root deployment: it builds the Vite frontend from `frontend/`, serves `frontend/dist`, keeps Git-triggered Vercel deployment disabled, and provides the SPA fallback. `frontend/vercel.ts` is also kept as a supported frontend-root configuration for a Vercel project whose Root Directory is `frontend/`. API routing is controlled by the Vite-built `VITE_API_BASE_URL`; Preview and Production must each receive their own backend origin. `frontend/vercel.legacy.json` is retained only as an archival copy of the former hardcoded Vercel-backend routing configuration and is not active.
 
 ## Release checklist
 
