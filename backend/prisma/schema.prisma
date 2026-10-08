@@ -50,6 +50,13 @@ model User {
   createdAiTests          AiAssessmentTest[]     @relation("CreatedAiTests")
   gradedAiAnswerSheets    AiAnswerSheet[]        @relation("GradedAiAnswerSheets")
   createdDocuments        DocumentRecord[]       @relation("CreatedDocuments")
+  approvedLeaveRequests LeaveRequest[] @relation("LeaveApprovedBy")
+  payrollTransactions PayrollRecord[] @relation("PayrollCreatedBy")
+  inventoryTransactions InventoryTransaction[] @relation("InventoryCreatedBy")
+  assignedAdmissionLeads AdmissionLead[] @relation("AdmissionAssignedTo")
+  ptmMeetingsCreated PtmMeeting[] @relation("PtmCreatedBy")
+  ptmMeetingsAsParent PtmMeeting[] @relation("PtmParent")
+  ptmMeetingsAsTeacher PtmMeeting[] @relation("PtmTeacher")
 
   @@index([fullName(ops: raw("gin_trgm_ops"))], type: Gin, map: "users_fullName_trgm_idx")
   @@index([email(ops: raw("gin_trgm_ops"))], type: Gin, map: "users_email_trgm_idx")
@@ -277,6 +284,9 @@ model StudentProfile {
   enrollmentHistory StudentEnrollmentHistory[]
   aiAnswerSheets    AiAnswerSheet[]
   documentRecords   DocumentRecord[]
+  transportAssignments TransportAssignment[]
+  ptmMeetings PtmMeeting[]
+  convertedAdmissionLead AdmissionLead? @relation("AdmissionConvertedStudent")
 
   @@index([classId, sectionId])
   @@index([status])
@@ -309,8 +319,183 @@ model StaffProfile {
   user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   department      Department?      @relation(fields: [departmentId], references: [id])
   documentRecords DocumentRecord[]
+  leaveRequests LeaveRequest[]
+  payrollRecords PayrollRecord[]
 
   @@map("staff_profiles")
+}
+
+
+model LeaveRequest {
+  id String @id @default(uuid())
+  staffProfileId String
+  leaveType String
+  startDate DateTime
+  endDate DateTime
+  days Decimal @db.Decimal(6, 2)
+  reason String?
+  status String @default("PENDING")
+  approvedByUserId String?
+  decisionNote String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  staff StaffProfile @relation(fields: [staffProfileId], references: [id], onDelete: Cascade)
+  approvedBy User? @relation("LeaveApprovedBy", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  @@index([staffProfileId, startDate, endDate])
+  @@map("leave_requests")
+}
+
+model PayrollPeriod {
+  id String @id @default(uuid())
+  label String
+  startDate DateTime
+  endDate DateTime
+  status String @default("DRAFT")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  records PayrollRecord[]
+  @@unique([startDate, endDate])
+  @@map("payroll_periods")
+}
+
+model PayrollRecord {
+  id String @id @default(uuid())
+  payrollPeriodId String
+  staffProfileId String
+  basicSalary Decimal @db.Decimal(12, 2)
+  allowances Decimal @db.Decimal(12, 2) @default(0)
+  deductions Decimal @db.Decimal(12, 2) @default(0)
+  netSalary Decimal @db.Decimal(12, 2)
+  status String @default("DRAFT")
+  paidAt DateTime?
+  paymentReference String?
+  notes String?
+  createdByUserId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  period PayrollPeriod @relation(fields: [payrollPeriodId], references: [id], onDelete: Cascade)
+  staff StaffProfile @relation(fields: [staffProfileId], references: [id])
+  createdBy User? @relation("PayrollCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  @@unique([payrollPeriodId, staffProfileId])
+  @@index([staffProfileId])
+  @@map("payroll_records")
+}
+
+model AdmissionLead {
+  id String @id @default(uuid())
+  applicantName String
+  guardianName String?
+  phone String?
+  email String?
+  desiredClass String?
+  source String?
+  status String @default("NEW")
+  notes String?
+  assignedToUserId String?
+  convertedStudentId String? @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  assignedTo User? @relation("AdmissionAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  convertedStudent StudentProfile? @relation("AdmissionConvertedStudent", fields: [convertedStudentId], references: [id], onDelete: SetNull)
+  @@index([status, createdAt])
+  @@index([phone])
+  @@map("admission_leads")
+}
+
+model TransportVehicle {
+  id String @id @default(uuid())
+  registrationNo String @unique
+  capacity Int
+  driverName String?
+  driverPhone String?
+  status String @default("ACTIVE")
+  createdAt DateTime @default(now())
+  routes TransportRoute[]
+  @@map("transport_vehicles")
+}
+
+model TransportRoute {
+  id String @id @default(uuid())
+  name String @unique
+  pickupPoints Json
+  monthlyFee Decimal @db.Decimal(10, 2) @default(0)
+  vehicleId String?
+  status String @default("ACTIVE")
+  createdAt DateTime @default(now())
+  vehicle TransportVehicle? @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  assignments TransportAssignment[]
+  @@map("transport_routes")
+}
+
+model TransportAssignment {
+  id String @id @default(uuid())
+  studentProfileId String
+  routeId String
+  pickupPoint String?
+  startDate DateTime
+  endDate DateTime?
+  status String @default("ACTIVE")
+  createdAt DateTime @default(now())
+  student StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  route TransportRoute @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  @@unique([studentProfileId, routeId, startDate])
+  @@index([studentProfileId, status])
+  @@map("transport_assignments")
+}
+
+model InventoryItem {
+  id String @id @default(uuid())
+  sku String @unique
+  name String
+  category String
+  quantity Int @default(0)
+  reorderLevel Int @default(0)
+  unit String @default("unit")
+  status String @default("ACTIVE")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  transactions InventoryTransaction[]
+  @@index([category, name])
+  @@map("inventory_items")
+}
+
+model InventoryTransaction {
+  id String @id @default(uuid())
+  itemId String
+  type String
+  quantity Int
+  unitCost Decimal? @db.Decimal(12, 2)
+  reference String?
+  notes String?
+  createdByUserId String
+  createdAt DateTime @default(now())
+  item InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  createdBy User @relation("InventoryCreatedBy", fields: [createdByUserId], references: [id])
+  @@index([itemId, createdAt])
+  @@map("inventory_transactions")
+}
+
+model PtmMeeting {
+  id String @id @default(uuid())
+  studentProfileId String
+  parentUserId String?
+  teacherUserId String?
+  scheduledAt DateTime
+  durationMinutes Int @default(15)
+  mode String @default("IN_PERSON")
+  status String @default("SCHEDULED")
+  agenda String?
+  notes String?
+  createdByUserId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  student StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  parent User? @relation("PtmParent", fields: [parentUserId], references: [id], onDelete: SetNull)
+  teacher User? @relation("PtmTeacher", fields: [teacherUserId], references: [id], onDelete: SetNull)
+  createdBy User @relation("PtmCreatedBy", fields: [createdByUserId], references: [id])
+  @@index([scheduledAt, status])
+  @@index([studentProfileId, scheduledAt])
+  @@map("ptm_meetings")
 }
 
 // ---------- FUNDING & FEES ----------
