@@ -33,8 +33,7 @@ Preview and production must provide real values for:
 - `BACKUP_PROVIDER=s3` or `cloud`
 - `S3_BUCKET`
 - `S3_REGION`
-- `S3_ACCESS_KEY_ID`
-- `S3_SECRET_ACCESS_KEY`
+- `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` only when explicit S3 credentials are required; they must be provided as a pair. Workload identity is supported when the provider supplies credentials automatically.
 - `CORS_ORIGIN` using HTTPS
 - `TRUST_PROXY=true` or `1`
 - `WEB_RESEARCH_ENABLED=false` unless a real `WEB_RESEARCH_API_KEY` is intentionally configured
@@ -86,7 +85,7 @@ AI-generated assessment content is never replaced by fabricated placeholder ques
 - Backend: Google Cloud Run using `backend/Dockerfile`. Cloud Run is preferred over forcing the stateful Express server into a serverless-only deployment model.
 - Database: Neon PostgreSQL via Vercel Marketplace or directly from Neon.
 - Object storage: Cloudflare R2 using the existing S3-compatible storage provider.
-- API routing: expose the backend through the frontend's `/api/*` path using a Vercel external rewrite. This keeps refresh cookies same-origin from the browser while the backend remains independently deployable.
+- API routing: hosted Vercel builds use `VITE_API_BASE_URL` to call the matching Cloud Run origin directly; the browser preserves cookie credentials. Same-origin `/api` remains the default for Docker/self-hosting. When frontend and backend are intentionally cross-origin, set `AUTH_COOKIE_CROSS_SITE=true` and use `SameSite=None; Secure` cookies.
 - CI remains the release gate; production deployment credentials must never be committed.
 
 Vercel's current documentation supports Express and external-origin rewrites, while Cloud Run supports Node.js containers and injects the `PORT` environment variable. The repository's container now binds to `0.0.0.0` and its Docker healthcheck follows the injected port.
@@ -101,7 +100,7 @@ Vercel's current documentation supports Express and external-origin rewrites, wh
 6. Set `CORS_ORIGIN` to the exact HTTPS Vercel production origin. Do not use `*`.
 7. Set `TRUST_PROXY=true` (Cloud Run is behind a managed proxy).
 8. Configure R2 through the existing `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, and optional `S3_ENDPOINT` variables.
-9. Configure the Vercel frontend project to rewrite `/api/:path*` to the Cloud Run API URL. Keep the SPA fallback rewrite after the API rewrite.
+9. Configure `VITE_API_BASE_URL` in the Vercel Preview and Production environments to the matching Cloud Run HTTPS origin. The frontend API client prefixes every request with that origin and preserves credentials. Do not place the backend hostname in source code.
 10. Verify `/health`, login, refresh, logout, one authorized read, one authorized write, one private-file upload/download, and backup creation/verification against the hosted database before declaring production live.
 
 ### Vercel deployment boundary
@@ -124,7 +123,7 @@ Production readiness is not certified solely because CI is green. A release is c
 - the backend `/health` endpoint reports database connectivity;
 - the seeded administrator can log in;
 - refresh-token rotation works;
-- CORS and secure cookies work through the Vercel `/api` proxy;
+- CORS and secure cookies work for the configured frontend/backend topology;
 - representative authorization checks pass;
 - object storage upload/download works;
 - encrypted backup creation and verification work;
