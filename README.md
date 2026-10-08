@@ -33,6 +33,7 @@ Vercel remains an excellent frontend/proxy layer. A Vercel-hosted backend is pos
 - Admissions enquiry pipeline with lifecycle tracking
 - Transport vehicles, routes and student assignments
 - Inventory stock, movements, reorder thresholds and audit trail
+- Asset custody and return tracking for staff and students
 - Parent-teacher meeting scheduling with conflict detection
 - Attendance with transactional enrollment validation
 - LMS courses, lessons, resources, assignments, submissions and quizzes
