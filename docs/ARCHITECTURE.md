@@ -18,7 +18,7 @@ nothing here prevents that migration.
 
 | Layer | Choice | Why |
 |---|---|---|
-| Database | PostgreSQL | ACID, mature, free, excellent support for row-level security (used for permission enforcement), self-hostable, huge ecosystem |
+| Database | PostgreSQL | ACID, mature, self-hostable, strong transactional/concurrency support and mature indexing |
 | Backend | Node.js + TypeScript + Express | One language across stack lowers maintenance burden for a small team; TypeScript catches whole classes of bugs before production; huge library ecosystem; easy to self-host in a single container |
 | ORM | Prisma | Type-safe queries, migrations, works well with Postgres RLS patterns |
 | Auth | Self-hosted, sessions or JWT + refresh tokens, argon2 password hashing | No dependency on a third-party identity vendor; school owns the credentials |
@@ -77,7 +77,7 @@ that every API route calls before touching data.
 
 The supported hosted topology is Browser → Vercel Vite frontend → configured `VITE_API_BASE_URL` → stateless Cloud Run/Docker Express backend → managed PostgreSQL + private S3/R2. The frontend never embeds a backend hostname in source code. Same-origin `/api` remains the default when `VITE_API_BASE_URL` is absent, which keeps the Docker/nginx deployment operational.
 
-The repository root `vercel.json` is the supported repo-root Vercel configuration. `frontend/vercel.ts` is a supported alternative when a Vercel project uses `frontend/` as its Root Directory. Git-triggered Vercel deployments remain intentionally disabled until an operator enables/releases them.
+The repository root `vercel.json` is the supported frontend deployment configuration. `frontend/vercel.ts` is an alternative when a Vercel project uses `frontend/` as its Root Directory. The production backend boundary is Cloud Run; Vercel is not the authoritative backend runtime.
 
 Preview and Production must use separate backend origins, databases, storage locations and secrets. When the frontend and backend are cross-origin, `AUTH_COOKIE_CROSS_SITE=true` explicitly enables Secure/HttpOnly `SameSite=None` refresh cookies; same-origin deployments retain Strict cookies.
 
