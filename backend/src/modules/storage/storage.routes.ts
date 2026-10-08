@@ -72,7 +72,23 @@ storageRouter.get("/files/:filename", authorize("academics:view"), async (req, r
   }
 });
 
-storageRouter.head("/files/:filename", authorize("academics:view"), async (req, res) => {\n  try {\n    const fileData = await getPrivateFileContent(req.params.filename, req.userId!);\n    res.setHeader("Cache-Control", "private, no-store");\n    res.setHeader("X-Content-Type-Options", "nosniff");\n    const safeDownloadName = (fileData as { originalName?: string }).originalName?.replace(/[^A-Za-z0-9._-]/g, "_") || "download";\n    res.setHeader("Content-Disposition", `attachment; filename="${safeDownloadName}"`);\n    if (fileData.mimeType) res.setHeader("Content-Type", fileData.mimeType);\n    if (fileData.buffer) res.setHeader("Content-Length", String(fileData.buffer.length));\n    return res.status(200).end();\n  } catch (e) {\n    if (e instanceof StorageNotFoundError) return res.status(404).json({ error: e.message });\n    if (e instanceof StorageAuthorizationError) return res.status(403).json({ error: e.message });\n    if (e instanceof StorageValidationError) return res.status(400).json({ error: e.message });\n    return res.status(500).json({ error: "Could not retrieve file" });\n  }\n});\n
+storageRouter.head("/files/:filename", authorize("academics:view"), async (req, res) => {
+  try {
+    const fileData = await getPrivateFileContent(req.params.filename, req.userId!);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    const safeDownloadName = (fileData as { originalName?: string }).originalName?.replace(/[^A-Za-z0-9._-]/g, "_") || "download";
+    res.setHeader("Content-Disposition", `attachment; filename="${safeDownloadName}"`);
+    if (fileData.mimeType) res.setHeader("Content-Type", fileData.mimeType);
+    if (fileData.buffer) res.setHeader("Content-Length", String(fileData.buffer.length));
+    return res.status(200).end();
+  } catch (e) {
+    if (e instanceof StorageNotFoundError) return res.status(404).json({ error: e.message });
+    if (e instanceof StorageAuthorizationError) return res.status(403).json({ error: e.message });
+    if (e instanceof StorageValidationError) return res.status(400).json({ error: e.message });
+    return res.status(500).json({ error: "Could not retrieve file" });
+  }
+});
 storageRouter.delete("/files/:filename", authorize("academics:view"), async (req, res) => {
   try {
     await deletePrivateFile(req.params.filename, req.userId!);
