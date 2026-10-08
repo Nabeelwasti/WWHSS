@@ -41,6 +41,7 @@ const envSchema = z.object({
   if (isProductionOrPreview) {
     if (data.JWT_ACCESS_SECRET.includes("dev-jwt") || data.JWT_ACCESS_SECRET.includes("CHANGE-ME")) return false;
     if (data.JWT_REFRESH_SECRET.includes("dev-jwt") || data.JWT_REFRESH_SECRET.includes("CHANGE-ME")) return false;
+    if (data.JWT_ACCESS_SECRET === data.JWT_REFRESH_SECRET) return false;
     if (data.JWT_ISSUER === "wwhss-api" || data.JWT_AUDIENCE === "wwhss-web") return false;
     if (data.BACKUP_ENCRYPTION_KEY.includes("dev-backup") || data.BACKUP_ENCRYPTION_KEY.includes("CHANGE-ME")) return false;
   }
@@ -49,7 +50,9 @@ const envSchema = z.object({
   if (!isProductionOrPreview) return true;
   if (data.STORAGE_PROVIDER === "local" || data.BACKUP_PROVIDER === "local" || data.BACKUP_PROVIDER === "memory") return false;
   if (data.AUTH_COOKIE_CROSS_SITE && data.CORS_ORIGIN.split(",").some((origin) => !/^https:\/\//i.test(origin.trim()))) return false;
-  if (!data.S3_BUCKET || !data.S3_ACCESS_KEY_ID || !data.S3_SECRET_ACCESS_KEY) return false;
+  if (!data.S3_BUCKET) return false;
+  if (!!data.S3_ACCESS_KEY_ID !== !!data.S3_SECRET_ACCESS_KEY) return false;
+  if (data.S3_ENDPOINT && !/^https:\/\//i.test(data.S3_ENDPOINT)) return false;
   const origins = data.CORS_ORIGIN.split(",").map((value) => value.trim()).filter(Boolean);
   if (origins.length === 0 || origins.some((origin) => !/^https:\/\//i.test(origin) || /localhost|127\.0\.0\.1/i.test(origin))) return false;
   if (!["true", "1"].includes(data.TRUST_PROXY)) return false;
