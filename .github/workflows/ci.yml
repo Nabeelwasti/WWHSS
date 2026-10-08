@@ -152,7 +152,8 @@ jobs:
           test -f frontend/vercel.legacy.json
           node -e 'const fs=require("fs"); const c=JSON.parse(fs.readFileSync("vercel.json","utf8")); if(c.framework!=="vite" || c.buildCommand!=="npm --prefix frontend run build" || c.outputDirectory!=="frontend/dist") process.exit(1); if(c.git?.deploymentEnabled!==false) process.exit(1); if(!Array.isArray(c.rewrites) || !c.rewrites.some(r=>r.source==="/(.*)" && r.destination==="/index.html")) process.exit(1);'
           ! grep -R "BACKEND_URL" frontend/src frontend/vite.config.ts
-          node -e 'const fs=require("fs"); const c=fs.readFileSync("frontend/vercel.ts","utf8"); if(!c.includes("source: \"/api/:path*\"") || !c.includes("https://wwhss-backend-nabeel-wasti.vercel.app/api/:path*")) process.exit(1);'
+          ! grep -R "wwhss-backend-nabeel-wasti.vercel.app" vercel.json frontend/vercel.ts frontend/src frontend/vite.config.ts
+          node -e 'const fs=require("fs"); const c=fs.readFileSync("frontend/vercel.ts","utf8"); if(!c.includes("source: \"/(.*)\"") || !c.includes("destination: \"/index.html\"")) process.exit(1);'
           grep -q "VITE_API_BASE_URL" frontend/src/api.ts
           test -f frontend/.env.example
           grep -q "VITE_API_BASE_URL" frontend/.env.example
