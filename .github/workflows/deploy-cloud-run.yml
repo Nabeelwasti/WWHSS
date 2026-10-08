@@ -103,6 +103,12 @@ jobs:
             --min-instances=0
             --max-instances=3
 
+      - name: Verify deployed revision
+        run: |
+          set -euo pipefail
+          DEPLOYED_IMAGE="$(gcloud run services describe "${CLOUD_RUN_SERVICE}" --region "${CLOUD_RUN_REGION}" --format='value(spec.template.spec.containers[0].image)')"
+          test "$DEPLOYED_IMAGE" = "$IMAGE"
+
       - name: Verify production health
         run: |
           set -euo pipefail
