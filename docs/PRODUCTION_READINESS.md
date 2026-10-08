@@ -86,7 +86,7 @@ AI-generated assessment content is never replaced by fabricated placeholder ques
 - Vercel Hobby is not a commercial production option under Vercel's current terms; do not sell or operate the product commercially on Hobby.
 - Database: Neon PostgreSQL via Vercel Marketplace or directly from Neon.
 - Object storage: Cloudflare R2 using the existing S3-compatible storage provider.
-- API routing: hosted Vercel builds use `VITE_API_BASE_URL` to call the matching Cloud Run origin directly; the browser preserves cookie credentials. Same-origin `/api` remains the default for Docker/self-hosting. When frontend and backend are intentionally cross-origin, set `AUTH_COOKIE_CROSS_SITE=true` and use `SameSite=None; Secure` cookies.
+- API routing: hosted Vercel builds use `VITE_API_BASE_URL` to call the matching Cloud Run HTTPS origin directly; the browser preserves cookie credentials. Same-origin `/api` remains the default for Docker/self-hosting. When frontend and backend are intentionally cross-origin, set `AUTH_COOKIE_CROSS_SITE=true` and use `SameSite=None; Secure` cookies.
 - CI remains the release gate; production deployment credentials must never be committed.
 
 Vercel's current documentation supports Express and external-origin rewrites, while Cloud Run supports Node.js containers and injects the `PORT` environment variable. The repository's container now binds to `0.0.0.0` and its Docker healthcheck follows the injected port.
