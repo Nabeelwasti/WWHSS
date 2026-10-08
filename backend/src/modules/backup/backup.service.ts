@@ -502,7 +502,6 @@ export type BackupRestoreMode = "DRY_RUN" | "MERGE" | "REPLACE";
 
 export async function restoreFromBackup(filename: string, encryptionSecret?: string, restoredByUserId?: string, mode: BackupRestoreMode = "MERGE"): Promise<{ success: boolean; mode: BackupRestoreMode; summary: Record<string, number> }> {
   if (!restoredByUserId) throw new BackupError("A privileged restoring user is required");
-  if (!restoredByUserId) throw new BackupError("A privileged restoring user is required");
   if (!["DRY_RUN", "MERGE", "REPLACE"].includes(mode)) throw new BackupError(`Unsupported restore mode: ${mode}`);
   const raw = await getBackupProvider().getBackupPayload(filename);
   let envelope: any; try { envelope=JSON.parse(raw); } catch { throw new BackupError("Invalid backup envelope"); }
@@ -557,8 +556,10 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
       }
     } catch (error) {
       await Promise.allSettled(newlyCreatedStorageObjects.map((key) => storageProvider.deleteFile(key)));
+      await updateRestoreCheckpoint(checkpointId, "FAILED", `Storage staging failed: ${error instanceof Error ? error.message : String(error)}`);
       throw new BackupError(`Storage object restore failed: ${error instanceof Error ? error.message : String(error)}`);
     }
+    await updateRestoreCheckpoint(checkpointId, "STORAGE_STAGED");
   }
 
   try {
@@ -596,6 +597,7 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
     const restoredUserIds = new Set((tables.users as Record<string, unknown>[]).map((row) => String(row.id)));
     await tx.auditLog.create({data:{userId:restoredUserIds.has(restoredByUserId) ? restoredByUserId : null,action:"backup:restore",resource:`backup:${safeBackupFilename(filename)}`,metadata:{version:envelope.version,mode,tableCounts:envelope.tableCounts,restoredTables:order,requestedByUserId:restoredByUserId}}}); return counts;
   },{maxWait:10000,timeout:120000});
+    await updateRestoreCheckpoint(checkpointId, "DATABASE_COMMITTED");
     if (mode === "REPLACE") {
       // Object storage is not transactional with PostgreSQL, so reconcile it
       // immediately after the committed database replacement. The preflight
@@ -609,8 +611,10 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
         await storageProvider.saveFile(object.storageKey, Buffer.from(object.dataBase64, "base64"), object.mimeType);
       }
     }
+    await updateRestoreCheckpoint(checkpointId, "COMPLETE");
     return {success:true,mode,summary:result};
   } catch (error) {
+    await updateRestoreCheckpoint(checkpointId, "FAILED", error instanceof Error ? error.message : String(error)).catch(() => undefined);
     if (newlyCreatedStorageObjects.length > 0) {
       await Promise.allSettled(newlyCreatedStorageObjects.map((key) => storageProvider.deleteFile(key)));
     }
