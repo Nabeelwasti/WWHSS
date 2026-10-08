@@ -447,6 +447,7 @@ export async function getPrivateFileContent(filename: string, requesterUserId: s
   const provider = getStorageProvider();
   const fileData = await provider.getFile(safeName);
   fileData.mimeType = file.mimeType;
+  (fileData as { originalName?: string }).originalName = file.originalName;
 
   await prisma.auditLog.create({
     data: {
