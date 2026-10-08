@@ -590,6 +590,7 @@ model FeeInvoice {
   feeStructure FeeStructure   @relation(fields: [feeStructureId], references: [id])
   student      StudentProfile @relation(fields: [studentProfileId], references: [id])
   payments     Payment[]
+  paymentIntents PaymentIntent[]
   feeWaivers   FeeWaiver[]
 
   @@unique([feeStructureId, studentProfileId, billingPeriodStart, billingPeriodEnd], map: "fee_inv_bill_period_uq")
@@ -627,6 +628,24 @@ model Payment {
   adjustments   PaymentAdjustment[]
 
   @@map("payments")
+}
+
+model PaymentIntent {
+  id String @id @default(uuid())
+  invoiceId String
+  provider String
+  amount Decimal @db.Decimal(10,2)
+  status String @default("PENDING")
+  externalReference String?
+  checkoutUrl String?
+  metadata Json?
+  expiresAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  invoice FeeInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  @@index([invoiceId, status])
+  @@index([provider, externalReference])
+  @@map("payment_intents")
 }
 
 // ---------- AUDIT ----------
