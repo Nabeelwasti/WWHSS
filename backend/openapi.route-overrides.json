@@ -668,5 +668,20 @@
         }
       ]
     }
+  },
+  "/api/operations/admissions/leads/{id}/convert": {
+    "post": {
+      "summary": "Convert an admission lead into a student account",
+      "security": [
+        {
+          "bearerAuth": []
+        }
+      ],
+      "responses": {
+        "201": {
+          "description": "Student created"
+        }
+      }
+    }
   }
 }
