@@ -71,3 +71,16 @@ that every API route calls before touching data.
 ### Correlation & Operational Logging
 - Express middleware injects `X-Request-ID` on all incoming requests for request tracing.
 - Structured morgan logging and PostgreSQL liveness health check at `/health`.
+
+
+## 5. Hosted deployment boundary
+
+The supported hosted topology is Browser → Vercel Vite frontend → configured `VITE_API_BASE_URL` → stateless Cloud Run/Docker Express backend → managed PostgreSQL + private S3/R2. The frontend never embeds a backend hostname in source code. Same-origin `/api` remains the default when `VITE_API_BASE_URL` is absent, which keeps the Docker/nginx deployment operational.
+
+The repository root `vercel.json` is the supported repo-root Vercel configuration. `frontend/vercel.ts` is a supported alternative when a Vercel project uses `frontend/` as its Root Directory. Git-triggered Vercel deployments remain intentionally disabled until an operator enables/releases them.
+
+Preview and Production must use separate backend origins, databases, storage locations and secrets. When the frontend and backend are cross-origin, `AUTH_COOKIE_CROSS_SITE=true` explicitly enables Secure/HttpOnly `SameSite=None` refresh cookies; same-origin deployments retain Strict cookies.
+
+## 6. Persistence and recovery boundary
+
+Cloud Run containers are disposable. Hosted business data lives in PostgreSQL and private S3/R2, while encrypted backups use the configured durable backup provider. Prisma migrations run as a controlled release step, never during application startup. Restore checkpoints record STARTED → STORAGE_STAGED → DATABASE_COMMITTED → COMPLETE, or FAILED with an actionable error. Refresh-token sessions are never restored from historical backup data.
