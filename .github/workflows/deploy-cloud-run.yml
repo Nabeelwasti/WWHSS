@@ -134,18 +134,18 @@ jobs:
           grep -q '"status":"ok"' /tmp/api-health.json
 
           rm -f /tmp/cookies.txt
-          LOGIN_HEADERS="$(curl --fail --silent --show-error --include --cookie-jar /tmp/cookies.txt             -H "Origin: $FRONTEND_ORIGIN"             -H "Content-Type: application/json"             --data "{"email":"$SMOKE_EMAIL","password":"$SMOKE_PASSWORD"}"             "$REVISION_URL/api/auth/login")"
+          LOGIN_HEADERS="$(curl --fail --silent --show-error --include --cookie-jar /tmp/cookies.txt -H "Origin: $FRONTEND_ORIGIN" -H "Content-Type: application/json" --data "{\"email\":\"$SMOKE_EMAIL\",\"password\":\"$SMOKE_PASSWORD\"}" "$REVISION_URL/api/auth/login")"
           echo "$LOGIN_HEADERS" | grep -qi '^HTTP/.* 200 '
           ACCESS_TOKEN="$(printf '%s' "$LOGIN_HEADERS" | sed -n 's/^.*"accessToken":"\([^"]*\)".*$/\1/p' | head -n1)"
           test -n "$ACCESS_TOKEN"
 
-          curl --fail --silent --show-error             -H "Origin: $FRONTEND_ORIGIN"             -H "Authorization: Bearer $ACCESS_TOKEN"             "$REVISION_URL/api/auth/me" >/tmp/me.json
+          curl --fail --silent --show-error -H "Origin: $FRONTEND_ORIGIN" -H "Authorization: Bearer $ACCESS_TOKEN" "$REVISION_URL/api/auth/me" >/tmp/me.json
           grep -q '"user"' /tmp/me.json
 
-          curl --fail --silent --show-error             -H "Origin: $FRONTEND_ORIGIN"             --cookie /tmp/cookies.txt             --cookie-jar /tmp/cookies.txt             -X POST "$REVISION_URL/api/auth/refresh" >/tmp/refresh.json
+          curl --fail --silent --show-error -H "Origin: $FRONTEND_ORIGIN" --cookie /tmp/cookies.txt --cookie-jar /tmp/cookies.txt -X POST "$REVISION_URL/api/auth/refresh" >/tmp/refresh.json
           grep -q '"accessToken"' /tmp/refresh.json
 
-          curl --fail --silent --show-error             -H "Origin: $FRONTEND_ORIGIN"             --cookie /tmp/cookies.txt             -X POST "$REVISION_URL/api/auth/logout" >/dev/null
+          curl --fail --silent --show-error -H "Origin: $FRONTEND_ORIGIN" --cookie /tmp/cookies.txt -X POST "$REVISION_URL/api/auth/logout" >/dev/null
 
       - name: Promote verified revision
         run: |
