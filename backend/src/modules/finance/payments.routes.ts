@@ -110,13 +110,6 @@ paymentsRouter.post("/webhooks/:provider", async (req, res) => {
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      // Lock the invoice for the entire settlement decision. This makes webhook
-      // delivery safe even when multiple intents for the same invoice settle at once.
-      const lockedInvoice = await tx.$queryRaw<Array<{ id: string }>>`
-        SELECT id FROM "fee_invoices" WHERE id = ${parsed.data.intentId}::uuid
-      `;
-      void lockedInvoice;
-
       const intent = await tx.paymentIntent.findUnique({ where: { id: parsed.data.intentId } });
       if (!intent || intent.provider !== provider) return null;
 
