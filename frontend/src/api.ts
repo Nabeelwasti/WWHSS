@@ -1,3 +1,5 @@
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+
 export type ParentChildDashboard = {
   student: { id: string; admissionNo: string; status: string; user: { fullName: string; email: string; phone?: string | null }; class?: { name: string } | null; section?: { name: string } | null; fundingCategory?: { name: string } | null };
   attendance: { date: string; status: string }[];
@@ -38,7 +40,7 @@ let refreshInFlight: Promise<boolean> | null = null;
 
 async function tryRefresh(): Promise<boolean> {
   if (!refreshInFlight) {
-    refreshInFlight = fetch("/api/auth/refresh", { method: "POST", credentials: "include" })
+    refreshInFlight = fetch(`${API_BASE_URL}/api/auth/refresh`, { method: "POST", credentials: "include" })
       .then(async (res) => {
         if (!res.ok) return false;
         const body = (await res.json()) as { accessToken: string };
@@ -77,7 +79,7 @@ function describeError(body: unknown, status: number): string {
 }
 
 async function request<T>(path: string, options: RequestInit = {}, isRetry = false): Promise<T> {
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(`${API_BASE_URL}/api${path}`, {
     ...options,
     credentials: "include", // sends the httpOnly refresh-token cookie
     headers: {
