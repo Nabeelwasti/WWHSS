@@ -9,8 +9,9 @@ import { CmsManagementSection } from "../components/CmsManagementSection";
 import { BackupManagementSection } from "../components/BackupManagementSection";
 import { LibraryManagementSection } from "../components/LibraryManagementSection";
 import { StaffManagementSection } from "../components/StaffManagementSection";
+import { EnterpriseOperationsSection } from "../components/EnterpriseOperationsSection";
 
-type AdminTab = "users" | "staff" | "students" | "finance" | "library" | "assessment" | "documents" | "cms" | "backups";
+type AdminTab = "users" | "staff" | "students" | "finance" | "library" | "assessment" | "documents" | "cms" | "backups" | "operations";
 
 export function AdminPage() {
   const { t } = useLanguage();
@@ -126,6 +127,7 @@ export function AdminPage() {
       <div className="flex gap-2 flex-wrap" style={{ marginBottom: 16 }}>
         {tabBtn("users", "Users & Roles")}
         {tabBtn("staff", "Staff & Teachers")}
+        {tabBtn("operations", "Enterprise Operations")}
         {tabBtn("students", "Student Directory")}
         {tabBtn("finance", "Finance & Funding")}
         {tabBtn("library", "Library")}
@@ -153,6 +155,7 @@ export function AdminPage() {
       {tab === "cms" && <CmsManagementSection />}
       {tab === "backups" && <BackupManagementSection />}
       {tab === "staff" && <StaffManagementSection />}
+      {tab === "operations" && <EnterpriseOperationsSection />}
       {tab === "library" && <LibraryManagementSection />}
 
       {tab === "users" && (
