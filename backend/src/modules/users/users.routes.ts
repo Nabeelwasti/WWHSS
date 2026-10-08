@@ -78,7 +78,7 @@ usersRouter.post("/:userId/roles", authorize("users:manage"), async (req, res) =
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   try {
-    const assignment = await assignRole({ userId: req.params.userId, ...parsed.data });
+    const assignment = await assignRole({ userId: req.params.userId, actorId: req.userId, ...parsed.data });
     await prisma.auditLog.create({
       data: {
         userId: req.userId,
@@ -95,7 +95,7 @@ usersRouter.post("/:userId/roles", authorize("users:manage"), async (req, res) =
 
 usersRouter.delete("/roles/:userRoleId", authorize("users:manage"), async (req, res) => {
   if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
-  await removeRoleAssignment(req.params.userRoleId);
+  await removeRoleAssignment(req.params.userRoleId, req.userId);
   await prisma.auditLog.create({
     data: { userId: req.userId, action: "users:remove_role", resource: `user_role:${req.params.userRoleId}` },
   });
@@ -104,7 +104,7 @@ usersRouter.delete("/roles/:userRoleId", authorize("users:manage"), async (req, 
 
 usersRouter.post("/:userId/deactivate", authorize("users:manage"), async (req, res) => {
   if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
-  const user = await deactivateUser(req.params.userId);
+  const user = await deactivateUser(req.params.userId, req.userId);
   await prisma.auditLog.create({
     data: { userId: req.userId, action: "users:deactivate", resource: `user:${user.id}` },
   });
@@ -116,7 +116,7 @@ usersRouter.post("/:userId/reset-password", authorize("users:manage"), async (re
   const target = await prisma.user.findUnique({ where: { id: req.params.userId }, select: { id: true } });
   if (!target) return res.status(404).json({ error: "User not found" });
 
-  const { temporaryPassword } = await resetPassword(target.id);
+  const { temporaryPassword } = await resetPassword(target.id, req.userId);
   await prisma.auditLog.create({
     data: { userId: req.userId, action: "users:reset_password", resource: `user:${target.id}` },
   });
