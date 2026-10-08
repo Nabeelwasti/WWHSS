@@ -5714,6 +5714,25 @@
       }
     },
     "/api/storage/files/{filename}": {
+      "head": {
+        "summary": "Check private storage file availability and headers",
+        "security": [
+          { "bearerAuth": [] }
+        ],
+        "parameters": [
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "File metadata headers" },
+          "403": { "description": "Forbidden" },
+          "404": { "description": "Not found" }
+        }
+      },
       "get": {
         "summary": "Implemented API operation",
         "responses": {
