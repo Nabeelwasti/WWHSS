@@ -163,6 +163,110 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
     expect(auditLogs.length).toBe(2);
   });
 
+  it("proves payment-intent reservation and signed webhook settlement are idempotent under concurrent delivery", async () => {
+    process.env.PAYMENT_WEBHOOK_SECRET = "integration-payment-webhook-secret-2026";
+    const { app } = await import("../app.js");
+    const { signAccessToken } = await import("../modules/identity/tokens.js");
+    const { createServer } = await import("node:http");
+
+    const permission = await prisma.permission.upsert({
+      where: { key: "finance:manage" },
+      update: {},
+      create: { key: "finance:manage" },
+    });
+    const role = await prisma.role.create({ data: { key: `payment-role-${Date.now()}`, name: "Payment Integration Role" } });
+    await prisma.rolePermission.create({ data: { roleId: role.id, permissionId: permission.id } });
+    const user = await prisma.user.create({
+      data: { email: `payment-route-${Date.now()}@school.edu`, passwordHash: "hash", fullName: "Payment Route User" },
+    });
+    await prisma.userRole.create({ data: { userId: user.id, roleId: role.id } });
+
+    const ay = await prisma.academicYear.create({
+      data: { label: `PAY-${Date.now()}`, startDate: new Date("2026-09-01"), endDate: new Date("2027-06-30") },
+    });
+    const cls = await prisma.class.create({ data: { name: `Payment Class ${Date.now()}`, academicYearId: ay.id } });
+    const student = await prisma.studentProfile.create({
+      data: { userId: user.id, admissionNo: `PAY-ADM-${Date.now()}`, classId: cls.id },
+    });
+    const fs = await prisma.feeStructure.create({
+      data: { classId: cls.id, academicYearId: ay.id, name: `Payment Fee ${Date.now()}`, amount: new Prisma.Decimal("300.00") },
+    });
+    const invoice = await prisma.feeInvoice.create({
+      data: {
+        invoiceNumber: `PAY-INV-${Date.now()}`,
+        feeStructureId: fs.id,
+        studentProfileId: student.id,
+        amountDue: new Prisma.Decimal("300.00"),
+        billingPeriodStart: new Date("2026-09-01"),
+        billingPeriodEnd: new Date("2026-09-30"),
+        dueDate: new Date("2026-09-30"),
+      },
+    });
+
+    const server = createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Integration HTTP server did not bind");
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    const token = signAccessToken({ sub: user.id, email: user.email, tokenVersion: user.tokenVersion });
+
+    const post = async (path: string, body: unknown, headers: Record<string, string> = {}) =>
+      fetch(baseUrl + path, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}`, ...headers },
+        body: JSON.stringify(body),
+      });
+
+    try {
+      const intentResponses = await Promise.all([
+        post("/api/payments/intents", { invoiceId: invoice.id, provider: "OTHER", amount: 200 }),
+        post("/api/payments/intents", { invoiceId: invoice.id, provider: "OTHER", amount: 200 }),
+      ]);
+      expect(intentResponses.filter((response) => response.status === 201)).toHaveLength(1);
+      expect(intentResponses.filter((response) => response.status === 400)).toHaveLength(1);
+
+      const firstIntentResponse = intentResponses.find((response) => response.status === 201);
+      if (!firstIntentResponse) throw new Error("No payment intent was created");
+      const firstIntent = (await firstIntentResponse.json() as { intent: { id: string } }).intent;
+
+      const secondResponse = await post("/api/payments/intents", { invoiceId: invoice.id, provider: "OTHER", amount: 100 });
+      expect(secondResponse.status).toBe(201);
+      const secondIntent = (await secondResponse.json() as { intent: { id: string } }).intent;
+
+      const webhook = async (intentId: string, amountStatus: string = "SUCCEEDED") => {
+        const body = JSON.stringify({ intentId, status: amountStatus });
+        const signature = crypto.createHmac("sha256", process.env.PAYMENT_WEBHOOK_SECRET!).update(Buffer.from(body)).digest("hex");
+        return post("/api/payments/webhooks/OTHER", JSON.parse(body), { "x-payment-signature": signature });
+      };
+
+      const duplicateDeliveries = await Promise.all([
+        webhook(firstIntent.id),
+        webhook(firstIntent.id),
+      ]);
+      expect(duplicateDeliveries.every((response) => response.status === 200)).toBe(true);
+
+      const firstPayments = await prisma.payment.findMany({ where: { invoiceId: invoice.id } });
+      expect(firstPayments).toHaveLength(1);
+      expect(firstPayments[0].paymentIntentId).toBe(firstIntent.id);
+
+      const secondWebhook = await webhook(secondIntent.id);
+      expect(secondWebhook.status).toBe(200);
+
+      const payments = await prisma.payment.findMany({ where: { invoiceId: invoice.id }, orderBy: { createdAt: "asc" } });
+      expect(payments).toHaveLength(2);
+      expect(payments.map((payment) => payment.paymentIntentId).sort()).toEqual([firstIntent.id, secondIntent.id].sort());
+
+      const settledInvoice = await prisma.feeInvoice.findUnique({ where: { id: invoice.id } });
+      expect(settledInvoice?.status).toBe("paid");
+
+      const replay = await webhook(firstIntent.id);
+      expect(replay.status).toBe(200);
+      expect(await prisma.payment.count({ where: { invoiceId: invoice.id } })).toBe(2);
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+
   it("creates distinct recurring invoices for distinct billing periods and remains idempotent within one period", async () => {
     const ay = await prisma.academicYear.create({
       data: { label: `Billing-1791383420328`, startDate: new Date("2026-09-01"), endDate: new Date("2027-06-30") },
