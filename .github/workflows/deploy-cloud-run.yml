@@ -44,6 +44,7 @@ jobs:
           test -n "${{ secrets.WIF_SERVICE_ACCOUNT }}"
 
       - name: Authenticate to Google Cloud
+        id: auth
         uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
