@@ -19,7 +19,7 @@ backupRouter.use(authenticate);
 // backups. A DR backup must contain everything required to restore the
 // system, while an export should never disclose authentication/session
 // material merely because the caller is allowed to download business data.
-const SENSITIVE_KEY = /password|refresh.?token|tokenHash|secret|api.?key|private.?key/i;
+const SENSITIVE_KEY = /password|refresh.?token|tokenHash|secret|api.?key|private.?key|client.?secret|credential|session|cookie|authorization/i;
 const SENSITIVE_TABLES = new Set(["refreshTokens", "auditLogs"]);
 
 function sanitizeHumanExport(value: unknown, key?: string): unknown {
@@ -100,6 +100,9 @@ backupRouter.post("/restore/:filename", authorize("backup:restore"), async (req,
   }
 
   try {
+    if (mode !== "DRY_RUN") {
+      await restoreFromBackup(req.params.filename, undefined, req.userId!, "DRY_RUN");
+    }
     const result = await restoreFromBackup(req.params.filename, undefined, req.userId!, mode);
     res.json({ restore: result });
   } catch (e) {
