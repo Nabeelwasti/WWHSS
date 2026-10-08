@@ -213,7 +213,7 @@ Repository configuration intentionally has:
 
 This keeps GitHub pushes from being treated as automatic Vercel releases. GitHub Actions remains the verification gate. Vercel production deployment should be performed deliberately after a release candidate is green.
 
-The repository root `vercel.json` is the supported Vercel configuration for the repo-root deployment: it builds the Vite frontend from `frontend/`, serves `frontend/dist`, keeps Git-triggered Vercel deployment disabled, and provides the SPA fallback. `frontend/vercel.ts` is also kept as a supported frontend-root configuration for a Vercel project whose Root Directory is `frontend/`. Hosted Vercel builds must set `VITE_API_BASE_URL` to the matching Cloud Run HTTPS backend. Same-origin `/api` remains the default for Docker/self-hosting. `frontend/vercel.legacy.json` is retained only as an archival copy of the former hardcoded Vercel-backend routing configuration and is not active.
+The repository root `vercel.json` is the supported Vercel configuration for the repo-root deployment: it builds the Vite frontend from `frontend/`, serves `frontend/dist`, keeps Git-triggered Vercel deployment disabled, and provides the SPA fallback. `frontend/vercel.ts` is also kept as a supported frontend-root configuration for a Vercel project whose Root Directory is `frontend/`. Hosted Vercel builds must set `VITE_API_BASE_URL` to the matching Cloud Run HTTPS backend. Same-origin `/api` remains the default for Docker/self-hosting. The obsolete hardcoded Vercel-backend configuration has been removed; only the current SPA/static configurations are retained.
 
 ## Release checklist
 
