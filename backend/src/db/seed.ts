@@ -86,7 +86,7 @@ const ROLES: Record<string, string[]> = {
     "documents:print",
   ],
   teacher: [
-    "ptm:view", "ptm:manage",
+    "ptm:view",
     "storage:upload",
     "ai:use",
     "attendance:mark",
@@ -101,7 +101,7 @@ const ROLES: Record<string, string[]> = {
     "ai_assessment:submit",
   ],
   class_teacher: [
-    "ptm:view", "ptm:manage",
+    "ptm:view",
     "storage:upload",
     "ai:use",
     "attendance:mark",
