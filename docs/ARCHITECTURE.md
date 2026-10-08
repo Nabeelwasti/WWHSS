@@ -20,7 +20,7 @@ nothing here prevents that migration.
 |---|---|---|
 | Database | PostgreSQL | ACID, mature, self-hostable, strong transactional/concurrency support and mature indexing |
 | Backend | Node.js + TypeScript + Express | One language across stack lowers maintenance burden for a small team; TypeScript catches whole classes of bugs before production; huge library ecosystem; easy to self-host in a single container |
-| ORM | Prisma | Type-safe queries, migrations, works well with Postgres RLS patterns |
+| ORM | Prisma | Type-safe queries and controlled migrations with PostgreSQL transactions |
 | Auth | Self-hosted, sessions or JWT + refresh tokens, argon2 password hashing | No dependency on a third-party identity vendor; school owns the credentials |
 | Frontend | React + TypeScript + Vite | Fast dev cycle, huge component ecosystem, easy PWA support, good mobile performance |
 | File storage | Local disk / Private Storage service | MIME and size validation, safe filename generation, session-authorized retrieval |
