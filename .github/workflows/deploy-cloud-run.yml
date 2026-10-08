@@ -2,12 +2,6 @@ name: Deploy Backend to Cloud Run
 
 on:
   workflow_dispatch:
-    inputs:
-      apply_migrations:
-        description: "Apply pending Prisma migrations to the production database before rollout"
-        required: true
-        default: false
-        type: boolean
 
 permissions:
   contents: read
