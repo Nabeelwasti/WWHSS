@@ -67,7 +67,7 @@ authRouter.post("/change-password", authenticate, async (req, res) => {
 
   try {
     await changePassword(req.userId, parsed.data.currentPassword, parsed.data.newPassword);
-    res.clearCookie("refresh_token", { path: "/api/auth", httpOnly: true, secure: hostedHttps, sameSite: hostedHttps ? "strict" : "lax" });
+    res.clearCookie("refresh_token", refreshCookieOptions);
     res.status(204).send();
   } catch (err) {
     if (err instanceof AuthError) return res.status(400).json({ error: err.message });
