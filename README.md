@@ -109,6 +109,7 @@ Preview and production require real values for:
 - Optional payment webhook secrets: `PAYMENT_WEBHOOK_SECRET` or provider-specific `PAYMENT_WEBHOOK_SECRET_JAZZCASH` / `PAYMENT_WEBHOOK_SECRET_EASYPAISA` when using external gateway adapters
 - AUTH_COOKIE_CROSS_SITE=true only when the browser and backend are intentionally cross-origin; otherwise leave it false.
 - TRUST_PROXY=true or 1
+- VITE_API_BASE_URL must be set separately in Vercel Preview and Production to the matching Cloud Run HTTPS backend origin
 
 Web research is **off unless deliberately enabled**:
 
