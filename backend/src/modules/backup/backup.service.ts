@@ -12,7 +12,7 @@ export class BackupNotFoundError extends BackupError {}
 const BACKUP_DIR = path.resolve(process.cwd(), "backups");
 const BACKUP_PREFIX = "backups/";
 const BACKUP_SUFFIX = ".enc.json";
-const BACKUP_SCHEMA_VERSION = "1.1.0";
+const BACKUP_SCHEMA_VERSION = "1.2.0";
 function safeBackupFilename(filename: string): string {
   const safe = path.basename(filename).replace(/[^a-zA-Z0-9._-]/g, "_");
   if (!safe || safe !== filename || !safe.endsWith(BACKUP_SUFFIX) || safe.length > 180) throw new BackupError("Invalid backup filename");
@@ -531,9 +531,16 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
   const tables=parsed.tables as Record<string, unknown>;
   const tableMap: Record<string,string> = { users:"users", roles:"roles", permissions:"permissions", rolePermissions:"role_permissions", departments:"departments", userRoles:"user_roles", refreshTokens:"refresh_tokens", auditLogs:"audit_logs", academicYears:"academic_years", classes:"classes", sections:"sections", subjects:"subjects", studentProfiles:"student_profiles", studentEnrollmentHistory:"student_enrollment_history", staffProfiles:"staff_profiles", parentStudentLinks:"parent_student_links", fundingCategories:"funding_categories", studentFundingRecords:"student_funding_records", feeStructures:"fee_structures", feeInvoices:"fee_invoices", feeWaivers:"fee_waivers", payments:"payments", paymentAdjustments:"payment_adjustments", attendanceRecords:"attendance_records", courses:"courses", courseTeacherAssignments:"course_teacher_assignments", lessons:"lessons", resources:"resources", assignments:"assignments", submissions:"submissions", quizzes:"quizzes", quizQuestions:"quiz_questions", quizAttempts:"quiz_attempts", exams:"exams", examSubjects:"exam_subjects", examResults:"exam_results", aiUsageRecords:"ai_usage_records", aiAssessmentTests:"ai_assessment_tests", aiAssessmentQuestions:"ai_assessment_questions", aiAnswerSheets:"ai_answer_sheets", documentRecords:"document_records", rooms:"rooms", timetableSlots:"timetable_slots", books:"books", bookCopies:"book_copies", bookLoans:"book_loans", cmsPages:"cms_pages", notices:"notices", events:"events", galleryItems:"gallery_items", notifications:"notifications", schoolProfiles:"school_profiles", documentSequences:"document_sequences", storageFiles:"storage_files", leaveRequests:"leave_requests", payrollPeriods:"payroll_periods", payrollRecords:"payroll_records", admissionLeads:"admission_leads", transportVehicles:"transport_vehicles", transportRoutes:"transport_routes", transportAssignments:"transport_assignments", inventoryItems:"inventory_items", inventoryTransactions:"inventory_transactions", ptmMeetings:"ptm_meetings", assetAssignments:"asset_assignments", paymentIntents:"payment_intents" };
   const backupVersion = typeof envelope.version === "string" ? envelope.version : "";
-  const [backupMajor] = backupVersion.split(".").map(Number);
+  const [backupMajor, backupMinor] = backupVersion.split(".").map(Number);
   const [currentMajor] = BACKUP_SCHEMA_VERSION.split(".").map(Number);
   if (!Number.isInteger(backupMajor) || backupMajor !== currentMajor) throw new BackupError(`Unsupported backup schema version: ${backupVersion}`);
+  // 1.2 adds enterprise operations and payment-intent tables. Older 1.x backups remain restorable;
+  // their newly introduced tables are treated as empty rather than silently inventing records.
+  if (backupMajor === 1 && Number.isInteger(backupMinor) && backupMinor < 2) {
+    for (const key of ["leaveRequests","payrollPeriods","payrollRecords","admissionLeads","transportVehicles","transportRoutes","transportAssignments","inventoryItems","inventoryTransactions","ptmMeetings","assetAssignments","paymentIntents"]) {
+      if (!(key in tables)) tables[key] = [];
+    }
+  }
   const requiredKeys = Object.keys(tableMap);
   const keys=Object.keys(tables);
   for(const k of keys) { if(!tableMap[k] || !Array.isArray(tables[k])) throw new BackupError(`Invalid or unsupported backup table: ${k}`); }
