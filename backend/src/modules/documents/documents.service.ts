@@ -17,8 +17,16 @@ async function getSchoolHeader(): Promise<DocumentHeaderInfo> {
 }
 
 async function getAcademicYearLabel(id?: string) {
-  if (id) return (await prisma.academicYear.findUnique({ where: { id }, select: { label: true } }))?.label;
-  return (await prisma.schoolProfile.findUnique({ where: { id: "default" }, select: { currentAcademicYear: true } }))?.currentAcademicYear || new Date().getUTCFullYear().toString();
+  if (id) {
+    const year = await prisma.academicYear.findUnique({ where: { id }, select: { label: true } });
+    if (!year?.label) throw new DocumentValidationError("Referenced academic year is not configured.");
+    return year.label;
+  }
+  const profile = await prisma.schoolProfile.findUnique({ where: { id: "default" }, select: { currentAcademicYear: true } });
+  if (!profile?.currentAcademicYear?.trim()) {
+    throw new DocumentValidationError("Current academic year is not configured. Configure the authoritative school profile before generating official documents.");
+  }
+  return profile.currentAcademicYear.trim();
 }
 
 async function allocateDocumentNumber(docType: string, academicYear: string, campus = "MAIN") {
