@@ -10,8 +10,8 @@ export const authRouter = Router();
 const hostedHttps = env.nodeEnv === "production" || env.vercelEnv === "preview" || env.vercelEnv === "production";
 const refreshCookieOptions = {
   httpOnly: true,
-  secure: hostedHttps,
-  sameSite: (hostedHttps ? "strict" : "lax") as "strict" | "lax",
+  secure: hostedHttps || env.authCookieCrossSite,
+  sameSite: (env.authCookieCrossSite ? "none" : hostedHttps ? "strict" : "lax") as "strict" | "none" | "lax",
   path: "/api/auth",
 };
 
@@ -51,7 +51,7 @@ authRouter.post("/refresh", async (req, res) => {
 authRouter.post("/logout", async (req, res) => {
   const token = req.cookies?.refresh_token;
   if (token) await logout(token);
-  res.clearCookie("refresh_token", { path: "/api/auth", httpOnly: true, secure: hostedHttps, sameSite: hostedHttps ? "strict" : "lax" });
+  res.clearCookie("refresh_token", refreshCookieOptions);
   res.status(204).send();
 });
 
