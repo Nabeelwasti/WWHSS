@@ -251,17 +251,11 @@ export function getStorageProvider(): StorageProvider {
   if (!currentProvider) {
     const type = env.storageProvider;
     if (type === "s3" || type === "cloud") {
-      try {
-        currentProvider = new S3StorageProvider();
-      } catch (error) {
-        if (env.nodeEnv === "production" || env.vercelEnv === "preview" || env.vercelEnv === "production") {
-          throw error;
-        }
-        console.warn("S3 initialization failed, falling back to local storage");
-        currentProvider = new LocalStorageProvider();
-      }
-    } else {
+      currentProvider = new S3StorageProvider();
+    } else if (type === "local") {
       currentProvider = new LocalStorageProvider();
+    } else {
+      throw new StorageConfigError("Unsupported storage provider configuration");
     }
   }
   return currentProvider;
