@@ -2,9 +2,9 @@
 
 ## Production topology
 
-Browser → Vercel frontend/proxy → Cloud Run Express API → managed PostgreSQL + private S3/R2.
+Browser → Vercel frontend/proxy → Express API → managed PostgreSQL + private S3/R2.
 
-Preview and Production use different `VITE_API_BASE_URL`, databases, storage prefixes/buckets, secrets and Cloud Run services.
+Preview and Production must use isolated databases, storage locations and secrets. The Vercel frontend normally reaches the backend through the same-origin `/api/*` proxy; `VITE_API_BASE_URL` is optional for an intentionally direct backend origin.
 
 ## Release order
 
@@ -13,7 +13,7 @@ Preview and Production use different `VITE_API_BASE_URL`, databases, storage pre
 3. Run `npx prisma migrate deploy` exactly once against the target database.
 4. Deploy the immutable Cloud Run revision with the injected `PORT`.
 5. Verify `/health` and `/ready`.
-6. Verify the Vercel `/api/*` proxy points to the matching environment's Cloud Run origin.
+6. Verify the Vercel `/api/*` proxy reaches the intended backend deployment and does not return frontend HTML or a 404.
 7. Run authentication, authorization, upload, document, finance and representative E2E smoke tests.
 8. Shift production traffic only after readiness and smoke checks pass.
 
@@ -21,7 +21,7 @@ The application container must start with `node dist/server.js`; it must never r
 
 ## Vercel
 
-Automatic Git deployment is intentionally disabled in repository configuration. Configure `VITE_API_BASE_URL` separately in Vercel Preview and Production project environments. The root `vercel.json` is the supported repo-root Vercel configuration; `frontend/vercel.ts` remains a supported alternative when the Vercel project's Root Directory is `frontend/`. Never commit a Cloud Run hostname into frontend source code.
+Automatic Git deployment is intentionally disabled in repository configuration. The supported Vercel configurations are `vercel.json` for a repo-root project and `frontend/vercel.ts` for a `frontend/` Root Directory project. Both provide the `/api/*` backend proxy and SPA fallback. `VITE_API_BASE_URL` remains an optional direct-origin override. Do not put secrets or credentials into frontend source or Vite environment variables.
 
 ## Database
 
