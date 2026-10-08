@@ -24,6 +24,7 @@ import { backupRouter } from "../modules/backup/backup.routes.js";
 import { storageRouter } from "../modules/storage/storage.routes.js";
 import { parentRouter } from "../modules/parent/parent.routes.js";
 import { schoolRouter } from "../modules/school/school.routes.js";
+import { operationsRouter } from "../modules/operations/operations.routes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 interface OpenApiDoc { openapi: string; info: { title: string; version: string }; paths: Record<string, Record<string, unknown>>; components?: { schemas?: Record<string, unknown>; responses?: Record<string, unknown>; securitySchemes?: Record<string, unknown> }; }
@@ -61,7 +62,7 @@ function readOpenApiDoc(): { doc: OpenApiDoc; openapiPath: string } {
 
 function getImplementedExpressRoutes(): { path: string; method: string }[] {
   const modules = [
-    { prefix: "/api/auth", router: authRouter }, { prefix: "/api/attendance", router: attendanceRouter }, { prefix: "/api/academics", router: academicsRouter }, { prefix: "/api/users", router: usersRouter }, { prefix: "/api/lms", router: lmsRouter }, { prefix: "/api/exams", router: examsRouter }, { prefix: "/api/timetable", router: timetableRouter }, { prefix: "/api/notifications", router: notificationsRouter }, { prefix: "/api/library", router: libraryRouter }, { prefix: "/api/finance", router: financeRouter }, { prefix: "/api/cms", router: cmsRouter }, { prefix: "/api/ai", router: aiRouter }, { prefix: "/api/documents", router: documentsRouter }, { prefix: "/api/ai/assessment", router: aiAssessmentRouter }, { prefix: "/api/backup", router: backupRouter }, { prefix: "/api/storage", router: storageRouter }, { prefix: "/api/parent", router: parentRouter }, { prefix: "/api/school", router: schoolRouter },
+    { prefix: "/api/auth", router: authRouter }, { prefix: "/api/attendance", router: attendanceRouter }, { prefix: "/api/academics", router: academicsRouter }, { prefix: "/api/users", router: usersRouter }, { prefix: "/api/lms", router: lmsRouter }, { prefix: "/api/exams", router: examsRouter }, { prefix: "/api/timetable", router: timetableRouter }, { prefix: "/api/notifications", router: notificationsRouter }, { prefix: "/api/library", router: libraryRouter }, { prefix: "/api/finance", router: financeRouter }, { prefix: "/api/cms", router: cmsRouter }, { prefix: "/api/ai", router: aiRouter }, { prefix: "/api/documents", router: documentsRouter }, { prefix: "/api/ai/assessment", router: aiAssessmentRouter }, { prefix: "/api/backup", router: backupRouter }, { prefix: "/api/storage", router: storageRouter }, { prefix: "/api/parent", router: parentRouter }, { prefix: "/api/school", router: schoolRouter }, { prefix: "/api/operations", router: operationsRouter },
   ];
   const routes: { path: string; method: string }[] = [{ path: "/health", method: "get" }];
   for (const mod of modules) {
