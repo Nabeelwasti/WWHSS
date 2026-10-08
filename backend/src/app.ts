@@ -25,6 +25,7 @@ import { backupRouter } from "./modules/backup/backup.routes.js";
 import { storageRouter } from "./modules/storage/storage.routes.js";
 import { parentRouter } from "./modules/parent/parent.routes.js";
 import { schoolRouter } from "./modules/school/school.routes.js";
+import { operationsRouter } from "./modules/operations/operations.routes.js";
 
 const require = createRequire(import.meta.url);
 const helmet = require("helmet") as (options?: Record<string, unknown>) => express.RequestHandler;
@@ -160,6 +161,7 @@ app.use("/api/backup", backupRouter);
 app.use("/api/storage", storageRouter);
 app.use("/api/parent", parentRouter);
 app.use("/api/school", schoolRouter);
+app.use("/api/operations", operationsRouter);
 
 app.use((err: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   const status = typeof err === "object" && err && "status" in err && typeof (err as { status?: unknown }).status === "number"
