@@ -35,32 +35,43 @@ const envSchema = z.object({
   MAX_DAILY_AI_REQUESTS: z.coerce.number().int().min(1).default(100),
   MAX_AI_INPUT_CHARS: z.coerce.number().int().min(10).default(2000),
   MAX_AI_OUTPUT_TOKENS: z.coerce.number().int().min(10).default(800),
-  WEB_RESEARCH_ENABLED: z.preprocess((value) => value === undefined ? false : value === true || value === "true" || value === "1", z.boolean()),
+  WEB_RESEARCH_ENABLED: z.preprocess((value) => value === undefined ? process.env.WEB_SEARCH_ENABLED : value, z.preprocess((value) => value === undefined ? false : value === true || value === "true" || value === "1", z.boolean())),
+  /** @deprecated Legacy alias retained for compatibility; use WEB_RESEARCH_ENABLED. */
+  WEB_SEARCH_ENABLED: z.string().optional(),
   WEB_RESEARCH_API_KEY: z.string().optional(),
   WEB_RESEARCH_ENDPOINT: z.string().url().default("https://api.search.brave.com/res/v1/web/search"),
-}).refine((data) => {
-  if (isProductionOrPreview) {
-    if (data.JWT_ACCESS_SECRET.includes("dev-jwt") || data.JWT_ACCESS_SECRET.includes("CHANGE-ME")) return false;
-    if (data.JWT_REFRESH_SECRET.includes("dev-jwt") || data.JWT_REFRESH_SECRET.includes("CHANGE-ME")) return false;
-    if (data.JWT_ACCESS_SECRET === data.JWT_REFRESH_SECRET) return false;
-    if (data.JWT_ISSUER === "wwhss-api" || data.JWT_AUDIENCE === "wwhss-web") return false;
-    if (data.BACKUP_ENCRYPTION_KEY.includes("dev-backup") || data.BACKUP_ENCRYPTION_KEY.includes("CHANGE-ME")) return false;
-  }
-  return true;
-}, { message: "Default/development JWT secrets, issuer, or audience cannot be used in production or preview deployments" }).refine((data) => {
-  if (!isProductionOrPreview) return true;
+}).superRefine((data, ctx) => {
+  if (!isProductionOrPreview) return;
+
+  const issue = (path: string, message: string) => {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+  };
+
+  if (data.JWT_ACCESS_SECRET.includes("dev-jwt") || data.JWT_ACCESS_SECRET.includes("CHANGE-ME")) issue("JWT_ACCESS_SECRET", "must be a unique non-development secret in production/preview");
+  if (data.JWT_REFRESH_SECRET.includes("dev-jwt") || data.JWT_REFRESH_SECRET.includes("CHANGE-ME")) issue("JWT_REFRESH_SECRET", "must be a unique non-development secret in production/preview");
+  if (data.JWT_ACCESS_SECRET === data.JWT_REFRESH_SECRET) issue("JWT_REFRESH_SECRET", "must differ from JWT_ACCESS_SECRET");
+  if (data.JWT_ISSUER === "wwhss-api") issue("JWT_ISSUER", "must be explicitly configured in production/preview");
+  if (data.JWT_AUDIENCE === "wwhss-web") issue("JWT_AUDIENCE", "must be explicitly configured in production/preview");
+  if (data.BACKUP_ENCRYPTION_KEY.includes("dev-backup") || data.BACKUP_ENCRYPTION_KEY.includes("CHANGE-ME")) issue("BACKUP_ENCRYPTION_KEY", "must be a unique non-development key in production/preview");
+
   const durablePersistenceRequired = isVercelDeployment || !data.ALLOW_LOCAL_PERSISTENCE;
-  if (durablePersistenceRequired && (data.STORAGE_PROVIDER === "local" || data.BACKUP_PROVIDER === "local" || data.BACKUP_PROVIDER === "memory")) return false;
-  if (durablePersistenceRequired && !data.S3_BUCKET) return false;
-  if (data.AUTH_COOKIE_CROSS_SITE && data.CORS_ORIGIN.split(",").some((origin) => !/^https:\/\//i.test(origin.trim()))) return false;
-  if (!!data.S3_ACCESS_KEY_ID !== !!data.S3_SECRET_ACCESS_KEY) return false;
-  if (data.S3_ENDPOINT && !/^https:\/\//i.test(data.S3_ENDPOINT)) return false;
+  if (durablePersistenceRequired && (data.STORAGE_PROVIDER === "local" || data.BACKUP_PROVIDER === "local" || data.BACKUP_PROVIDER === "memory")) {
+    issue("STORAGE_PROVIDER", "hosted production/preview requires durable storage");
+    issue("BACKUP_PROVIDER", "hosted production/preview requires durable backups");
+  }
+  if (durablePersistenceRequired && !data.S3_BUCKET) issue("S3_BUCKET", "is required when hosted durable storage/backups are enabled");
+  if (data.AUTH_COOKIE_CROSS_SITE && data.CORS_ORIGIN.split(",").some((origin) => !/^https:\/\//i.test(origin.trim()))) issue("CORS_ORIGIN", "must contain only HTTPS origins when AUTH_COOKIE_CROSS_SITE=true");
+  if (!!data.S3_ACCESS_KEY_ID !== !!data.S3_SECRET_ACCESS_KEY) {
+    issue("S3_ACCESS_KEY_ID", "and S3_SECRET_ACCESS_KEY must be configured together");
+    issue("S3_SECRET_ACCESS_KEY", "and S3_ACCESS_KEY_ID must be configured together");
+  }
+  if (data.S3_ENDPOINT && !/^https:\/\//i.test(data.S3_ENDPOINT)) issue("S3_ENDPOINT", "must use HTTPS in production/preview");
   const origins = data.CORS_ORIGIN.split(",").map((value) => value.trim()).filter(Boolean);
-  if (origins.length === 0 || origins.some((origin) => !/^https:\/\//i.test(origin) || /localhost|127\.0\.0\.1/i.test(origin))) return false;
-  if (!["true", "1"].includes(data.TRUST_PROXY)) return false;
-  if (data.WEB_RESEARCH_ENABLED && !data.WEB_RESEARCH_API_KEY) return false;
-  return true;
-}, { message: "Preview/production requires durable S3-compatible storage/backups, complete optional S3 key-pair credentials when explicit keys are used, HTTPS CORS, TRUST_PROXY=true/1, and a web-research key when research is enabled" });
+  if (origins.length === 0) issue("CORS_ORIGIN", "must contain at least one HTTPS origin");
+  else if (origins.some((origin) => !/^https:\/\//i.test(origin) || /localhost|127\.0\.0\.1/i.test(origin))) issue("CORS_ORIGIN", "must contain only non-local HTTPS origins in production/preview");
+  if (!["true", "1"].includes(data.TRUST_PROXY)) issue("TRUST_PROXY", "must be true or 1 behind Vercel/another trusted proxy");
+  if (data.WEB_RESEARCH_ENABLED && !data.WEB_RESEARCH_API_KEY) issue("WEB_RESEARCH_API_KEY", "is required when WEB_RESEARCH_ENABLED=true");
+});
 
 const parsed = envSchema.safeParse(process.env);
 if (!parsed.success) {
