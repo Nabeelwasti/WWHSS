@@ -13,6 +13,7 @@ CREATE TABLE "leave_requests" (
   "updatedAt" TIMESTAMP(3) NOT NULL,
   CONSTRAINT "leave_requests_pkey" PRIMARY KEY ("id")
 );
+CREATE INDEX "admission_leads_phone_idx" ON "admission_leads"("phone");
 CREATE INDEX "leave_requests_staffProfileId_startDate_endDate_idx" ON "leave_requests"("staffProfileId","startDate","endDate");
 CREATE TABLE "payroll_periods" (
   "id" TEXT NOT NULL,
