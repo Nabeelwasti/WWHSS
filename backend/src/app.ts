@@ -51,7 +51,7 @@ app.use(helmet());
 
 function isConfiguredCorsOriginAllowed(origin: string | undefined): boolean {
   if (!origin) return true;
-  return env.corsOrigins.includes(origin) || (env.vercelUrl ? origin === `https://${env.vercelUrl}` : false);
+  return env.corsOrigins.includes(origin);
 }
 
 app.use((req, _res, next) => {
