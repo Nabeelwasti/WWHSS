@@ -59,26 +59,15 @@ export async function userHasPermission(
       select: { classId: true, sectionId: true },
     });
     if (studentProfile) {
-      const staffKeys = [
-        "exams:manage",
-        "grades:enter",
-        "grades:view",
-        "students:manage",
-        "attendance:mark",
-        "documents:view",
-        "documents:create",
-        "documents:print",
-        "student:view:sensitive",
-        "student:manage:sensitive",
-      ];
+      // Object-level access must authorize the exact requested permission.
+      // Possessing one staff capability must never imply another capability.
       const userRoles = await prisma.userRole.findMany({
         where: { userId },
         include: { role: { include: { rolePermissions: { include: { permission: true } } } } },
       });
       for (const ur of userRoles) {
         const grantedKeys = ur.role.rolePermissions.map((rp) => rp.permission.key);
-        const hasStaffKey = staffKeys.some((k) => grantedKeys.includes(k));
-        if (!hasStaffKey) continue;
+        if (!grantedKeys.includes(permissionKey)) continue;
 
         const roleIsUnscoped = !ur.classId && !ur.sectionId && !ur.subjectId && !ur.departmentId;
         if (roleIsUnscoped) return true;
