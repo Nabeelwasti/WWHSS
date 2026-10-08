@@ -39,6 +39,7 @@ const envSchema = z.object({
   /** @deprecated Legacy alias retained for compatibility; use WEB_RESEARCH_ENABLED. */
   WEB_SEARCH_ENABLED: z.string().optional(),
   WEB_RESEARCH_API_KEY: z.string().optional(),
+  PAYMENT_WEBHOOK_SECRET: z.string().optional(),
   WEB_RESEARCH_ENDPOINT: z.string().url().default("https://api.search.brave.com/res/v1/web/search"),
 }).superRefine((data, ctx) => {
   if (!isProductionOrPreview) return;
@@ -110,5 +111,6 @@ export const env = {
   maxAiOutputTokens: rawEnv.MAX_AI_OUTPUT_TOKENS,
   webResearchEnabled: rawEnv.WEB_RESEARCH_ENABLED,
   webResearchApiKey: rawEnv.WEB_RESEARCH_API_KEY,
+  paymentWebhookSecret: rawEnv.PAYMENT_WEBHOOK_SECRET,
   webResearchEndpoint: rawEnv.WEB_RESEARCH_ENDPOINT,
 };
