@@ -622,10 +622,12 @@ model Payment {
   status           String   @default("posted")
   paidAt           DateTime @default(now())
   receivedByUserId String?
+  paymentIntentId String? @unique
 
   invoice        FeeInvoice @relation(fields: [invoiceId], references: [id])
   receivedByUser User?      @relation("ReceivedPayments", fields: [receivedByUserId], references: [id])
   adjustments   PaymentAdjustment[]
+  paymentIntent PaymentIntent? @relation("IntentPayment")
 
   @@map("payments")
 }
@@ -643,6 +645,7 @@ model PaymentIntent {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   invoice FeeInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  payment Payment? @relation("IntentPayment")
   @@index([invoiceId, status])
   @@index([provider, externalReference])
   @@map("payment_intents")
