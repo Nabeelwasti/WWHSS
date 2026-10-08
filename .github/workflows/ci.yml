@@ -149,7 +149,6 @@ jobs:
         run: |
           test -f vercel.json
           test -f frontend/vercel.ts
-          test -f frontend/vercel.legacy.json
           node -e 'const fs=require("fs"); const c=JSON.parse(fs.readFileSync("vercel.json","utf8")); if(c.framework!=="vite" || c.buildCommand!=="npm --prefix frontend run build" || c.outputDirectory!=="frontend/dist") process.exit(1); if(c.git?.deploymentEnabled!==false) process.exit(1); if(!Array.isArray(c.rewrites) || !c.rewrites.some(r=>r.source==="/(.*)" && r.destination==="/index.html")) process.exit(1);'
           ! grep -R "BACKEND_URL" frontend/src frontend/vite.config.ts
           ! grep -R "wwhss-backend-nabeel-wasti.vercel.app" vercel.json frontend/vercel.ts frontend/src frontend/vite.config.ts
