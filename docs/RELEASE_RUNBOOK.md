@@ -4,7 +4,7 @@
 
 Browser → Vercel frontend/proxy → Cloud Run Express API → managed PostgreSQL + private S3/R2.
 
-Preview and Production use different `BACKEND_URL`, databases, storage prefixes/buckets, secrets and Cloud Run services.
+Preview and Production use different `VITE_API_BASE_URL`, databases, storage prefixes/buckets, secrets and Cloud Run services.
 
 ## Release order
 
@@ -21,9 +21,7 @@ The application container must start with `node dist/server.js`; it must never r
 
 ## Vercel
 
-Automatic Git deployment is intentionally disabled in repository configuration. Configure `BACKEND_URL` separately in Vercel Preview and Production project environments. Never put a Cloud Run hostname in frontend source code.
-
-`frontend/vercel.ts` is authoritative. `frontend/vercel.legacy.json` is retained only as an archival record.
+Automatic Git deployment is intentionally disabled in repository configuration. Configure `VITE_API_BASE_URL` separately in Vercel Preview and Production project environments. The root `vercel.json` is the supported repo-root Vercel configuration; `frontend/vercel.ts` remains a supported alternative when the Vercel project's Root Directory is `frontend/`. Never commit a Cloud Run hostname into frontend source code.
 
 ## Database
 
