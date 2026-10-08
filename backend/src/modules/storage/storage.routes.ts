@@ -1,6 +1,5 @@
 import { Router, raw } from "express";
 import { authenticate } from "../../middleware/authenticate.js";
-import { authorize } from "../../middleware/authorize.js";
 import {
   savePrivateFile,
   getPrivateFileContent,
@@ -49,7 +48,7 @@ storageRouter.post(
     }
   }
 );
-storageRouter.get("/files/:filename", authorize("academics:view"), async (req, res) => {
+storageRouter.get("/files/:filename", async (req, res) => {
   try {
     const fileData = await getPrivateFileContent(req.params.filename, req.userId!);
     res.setHeader("Cache-Control", "private, no-store");
@@ -72,7 +71,7 @@ storageRouter.get("/files/:filename", authorize("academics:view"), async (req, r
   }
 });
 
-storageRouter.head("/files/:filename", authorize("academics:view"), async (req, res) => {
+storageRouter.head("/files/:filename", async (req, res) => {
   try {
     const fileData = await getPrivateFileContent(req.params.filename, req.userId!);
     res.setHeader("Cache-Control", "private, no-store");
@@ -89,7 +88,7 @@ storageRouter.head("/files/:filename", authorize("academics:view"), async (req, 
     return res.status(500).json({ error: "Could not retrieve file" });
   }
 });
-storageRouter.delete("/files/:filename", authorize("academics:view"), async (req, res) => {
+storageRouter.delete("/files/:filename", async (req, res) => {
   try {
     await deletePrivateFile(req.params.filename, req.userId!);
     res.status(204).send();
