@@ -58,6 +58,8 @@ async function updateRestoreCheckpoint(id: string, status: "STORAGE_STAGED" | "D
 
 export interface BackupMetadata {
   id: string;
+  valid?: boolean;
+  error?: string;
   createdAt: string;
   version: string;
   tables: Record<string, number>;
@@ -107,8 +109,8 @@ export class LocalBackupProvider implements BackupProvider {
           encrypted: Boolean(content.encrypted),
           filename: file,
         });
-      } catch {
-        // skip unparseable
+      } catch (error) {
+        backups.push({ id: file, createdAt: "", version: "unknown", tables: {}, encrypted: false, filename: file, valid: false, error: error instanceof Error ? error.message : "Invalid backup envelope" });
       }
     }
     return backups.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -141,7 +143,7 @@ export class S3BackupProvider implements BackupProvider {
   async listBackups() {
     const out: BackupMetadata[] = []; let token: string | undefined;
     do { const page = await this.client.send(new ListObjectsV2Command({ Bucket: env.s3Bucket!, Prefix: BACKUP_PREFIX, ContinuationToken: token }));
-      for (const obj of page.Contents ?? []) { const key=obj.Key; if (!key || !key.startsWith(BACKUP_PREFIX)) continue; const filename=key.slice(BACKUP_PREFIX.length); if (!filename.endsWith(BACKUP_SUFFIX)) continue; try { out.push(envelopeMetadata(await this.getBackupPayload(filename), filename)); } catch (e) { if (!(e instanceof BackupNotFoundError)) throw e; } }
+      for (const obj of page.Contents ?? []) { const key=obj.Key; if (!key || !key.startsWith(BACKUP_PREFIX)) continue; const filename=key.slice(BACKUP_PREFIX.length); if (!filename.endsWith(BACKUP_SUFFIX)) continue; try { out.push(envelopeMetadata(await this.getBackupPayload(filename), filename)); } catch (e) { if (e instanceof BackupNotFoundError) continue; out.push({ id: filename, createdAt: "", version: "unknown", tables: {}, encrypted: false, filename, valid: false, error: e instanceof Error ? e.message : "Invalid backup envelope" }); } }
       token=page.IsTruncated ? page.NextContinuationToken : undefined;
     } while(token); return out.sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
   }
@@ -561,6 +563,7 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
     }
     await updateRestoreCheckpoint(checkpointId, "STORAGE_STAGED");
   }
+  await updateRestoreCheckpoint(checkpointId, "STORAGE_STAGED");
 
   try {
     const result=await prisma.$transaction(async tx=>{
