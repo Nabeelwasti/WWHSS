@@ -14,7 +14,9 @@ There is no fake-data fallback. If the backend is unavailable, the frontend show
 
 Hosted:
 
-`Browser → Vercel frontend → VITE_API_BASE_URL → Cloud Run/Docker Express → PostgreSQL + private S3/R2`
+`Browser → Vercel frontend → same-origin /api proxy → Vercel Express backend → PostgreSQL + private S3/R2`
+
+The frontend API client still supports an explicit `VITE_API_BASE_URL` when a separate backend origin is intentionally required. When it is empty, the Vercel frontend proxy is the authoritative hosted path; this avoids a frontend/backend origin mismatch and keeps refresh cookies same-site.
 
 Local/self-hosted:
 
@@ -28,17 +30,9 @@ The repository root `vercel.json` is the supported repo-root Vercel configuratio
 
 A Vercel project can instead set Root Directory to `frontend/`; `frontend/vercel.ts` is provided for that supported layout.
 
-The backend hostname is never hardcoded into frontend source.
+Vercel frontend deployments use the repository's `/api/*` proxy to the stable backend service. `VITE_API_BASE_URL` is optional and is used only when an operator intentionally chooses a direct backend origin.
 
-For hosted Vercel deployments configure:
-
-```
-VITE_API_BASE_URL=https://your-preview-or-production-backend.example
-```
-
-Use a different origin for Preview and Production.
-
-For a temporary frontend-only preview, leave it empty. The UI can render, but authenticated API operations will report genuine connection failures rather than fake data.
+Do not place secrets, tokens or credentials in frontend code or Vite environment variables.
 
 ## 4. Authentication
 
@@ -107,7 +101,7 @@ Assessment Studio preserves the real Select → Generate → Preview → Edit �
 Before real school data, configure at least:
 
 - DATABASE_URL
-- distinct strong JWT_ACCESS_SECRET and JWT_REFRESH_SECRET
+- strong JWT_ACCESS_SECRET and JWT_REFRESH_SECRET (they may be the same strong value)
 - non-default JWT_ISSUER and JWT_AUDIENCE
 - BACKUP_ENCRYPTION_KEY
 - STORAGE_PROVIDER=s3 or cloud
@@ -116,7 +110,7 @@ Before real school data, configure at least:
 - S3 credentials only when the provider requires them; if one explicit credential is set, set the pair
 - HTTPS CORS_ORIGIN
 - TRUST_PROXY=true or 1
-- VITE_API_BASE_URL
+- VITE_API_BASE_URL only when intentionally using a direct backend origin
 - AUTH_COOKIE_CROSS_SITE=true only when intentionally cross-origin
 
 Web research stays disabled unless deliberately configured.
