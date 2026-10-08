@@ -288,4 +288,35 @@ describe("userHasPermission", () => {
     const allowed = await userHasPermission("principal-1", "users:manage", {});
     expect(allowed).toBe(true);
   });
+
+  it("denies an unscoped role from satisfying an explicitly scoped permission", async () => {
+    mockedFindMany.mockResolvedValue([
+      {
+        classId: null,
+        sectionId: null,
+        subjectId: null,
+        departmentId: null,
+        role: { rolePermissions: [{ permission: { key: "documents:view:scoped" } }] },
+      },
+    ]);
+
+    const allowed = await userHasPermission("unscoped-teacher", "documents:view:scoped", { classId: "grade-10" });
+    expect(allowed).toBe(false);
+  });
+
+  it("grants an explicitly scoped permission only when the role assignment matches", async () => {
+    mockedFindMany.mockResolvedValue([
+      {
+        classId: "grade-10",
+        sectionId: null,
+        subjectId: null,
+        departmentId: null,
+        role: { rolePermissions: [{ permission: { key: "documents:view:scoped" } }] },
+      },
+    ]);
+
+    await expect(userHasPermission("scoped-teacher", "documents:view:scoped", { classId: "grade-10" })).resolves.toBe(true);
+    await expect(userHasPermission("scoped-teacher", "documents:view:scoped", { classId: "grade-11" })).resolves.toBe(false);
+  });
+
 });
