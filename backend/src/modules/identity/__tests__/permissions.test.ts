@@ -96,6 +96,25 @@ describe("userHasPermission", () => {
     expect(allowed).toBe(true);
   });
 
+  it("does not let one staff permission authorize a different student-scoped permission", async () => {
+    mockedFindMany.mockResolvedValue([
+      {
+        classId: null,
+        sectionId: null,
+        subjectId: null,
+        departmentId: null,
+        role: { rolePermissions: [{ permission: { key: "attendance:mark" } }] },
+      },
+    ]);
+    mockedStudentFind.mockResolvedValue({ id: "victim-profile", userId: "victim-user" });
+    mockedGuardianFind.mockResolvedValue(null);
+
+    const allowed = await userHasPermission("teacher-user", "finance:view:own", {
+      studentId: "victim-profile",
+    });
+    expect(allowed).toBe(false);
+  });
+
   it("denies a DIFFERENT student trying to view someone else's attendance", async () => {
     mockedFindMany.mockResolvedValue([]);
     mockedStudentFind.mockResolvedValue({ id: "student-profile-1", userId: "someone-else" });
