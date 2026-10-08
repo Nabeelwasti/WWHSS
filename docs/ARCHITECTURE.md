@@ -75,7 +75,7 @@ that every API route calls before touching data.
 
 ## 5. Hosted deployment boundary
 
-The supported hosted topology is Browser → Vercel Vite frontend → configured `VITE_API_BASE_URL` → stateless Cloud Run/Docker Express backend → managed PostgreSQL + private S3/R2. The frontend never embeds a backend hostname in source code. Same-origin `/api` remains the default when `VITE_API_BASE_URL` is absent, which keeps the Docker/nginx deployment operational.
+The supported hosted topology is Browser → Vercel Vite frontend → configured `VITE_API_BASE_URL` → stateless Cloud Run/Docker Express backend → managed PostgreSQL + private S3/R2. The frontend never embeds a backend hostname in source code. Same-origin `/api` remains supported when `VITE_API_BASE_URL` is absent, which keeps Docker/nginx self-hosting operational.
 
 The repository root `vercel.json` is the supported frontend deployment configuration. `frontend/vercel.ts` is an alternative when a Vercel project uses `frontend/` as its Root Directory. The production backend boundary is Cloud Run; Vercel is not the authoritative backend runtime.
 
