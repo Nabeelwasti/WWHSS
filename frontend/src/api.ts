@@ -570,6 +570,35 @@ export const api = {
   gradeAiAnswerSheet: (sheetId: string, input: { finalScore: number; teacherFeedback?: string }) =>
     request<{ answerSheet: unknown }>(`/ai/assessment/answer-sheets/${sheetId}/grade`, { method: "POST", body: JSON.stringify(input) }),
 
+  // ---- Enterprise Operations ----
+  listLeaveRequests: () => request<{ leaves: unknown[] }>("/operations/hr/leaves"),
+  createLeaveRequest: (input: Record<string, unknown>) => request("/operations/hr/leaves", { method: "POST", body: JSON.stringify(input) }),
+  decideLeaveRequest: (id: string, input: Record<string, unknown>) => request("/operations/hr/leaves/" + id + "/decision", { method: "POST", body: JSON.stringify(input) }),
+  listPayrollPeriods: () => request<{ periods: unknown[] }>("/operations/payroll/periods"),
+  createPayrollPeriod: (input: Record<string, unknown>) => request("/operations/payroll/periods", { method: "POST", body: JSON.stringify(input) }),
+  createPayrollRecord: (input: Record<string, unknown>) => request("/operations/payroll/records", { method: "POST", body: JSON.stringify(input) }),
+  payPayrollPeriod: (id: string, input: Record<string, unknown> = {}) => request("/operations/payroll/periods/" + id + "/pay", { method: "POST", body: JSON.stringify(input) }),
+  listAdmissionLeads: () => request<{ leads: unknown[] }>("/operations/admissions/leads"),
+  createAdmissionLead: (input: Record<string, unknown>) => request("/operations/admissions/leads", { method: "POST", body: JSON.stringify(input) }),
+  updateAdmissionLead: (id: string, input: Record<string, unknown>) => request("/operations/admissions/leads/" + id, { method: "PATCH", body: JSON.stringify(input) }),
+  convertAdmissionLead: (id: string, input: Record<string, unknown>) => request("/operations/admissions/leads/" + id + "/convert", { method: "POST", body: JSON.stringify(input) }),
+  listTransportVehicles: () => request<{ vehicles: unknown[] }>("/operations/transport/vehicles"),
+  createTransportVehicle: (input: Record<string, unknown>) => request("/operations/transport/vehicles", { method: "POST", body: JSON.stringify(input) }),
+  listTransportRoutes: () => request<{ routes: unknown[] }>("/operations/transport/routes"),
+  createTransportRoute: (input: Record<string, unknown>) => request("/operations/transport/routes", { method: "POST", body: JSON.stringify(input) }),
+  assignTransport: (input: Record<string, unknown>) => request("/operations/transport/assignments", { method: "POST", body: JSON.stringify(input) }),
+  listInventoryItems: () => request<{ items: unknown[] }>("/operations/inventory/items"),
+  createInventoryItem: (input: Record<string, unknown>) => request("/operations/inventory/items", { method: "POST", body: JSON.stringify(input) }),
+  createInventoryTransaction: (input: Record<string, unknown>) => request("/operations/inventory/transactions", { method: "POST", body: JSON.stringify(input) }),
+  listLowStockItems: () => request<{ items: unknown[] }>("/operations/inventory/low-stock"),
+  listAssets: () => request<{ assets: unknown[] }>("/operations/assets"),
+  assignAsset: (input: Record<string, unknown>) => request("/operations/assets", { method: "POST", body: JSON.stringify(input) }),
+  returnAsset: (id: string) => request("/operations/assets/" + id + "/return", { method: "POST" }),
+  listPtmMeetings: () => request<{ meetings: unknown[] }>("/operations/ptm"),
+  createPtmMeeting: (input: Record<string, unknown>) => request("/operations/ptm", { method: "POST", body: JSON.stringify(input) }),
+  updatePtmMeeting: (id: string, input: Record<string, unknown>) => request("/operations/ptm/" + id, { method: "PATCH", body: JSON.stringify(input) }),
+  createPaymentIntent: (input: Record<string, unknown>) => request("/payments/intents", { method: "POST", body: JSON.stringify(input) }),
+
   // ---- Backups ----
   listBackups: () => request<{ backups: unknown[] }>("/backup"),
 
