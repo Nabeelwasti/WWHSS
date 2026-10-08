@@ -20,6 +20,9 @@ function swVersionPlugin(): Plugin {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
+  if (process.env.VERCEL_ENV && !env.VITE_API_BASE_URL) {
+    throw new Error("VITE_API_BASE_URL must be configured for Vercel builds; hosted production must point to the Cloud Run backend.");
+  }
   return {
   plugins: [react(), swVersionPlugin()],
   server: {
