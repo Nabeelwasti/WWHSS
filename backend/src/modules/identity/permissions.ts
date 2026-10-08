@@ -58,9 +58,10 @@ export async function userHasPermission(
       where: { id: scope.studentId },
       select: { classId: true, sectionId: true },
     });
-    if (studentProfile) {
+    if (studentProfile && !isSelfOnlyPermission) {
       // Object-level access must authorize the exact requested permission.
-      // Possessing one staff capability must never imply another capability.
+      // Self/guardian-only permissions are relationship-based and can never
+      // be delegated through a staff role.
       const userRoles = await prisma.userRole.findMany({
         where: { userId },
         include: { role: { include: { rolePermissions: { include: { permission: true } } } } },
