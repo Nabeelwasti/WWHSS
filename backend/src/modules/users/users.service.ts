@@ -5,6 +5,55 @@ import { Prisma } from "@prisma/client";
 
 export class UserValidationError extends Error {}
 
+const ROLE_LEVELS: Record<string, number> = {
+  super_admin: 100,
+  principal: 80,
+  teacher: 40,
+  class_teacher: 40,
+  accountant: 40,
+  librarian: 40,
+  student: 10,
+  parent: 10,
+};
+
+async function highestRoleLevel(userId: string): Promise<number> {
+  const assignments = await prisma.userRole.findMany({
+    where: { userId },
+    select: { role: { select: { key: true } } },
+  });
+  return assignments.reduce((max, assignment) => Math.max(max, ROLE_LEVELS[assignment.role.key] ?? 0), 0);
+}
+
+export async function assertCanManageUser(actorId: string, targetUserId: string): Promise<void> {
+  if (actorId === targetUserId) return;
+  const [actorLevel, targetLevel] = await Promise.all([
+    highestRoleLevel(actorId),
+    highestRoleLevel(targetUserId),
+  ]);
+  if (targetLevel >= actorLevel) {
+    throw new UserValidationError("You cannot manage a user with an equal or higher privileged role.");
+  }
+}
+
+export async function assertCanAssignRole(actorId: string, targetUserId: string, roleKey: string): Promise<void> {
+  const requestedLevel = ROLE_LEVELS[roleKey];
+  if (requestedLevel === undefined) {
+    throw new UserValidationError(`Role '${roleKey}' is not part of the approved privilege hierarchy.`);
+  }
+
+  const [actorLevel, targetLevel] = await Promise.all([
+    highestRoleLevel(actorId),
+    highestRoleLevel(targetUserId),
+  ]);
+
+  if (requestedLevel >= actorLevel) {
+    throw new UserValidationError("You cannot grant a role with privilege equal to or higher than your own.");
+  }
+  if (targetLevel >= actorLevel) {
+    throw new UserValidationError("You cannot modify a user with an equal or higher privileged role.");
+  }
+}
+
 export async function listUsers() {
   return prisma.user.findMany({
     select: {
@@ -48,7 +97,9 @@ export async function assignRole(input: {
   sectionId?: string;
   subjectId?: string;
   departmentId?: string;
+  actorId?: string;
 }) {
+  if (input.actorId) await assertCanAssignRole(input.actorId, input.userId, input.roleKey);
   const user = await prisma.user.findUnique({ where: { id: input.userId }, select: { id: true } });
   if (!user) throw new UserValidationError(`User not found: ${input.userId}`);
 
@@ -91,11 +142,18 @@ export async function assignRole(input: {
   });
 }
 
-export async function removeRoleAssignment(userRoleId: string) {
+export async function removeRoleAssignment(userRoleId: string, actorId?: string) {
+  const assignment = await prisma.userRole.findUnique({
+    where: { id: userRoleId },
+    select: { userId: true },
+  });
+  if (!assignment) throw new UserValidationError(`Role assignment not found: ${userRoleId}`);
+  if (actorId) await assertCanManageUser(actorId, assignment.userId);
   return prisma.userRole.delete({ where: { id: userRoleId } });
 }
 
-export async function deactivateUser(userId: string) {
+export async function deactivateUser(userId: string, actorId?: string) {
+  if (actorId) await assertCanManageUser(actorId, userId);
   const user = await prisma.user.update({
     where: { id: userId },
     data: { isActive: false, tokenVersion: { increment: 1 } },
@@ -109,7 +167,8 @@ export async function listRoles() {
   return prisma.role.findMany({ orderBy: { name: "asc" } });
 }
 
-export async function resetPassword(userId: string) {
+export async function resetPassword(userId: string, actorId?: string) {
+  if (actorId) await assertCanManageUser(actorId, userId);
   const temporaryPassword = crypto.randomBytes(9).toString("base64url");
   const passwordHash = await argon2.hash(temporaryPassword);
 
