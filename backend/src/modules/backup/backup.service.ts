@@ -202,8 +202,13 @@ export function getBackupProvider(): BackupProvider {
     } else if (type === "memory") {
       if (env.nodeEnv !== "test") throw new BackupError("Memory backup provider is permitted only in NODE_ENV=test");
       activeBackupProvider = new MemoryBackupProvider();
-    } else {
+    } else if (type === "local") {
+      if (env.vercelEnv === "preview" || env.vercelEnv === "production") {
+        throw new BackupError("Local backup provider is not permitted in hosted Preview/Production");
+      }
       activeBackupProvider = new LocalBackupProvider();
+    } else {
+      throw new BackupError("Unsupported backup provider configuration");
     }
   }
   return activeBackupProvider;
