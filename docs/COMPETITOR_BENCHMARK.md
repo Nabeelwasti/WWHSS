@@ -4,12 +4,12 @@ This benchmark is used to select improvements without destabilizing the existing
 
 | Capability | Market pattern | WWHSS position | Decision |
 |---|---|---|---|
-| Admissions | SchoolPortal.pk, SchoolDesk, CampusCore emphasize enquiry/admission workflows | Student records and management are strong; full enquiry funnel is less developed | Add a scoped admissions/enquiry workflow later |
+| Admissions | SchoolPortal.pk, SchoolDesk, CampusCore emphasize enquiry/admission workflows | Admission enquiry pipeline is implemented and connected to the existing student identity model | Extend conversion/document checklist workflows |
 | Fees | Pakistani products emphasize PKR vouchers, online payments, reminders and reconciliation | Funding-first finance, billing periods, payments, waivers and reports are stronger transactionally | Add payment-provider adapters without changing finance invariants |
 | Attendance | Parent alerts and optional biometric/device integration are common | Attendance and enrollment authorization are strong | Add provider-neutral notification/device adapters later |
 | Exams/results | Report cards, datesheets, award lists and exports are common | Exams/results lifecycle and document engine are strong | Preserve teacher final authority; continue report templates |
 | Parent communication | WhatsApp/SMS/app alerts are a major adoption differentiator | Notifications/parent portal exist | Add provider-neutral WhatsApp/SMS integrations only through explicit consent and audit |
-| Payroll/HR | SchoolPortal.pk, SchoolDesk and CampusCore emphasize payroll/HR | Staff records exist; payroll is not the same depth as dedicated HR products | Keep payroll as a bounded future module rather than weakening current finance |
+| Payroll/HR | SchoolPortal.pk, SchoolDesk and CampusCore emphasize payroll/HR | Staff profiles, leave approvals, payroll periods/records and payment state are now implemented | Continue extending statutory deductions/payslip templates only where required |
 | Timetable | Common across all serious platforms | Strong conflict-aware timetable exists | Preserve and extend only where useful |
 | Library | OpenEduCat/Frappe include library workflows | WWHSS has library copy/loan logic | Preserve transactional copy protection |
 | Documents | Excel/PDF exports are expected | PDF/HTML/CSV plus newly added XLSX | Completed |
