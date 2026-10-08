@@ -13,7 +13,6 @@ CREATE TABLE "leave_requests" (
   "updatedAt" TIMESTAMP(3) NOT NULL,
   CONSTRAINT "leave_requests_pkey" PRIMARY KEY ("id")
 );
-CREATE INDEX "admission_leads_phone_idx" ON "admission_leads"("phone");
 CREATE INDEX "leave_requests_staffProfileId_startDate_endDate_idx" ON "leave_requests"("staffProfileId","startDate","endDate");
 CREATE TABLE "payroll_periods" (
   "id" TEXT NOT NULL,
@@ -62,6 +61,7 @@ CREATE TABLE "admission_leads" (
 );
 CREATE UNIQUE INDEX "admission_leads_convertedStudentId_key" ON "admission_leads"("convertedStudentId");
 CREATE INDEX "admission_leads_status_createdAt_idx" ON "admission_leads"("status","createdAt");
+CREATE INDEX "admission_leads_phone_idx" ON "admission_leads"("phone");
 CREATE TABLE "transport_vehicles" (
   "id" TEXT NOT NULL,
   "registrationNo" TEXT NOT NULL,
