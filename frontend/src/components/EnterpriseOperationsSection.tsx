@@ -18,7 +18,7 @@ export function EnterpriseOperationsSection() {
   }
   useEffect(()=>{load();},[tab]);
 
-  async function submit(e:FormEvent<HTMLFormElement>){
+\n  async function convertLead(r:Row){ const email=window.prompt("Student email",r.email||""); const admissionNo=window.prompt("Admission number","ADM-"+new Date().getFullYear()+"-"+Math.floor(Math.random()*90000+10000)); if(!email||!admissionNo)return; try{ const result:any=await api.convertAdmissionLead(r.id,{email,admissionNo}); setNotice("Student created. One-time password: "+result.temp); await load(); }catch(e){setError(e instanceof ApiError?e.message:"Could not convert admission.");} }\n\n  async function submit(e:FormEvent<HTMLFormElement>){
     e.preventDefault(); const f=new FormData(e.currentTarget);
     try{
       if(tab==="admissions") await api.createAdmissionLead({applicantName:String(f.get("applicantName")),guardianName:String(f.get("guardianName")||"")||undefined,phone:String(f.get("phone")||"")||undefined,email:String(f.get("email")||"")||undefined,desiredClass:String(f.get("desiredClass")||"")||undefined,source:String(f.get("source")||"")||undefined});
@@ -49,7 +49,7 @@ export function EnterpriseOperationsSection() {
     </section>
     <section className="card">
       <h3 className="card-title">Current records</h3>
-      {rows.length===0?<p className="text-muted text-sm">No records yet.</p>:<div style={{overflowX:"auto"}}><table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}><thead><tr><th style={{textAlign:"left"}}>Record</th><th style={{textAlign:"left"}}>Status</th><th style={{textAlign:"left"}}>Details</th></tr></thead><tbody>{rows.map(r=><tr key={r.id} style={{borderBottom:"1px solid var(--border)"}}><td>{r.id}</td><td>{r.status||"—"}</td><td>{r.label||r.applicantName||r.name||r.leaveType||r.registrationNo||r.scheduledAt||"—"}</td></tr>)}</tbody></table></div>}
+      {rows.length===0?<p className="text-muted text-sm">No records yet.</p>:<div style={{overflowX:"auto"}}><table style={{width:"100%",fontSize:13,borderCollapse:"collapse"}}><thead><tr><th style={{textAlign:"left"}}>Record</th><th style={{textAlign:"left"}}>Status</th><th style={{textAlign:"left"}}>Details</th></tr></thead><tbody>{rows.map(r=><tr key={r.id} style={{borderBottom:"1px solid var(--border)"}}><td>{r.id}</td><td>{r.status||"—"}</td><td>{r.label||r.applicantName||r.name||r.leaveType||r.registrationNo||r.scheduledAt||"—"} {tab==="admissions" && !r.convertedStudentId && <button className="btn btn-ghost btn-sm" onClick={()=>convertLead(r)}>Convert</button>}</td></tr>)}</tbody></table></div>}
     </section>
   </section>;
 }
