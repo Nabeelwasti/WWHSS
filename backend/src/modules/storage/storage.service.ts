@@ -89,6 +89,7 @@ export class LocalStorageProvider implements StorageProvider {
   }
 
   async getFile(filename: string): Promise<{ filePath?: string; mimeType?: string }> {
+    assertSafeStorageKey(filename);
     const fullPath = path.join(this.dir, filename);
     if (!fs.existsSync(fullPath)) {
       throw new StorageValidationError("File not found");
@@ -97,6 +98,7 @@ export class LocalStorageProvider implements StorageProvider {
   }
 
   async deleteFile(filename: string): Promise<void> {
+    assertSafeStorageKey(filename);
     const fullPath = path.join(this.dir, filename);
     if (fs.existsSync(fullPath)) {
       await fs.promises.unlink(fullPath);
@@ -104,6 +106,7 @@ export class LocalStorageProvider implements StorageProvider {
   }
 
   async exists(filename: string): Promise<boolean> {
+    assertSafeStorageKey(filename);
     const fullPath = path.join(this.dir, filename);
     return fs.existsSync(fullPath);
   }
@@ -141,9 +144,6 @@ export class S3StorageProvider implements StorageProvider {
 
   async saveFile(filename: string, buffer: Buffer, mimeType: string): Promise<void> {
     assertSafeStorageKey(filename);
-    assertSafeStorageKey(filename);
-    assertSafeStorageKey(filename);
-    assertSafeStorageKey(filename);
     const key = `storage/${filename}`;
     const command = new PutObjectCommand({
       Bucket: this.bucket,
@@ -162,6 +162,7 @@ export class S3StorageProvider implements StorageProvider {
   }
 
   async getFile(filename: string): Promise<{ buffer?: Buffer; mimeType?: string }> {
+    assertSafeStorageKey(filename);
     const key = `storage/${filename}`;
     try {
       const response = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
@@ -184,6 +185,7 @@ export class S3StorageProvider implements StorageProvider {
   }
 
   async deleteFile(filename: string): Promise<void> {
+    assertSafeStorageKey(filename);
     const key = `storage/${filename}`;
     const command = new DeleteObjectCommand({
       Bucket: this.bucket,
