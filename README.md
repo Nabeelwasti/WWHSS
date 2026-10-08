@@ -43,6 +43,7 @@ Vercel remains an excellent frontend/proxy layer. A Vercel-hosted backend is pos
 - Funding categories, funding periods, fee policies and waivers
 - Recurring fee invoices with explicit billing periods
 - Payments, reversals, refunds, adjustments and financial reporting
+- Provider-neutral online payment intents with signed webhook processing for gateway adapters
 - Library catalog, copies, loans and fines
 - CMS pages, notices, events and gallery
 - Parent portal with scoped child access
@@ -105,6 +106,7 @@ Preview and production require real values for:
 - S3_REGION
 - S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY are optional as a pair when the S3-compatible provider supplies workload/instance credentials; if one is set, the other is required.
 - CORS_ORIGIN=https://...
+- Optional payment webhook secrets: `PAYMENT_WEBHOOK_SECRET` or provider-specific `PAYMENT_WEBHOOK_SECRET_JAZZCASH` / `PAYMENT_WEBHOOK_SECRET_EASYPAISA` when using external gateway adapters
 - AUTH_COOKIE_CROSS_SITE=true only when the browser and backend are intentionally cross-origin; otherwise leave it false.
 - TRUST_PROXY=true or 1
 
