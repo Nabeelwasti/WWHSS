@@ -59,8 +59,9 @@ app.use((req, _res, next) => {
   if (!origin) return next();
   const sameOrigin = `${req.protocol}://${req.get("host")}`;
   if (origin === sameOrigin || isConfiguredCorsOriginAllowed(origin)) return next();
-  const error = new Error("CORS origin is not allowed");
-  (error as Error & { status?: number }).status = 403;
+  const error = new Error("CORS origin is not allowed") as Error & { status?: number; code?: string };
+  error.status = 403;
+  error.code = "CORS_ORIGIN_DENIED";
   return next(error);
 });
 
@@ -165,8 +166,16 @@ app.use((err: unknown, req: express.Request, res: express.Response, _next: expre
     ? (err as { status: number }).status
     : 500;
   const requestId = res.getHeader("X-Request-ID");
+  const errorCode = typeof err === "object" && err && "code" in err && typeof (err as { code?: unknown }).code === "string"
+    ? (err as { code: string }).code
+    : undefined;
   if (status >= 500) console.error({ requestId, error: err });
-  res.status(status).json({ error: status === 403 ? "CORS origin is not allowed" : "Internal server error", requestId });
+  const publicError = status === 403
+    ? errorCode === "CORS_ORIGIN_DENIED"
+      ? "CORS origin is not allowed"
+      : "Forbidden"
+    : "Internal server error";
+  res.status(status).json({ error: publicError, requestId });
 });
 
 export default app;
