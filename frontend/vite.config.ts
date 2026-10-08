@@ -1,4 +1,4 @@
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import fs from "node:fs";
 import path from "node:path";
@@ -18,12 +18,13 @@ function swVersionPlugin(): Plugin {
   };
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
   plugins: [react(), swVersionPlugin()],
   server: {
     proxy: {
       "/api": {
-        target: process.env.VITE_API_TARGET ?? "http://localhost:4000",
+        target: env.VITE_API_TARGET ?? "http://localhost:4000",
         changeOrigin: true,
       },
     },
