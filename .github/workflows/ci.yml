@@ -157,6 +157,13 @@ jobs:
           test -f frontend/.env.example
           grep -q "VITE_API_BASE_URL" frontend/.env.example
           grep -q "VITE_API_TARGET" frontend/.env.example
+          test -f .github/workflows/deploy-cloud-run.yml
+          grep -q "needs: verify-release" .github/workflows/deploy-cloud-run.yml
+          grep -q -- "--no-traffic" .github/workflows/deploy-cloud-run.yml
+          grep -q "npx prisma migrate deploy" .github/workflows/deploy-cloud-run.yml
+          grep -q '"$REVISION_URL/ready"' .github/workflows/deploy-cloud-run.yml
+          grep -q '"$REVISION_URL/api/health"' .github/workflows/deploy-cloud-run.yml
+          grep -q "update-traffic" .github/workflows/deploy-cloud-run.yml
 
   browser-e2e:
     runs-on: ubuntu-latest
