@@ -1,5 +1,6 @@
 import { Router, raw } from "express";
 import { authenticate } from "../../middleware/authenticate.js";
+import { authorize } from "../../middleware/authorize.js";
 import {
   savePrivateFile,
   getPrivateFileContent,
