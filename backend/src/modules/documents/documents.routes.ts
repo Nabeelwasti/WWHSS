@@ -45,9 +45,15 @@ async function resolveDocumentScope(docType: string, referenceId: string) {
   return {};
 }
 
+async function hasDocumentPermission(userId: string, permissionKey: "documents:view" | "documents:create" | "documents:print", scope: { studentId?: string; classId?: string; sectionId?: string; departmentId?: string }) {
+  if (await userHasPermission(userId, permissionKey, scope)) return true;
+  if (permissionKey === "documents:view" && await userHasPermission(userId, "documents:view:scoped", scope)) return true;
+  if (permissionKey === "documents:print" && await userHasPermission(userId, "documents:print:scoped", scope)) return true;
+  return Boolean(scope.studentId && await userHasPermission(userId, "documents:view:own", { studentId: scope.studentId }));
+}
+
 async function requireDocumentPermission(userId: string, permissionKey: "documents:view" | "documents:create" | "documents:print", scope: { studentId?: string; classId?: string; sectionId?: string; departmentId?: string }) {
-  if (await userHasPermission(userId, permissionKey, scope)) return;
-  if (scope.studentId && await userHasPermission(userId, "documents:view:own", { studentId: scope.studentId })) return;
+  if (await hasDocumentPermission(userId, permissionKey, scope)) return;
   throw new Error(`Forbidden: requires ${permissionKey}`);
 }
 
@@ -73,13 +79,13 @@ documentsRouter.get("/", async (req, res) => {
   if (studentProfileId) {
     const student = await prisma.studentProfile.findUnique({ where: { id: studentProfileId }, select: { classId: true, sectionId: true } });
     if (!student) return res.status(404).json({ error: "Student not found" });
-    const allowed = await userHasPermission(req.userId, "documents:view", { studentId: studentProfileId, classId: student.classId ?? undefined, sectionId: student.sectionId ?? undefined });
+    const allowed = await hasDocumentPermission(req.userId, "documents:view", { studentId: studentProfileId, classId: student.classId ?? undefined, sectionId: student.sectionId ?? undefined });
     const own = await userHasPermission(req.userId, "documents:view:own", { studentId: studentProfileId });
     if (!allowed && !own) return res.status(403).json({ error: "Forbidden" });
   } else if (staffProfileId) {
     const staff = await prisma.staffProfile.findUnique({ where: { id: staffProfileId }, select: { departmentId: true } });
     if (!staff) return res.status(404).json({ error: "Staff profile not found" });
-    if (!(await userHasPermission(req.userId, "documents:view", { departmentId: staff.departmentId ?? undefined }))) return res.status(403).json({ error: "Forbidden" });
+    if (!(await hasDocumentPermission(req.userId, "documents:view", { departmentId: staff.departmentId ?? undefined }))) return res.status(403).json({ error: "Forbidden" });
   } else if (!(await userHasPermission(req.userId, "documents:view"))) return res.status(403).json({ error: "A document scope is required for this request" });
   const records = await listDocumentRecords({ docType, studentProfileId, staffProfileId, academicYearId });
   res.json({ documents: records });
