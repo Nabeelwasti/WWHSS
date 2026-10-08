@@ -1,5 +1,7 @@
 # WWHSS Digital Campus
 
+<!-- Final integrated CI verification candidate 2 -->
+
 WWHSS Digital Campus is a production-oriented school management platform for Workers Welfare Higher Secondary School. It is a real full-stack system backed by PostgreSQL, Prisma, Express, React/Vite, durable S3-compatible storage, Docker, and GitHub Actions.
 
 ## Current production architecture
