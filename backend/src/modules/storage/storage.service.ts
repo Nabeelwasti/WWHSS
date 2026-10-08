@@ -38,6 +38,16 @@ const MIME_EXTENSIONS: Record<string, Set<string>> = {
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": new Set([".xlsx"]),
 };
 
+
+function assertSafeStorageKey(filename: string): void {
+  if (!filename || filename.length > 255 || path.isAbsolute(filename) || filename.includes("\\\\") || filename.includes("/")) {
+    throw new StorageValidationError("Invalid storage object key");
+  }
+  if (filename === "." || filename === ".." || filename.includes("..")) {
+    throw new StorageValidationError("Invalid storage object key");
+  }
+}
+
 function hasExpectedFileSignature(mimeType: string, buffer: Buffer): boolean {
   if (mimeType === "application/pdf") return buffer.subarray(0, 5).toString("ascii") === "%PDF-";
   if (mimeType === "image/jpeg") return buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
@@ -73,6 +83,7 @@ export class LocalStorageProvider implements StorageProvider {
     if (!fs.existsSync(this.dir)) {
       fs.mkdirSync(this.dir, { recursive: true });
     }
+    assertSafeStorageKey(filename);
     const fullPath = path.join(this.dir, filename);
     await fs.promises.writeFile(fullPath, buffer);
   }
@@ -129,6 +140,10 @@ export class S3StorageProvider implements StorageProvider {
   }
 
   async saveFile(filename: string, buffer: Buffer, mimeType: string): Promise<void> {
+    assertSafeStorageKey(filename);
+    assertSafeStorageKey(filename);
+    assertSafeStorageKey(filename);
+    assertSafeStorageKey(filename);
     const key = `storage/${filename}`;
     const command = new PutObjectCommand({
       Bucket: this.bucket,
