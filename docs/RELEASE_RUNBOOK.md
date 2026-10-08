@@ -21,7 +21,7 @@ The application container must start with `node dist/server.js`; it must never r
 
 ## Vercel
 
-Automatic Git deployment is intentionally disabled in repository configuration. The supported Vercel configurations are `vercel.json` for a repo-root project and `frontend/vercel.ts` for a `frontend/` Root Directory project. Both provide the `/api/*` backend proxy and SPA fallback. `VITE_API_BASE_URL` remains an optional direct-origin override. Do not put secrets or credentials into frontend source or Vite environment variables.
+Automatic Git deployment is intentionally disabled in repository configuration. The supported Vercel configurations are `vercel.json` for a repo-root project and `frontend/vercel.ts` for a `frontend/` Root Directory project. Both provide SPA fallback only. Hosted production uses `VITE_API_BASE_URL` for the direct Cloud Run API origin; Docker/self-hosting can continue to use same-origin `/api`. Do not put secrets or credentials into frontend source or Vite environment variables.
 
 ## Database
 
