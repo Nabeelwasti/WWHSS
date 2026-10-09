@@ -19,11 +19,12 @@ vi.mock("../../../config/env.js", () => ({
   },
 }));
 
-const { mockFindFirst, mockUpdateMany, mockCreate, mockUserFindUnique } = vi.hoisted(() => ({
+const { mockFindFirst, mockUpdateMany, mockCreate, mockUserFindUnique, mockAuditCreate } = vi.hoisted(() => ({
   mockFindFirst: vi.fn(),
   mockUpdateMany: vi.fn(),
   mockCreate: vi.fn(),
   mockUserFindUnique: vi.fn(),
+  mockAuditCreate: vi.fn(),
 }));
 
 vi.mock("../../../db/client.js", () => ({
@@ -37,6 +38,9 @@ vi.mock("../../../db/client.js", () => ({
         },
         user: {
           findUnique: mockUserFindUnique,
+        },
+        auditLog: {
+          create: mockAuditCreate,
         },
       })
     ),
@@ -59,6 +63,7 @@ describe("Refresh Token Rotation Security", () => {
     mockUpdateMany.mockReset();
     mockCreate.mockReset();
     mockUserFindUnique.mockReset();
+    mockAuditCreate.mockReset();
   });
 
   it("rotates refresh token cleanly on valid presentation", async () => {
@@ -93,6 +98,31 @@ describe("Refresh Token Rotation Security", () => {
     mockUpdateMany.mockResolvedValue({ count: 0 });
 
     await expect(refresh("stolen-or-replayed-token")).rejects.toThrow(AuthError);
+  });
+
+  it("commits session revocation and an audit event when a revoked refresh token is replayed", async () => {
+    mockFindFirst.mockResolvedValue({
+      id: "rt-replayed",
+      userId: "u-1",
+      revoked: true,
+      expiresAt: new Date(Date.now() + 86400000),
+    });
+    mockUpdateMany.mockResolvedValue({ count: 2 });
+    mockAuditCreate.mockResolvedValue({});
+
+    await expect(refresh("replayed-token")).rejects.toThrow(AuthError);
+
+    expect(mockUpdateMany).toHaveBeenCalledWith({
+      where: { userId: "u-1", revoked: false },
+      data: { revoked: true },
+    });
+    expect(mockAuditCreate).toHaveBeenCalledWith({
+      data: {
+        userId: "u-1",
+        action: "auth:refresh_reuse_detected",
+        metadata: { refreshTokenId: "rt-replayed" },
+      },
+    });
   });
 
   it("rejects an inactive user account during refresh attempt", async () => {
