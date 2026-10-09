@@ -69,7 +69,7 @@ The repository tree contains **253 entries**, including **39 entries under `fron
 
 - Replace the shallow top navigation with a responsive, grouped campus workspace shell and first-class destinations for the existing admin modules.
 - Add a global workspace finder (including Ctrl/Cmd+K focus), active workspace context, signed-in identity, and persistent sign-out affordance.
-- Add direct destination-to-admin-tab wiring without duplicating or bypassing backend authorization.
+- Add direct destination-to-admin-tab wiring and expose finance/library workspaces to their seeded specialist roles without duplicating or bypassing backend authorization.
 - Complete the school-wide class directory using the existing real classes endpoint; no fabricated metrics or demo data.
 - Upgrade dashboard hierarchy and responsive visual treatment while retaining existing real feature components and localization support.
 
