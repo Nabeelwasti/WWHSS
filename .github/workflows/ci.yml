@@ -170,6 +170,11 @@ jobs:
           grep -q -- "--startup-probe=httpGet.path=/ready" .github/workflows/deploy-cloud-run.yml
           grep -q "PRODUCTION_SMOKE_EMAIL" .github/workflows/deploy-cloud-run.yml
           grep -q "PRODUCTION_SMOKE_PASSWORD" .github/workflows/deploy-cloud-run.yml
+          grep -q 'sort_by(.createdAt) | last' .github/workflows/deploy-cloud-run.yml
+          grep -q 'refs/heads/main' .github/workflows/deploy-cloud-run.yml
+          grep -q 'FRONTEND_ORIGIN/dashboard' .github/workflows/deploy-cloud-run.yml
+          grep -q 'SameSite=None' .github/workflows/deploy-cloud-run.yml
+          grep -q 'LOGOUT_REPLAY_STATUS' .github/workflows/deploy-cloud-run.yml
 
   browser-e2e:
     runs-on: ubuntu-latest
