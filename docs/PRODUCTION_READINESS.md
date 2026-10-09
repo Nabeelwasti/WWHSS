@@ -4,7 +4,8 @@ This document is the current operational source of truth for the production arch
 
 ## Runtime architecture
 
-- Backend: Node.js 24, Express, TypeScript, Prisma 5, PostgreSQL 16, deployed as a stateless container (Cloud Run recommended for the long-running Express runtime). Vercel is the frontend edge/proxy layer.
+- Backend: Node.js 24, Express, TypeScript, Prisma 5, PostgreSQL 16, deployed as a stateless container on Cloud Run.
+- Frontend: React 18, TypeScript, Vite, hosted on Vercel as static assets. Hosted builds call the matching Cloud Run API directly using `VITE_API_BASE_URL`; Vercel is not an API proxy in the supported production topology.
 - Frontend: React 18, TypeScript, Vite.
 - Authentication: short-lived access JWT plus hashed, rotating refresh tokens in PostgreSQL, with explicit JWT issuer/audience validation.
 - Authorization: backend-enforced permission keys with class/section/subject/department/student scopes.
@@ -38,7 +39,7 @@ Preview and production must provide real values for:
 - `TRUST_PROXY=true` or `1`
 - `WEB_RESEARCH_ENABLED=false` unless a real `WEB_RESEARCH_API_KEY` is intentionally configured
 
-Do not commit real credentials. Preview and production should point at separate PostgreSQL databases. Refresh cookies are Secure/HttpOnly on both Vercel preview and production deployments.
+Do not commit real credentials. Preview and production should point at separate PostgreSQL databases. Refresh cookies are Secure/HttpOnly on hosted deployments. For a cross-origin Vercel-to-Cloud Run browser session, configure `AUTH_COOKIE_CROSS_SITE=true`, `SameSite=None; Secure`, exact `CORS_ORIGIN`, and credentialed CORS; validate the real browser cookie flow before release.
 
 ## Verification
 
@@ -102,7 +103,8 @@ Vercel's current documentation supports Express and external-origin rewrites, wh
 7. Set `TRUST_PROXY=true` (Cloud Run is behind a managed proxy).
 8. Configure R2 through the existing `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, and optional `S3_ENDPOINT` variables.
 9. Configure `VITE_API_BASE_URL` in the Vercel Preview and Production environments to the matching Cloud Run HTTPS origin. The frontend API client prefixes every request with that origin and preserves credentials. Do not place the backend hostname in source code.
-10. Verify `/health`, login, refresh, logout, one authorized read, one authorized write, one private-file upload/download, and backup creation/verification against the hosted database before declaring production live.
+10. Verify `/health`, `/ready`, `/api/health`, login, refresh rotation, logout, unauthorized access denial, one authorized read and write, private-file upload/download, and backup creation/verification against the hosted database before declaring production live.
+11. Run the isolated disaster-recovery drill in `docs/DISASTER_RECOVERY.md`; restore into a disposable database and isolated storage prefix, then verify representative records and authentication. Never target production with a drill.
 
 ### Vercel deployment boundary
 

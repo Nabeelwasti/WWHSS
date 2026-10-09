@@ -158,7 +158,10 @@ jobs:
           grep -q "VITE_API_BASE_URL" frontend/.env.example
           grep -q "VITE_API_TARGET" frontend/.env.example
           test -f .github/workflows/deploy-cloud-run.yml
+          grep -q "^  actions: read$" .github/workflows/deploy-cloud-run.yml
           grep -q "needs: verify-release" .github/workflows/deploy-cloud-run.yml
+          grep -Fq 'grep -Fqi "access-control-allow-origin: $FRONTEND_ORIGIN"' .github/workflows/deploy-cloud-run.yml
+          ! grep -q "Vercel /api/\* proxy" docs/RELEASE_RUNBOOK.md
           grep -q -- "--no-traffic" .github/workflows/deploy-cloud-run.yml
           grep -q "npx prisma migrate deploy" .github/workflows/deploy-cloud-run.yml
           grep -q '"$REVISION_URL/ready"' .github/workflows/deploy-cloud-run.yml

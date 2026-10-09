@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
   id-token: write
 
@@ -144,7 +145,7 @@ jobs:
           test "$UNAUTH_STATUS" = "401"
 
           curl --fail --silent --show-error --dump-header /tmp/me.headers -H "Origin: $FRONTEND_ORIGIN" -H "Authorization: Bearer $ACCESS_TOKEN" "$REVISION_URL/api/auth/me" >/tmp/me.json
-          grep -qi "^access-control-allow-origin: $FRONTEND_ORIGIN" /tmp/me.headers
+          grep -Fqi "access-control-allow-origin: $FRONTEND_ORIGIN" /tmp/me.headers
           grep -q '"user"' /tmp/me.json
 
           curl --fail --silent --show-error -H "Origin: $FRONTEND_ORIGIN" -H "Authorization: Bearer $ACCESS_TOKEN" "$REVISION_URL/api/school/profile" >/tmp/school.json

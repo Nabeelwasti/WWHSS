@@ -13,9 +13,10 @@ Preview and Production must use isolated databases, storage locations and secret
 3. Run `npx prisma migrate deploy` exactly once against the target database.
 4. Deploy the immutable Cloud Run revision with the injected `PORT`.
 5. Verify `/health` and `/ready`.
-6. Verify the Vercel `/api/*` proxy reaches the intended backend deployment and does not return frontend HTML or a 404.
-7. Run authentication, authorization, upload, document, finance and representative E2E smoke tests.
-8. Shift production traffic only after readiness and smoke checks pass.
+6. Verify the deployed Vercel build has `VITE_API_BASE_URL` set to the intended Cloud Run HTTPS origin, then verify browser requests reach that API with credentialed CORS and refresh-cookie behavior. The supported hosted topology does not use a Vercel `/api/*` proxy.
+7. Run authenticated login/refresh/logout, authorization denial, private upload/download, document, finance and representative E2E smoke tests.
+8. Verify backup integrity and complete the isolated disaster-recovery drill before asserting recovery readiness.
+9. Shift production traffic only after readiness and smoke checks pass.
 
 The application container must start with `node dist/server.js`; it must never run database migrations as part of normal startup.
 
