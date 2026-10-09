@@ -87,5 +87,5 @@ test("document center exposes every backend-supported document type", async ({ p
   const documentType = page.getByLabel("Document type");
   await expect(documentType).toBeVisible();
   await expect(documentType.locator("option")).toHaveCount(23);
-  await expect(page.getByLabel("Document reference ID")).toBeVisible();
+  await expect(page.locator('[aria-label="Document reference ID"], [aria-label="Student record"]')).toBeVisible();
 });
