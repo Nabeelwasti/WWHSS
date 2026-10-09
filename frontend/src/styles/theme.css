@@ -733,3 +733,11 @@ a { color: var(--navy-l); }
   .backup-restore-panel { background: #121e2a; border-color: #283746; }
   .backup-preview { color: #a8e5c9; background: #15352b; border-color: #285b48; }
 }
+
+.document-type-field,.document-reference-field { display: grid; gap: 6px; min-width: 200px; color: var(--text); font-size: 12px; font-weight: 650; }
+.document-type-field .input,.document-reference-field .input { width: 100%; min-width: 0; }
+.document-type-field { flex: 0 1 280px; }
+.document-reference-field { flex: 1 1 300px; }
+@media (prefers-color-scheme: dark) {
+  .document-type-field,.document-reference-field { color: #e4edf7; }
+}
