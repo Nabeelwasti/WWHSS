@@ -264,7 +264,7 @@ export default function App() {
             {view === "timetable" && <TimetablePage />}
             {view === "quizzes" && isStudent && user.studentProfile && <QuizzesPage studentProfileId={user.studentProfile.id} />}
             {view === "parent" && isParent && <ParentPage />}
-            {adminTabs[view] && canAccessAdminView && <AdminPage initialTab={requestedAdminTab} allowedTabs={isAdmin ? undefined : allowedAdminTabs} />}
+            {adminTabs[view] && canAccessAdminView && <AdminPage key={view} initialTab={requestedAdminTab} allowedTabs={isAdmin ? undefined : allowedAdminTabs} />}
           </div>
         </div>
       </div>
