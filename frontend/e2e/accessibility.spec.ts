@@ -61,3 +61,12 @@ test("admin library workflow is keyboard reachable and functional", async ({ pag
   await page.getByRole("button", { name: "Add Book" }).click();
   await expect(page.getByText("Book added to the catalog.")).toBeVisible();
 });
+
+test("workspace finder opens the requested admin workspace", async ({ page }) => {
+  await loginAsAdmin(page);
+  const finder = page.getByRole("textbox", { name: "Search available workspaces" });
+  await finder.fill("finance");
+  await page.getByRole("button", { name: "Finance & funding", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Finance & funding", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /finance/i }).first()).toBeVisible();
+});
