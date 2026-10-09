@@ -346,8 +346,8 @@ export function EnterpriseOperationsSection() {
 
   return (
     <section className="operations-workspace" aria-label="Enterprise operations">
-      <div className="ops-tab-strip" role="tablist" aria-label="Operations modules">
-        {tabs.map(([key, label]) => <button type="button" role="tab" aria-selected={tab === key} key={key} className={"btn " + (tab === key ? "btn-primary" : "btn-ghost")} onClick={() => setTab(key)}>{label}</button>)}
+      <div className="ops-tab-strip" role="group" aria-label="Operations modules">
+        {tabs.map(([key, label]) => <button type="button" aria-pressed={tab === key} key={key} className={"btn " + (tab === key ? "btn-primary" : "btn-ghost")} onClick={() => setTab(key)}>{label}</button>)}
       </div>
 
       <div className="ops-overview-grid">
