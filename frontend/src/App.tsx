@@ -110,6 +110,8 @@ export default function App() {
   const canAttendance = canMarkAttendance(roleKeys);
   const isStudent = Boolean(user.studentProfile);
   const isParent = roleKeys.some((key) => key === "parent" || key === "guardian");
+  const isAccountant = roleKeys.includes("accountant");
+  const isLibrarian = roleKeys.includes("librarian");
 
   const allItems: NavigationItem[] = [
     { key: "dashboard", label: t("nav.dashboard"), icon: "⌂", group: "Workspace", description: "Your personal overview" },
@@ -121,14 +123,18 @@ export default function App() {
     ...(isAdmin ? [
       { key: "students" as const, label: "Students & academics", icon: "◎", group: "School operations" as const, description: "Student directory and academic records" },
       { key: "staff" as const, label: "Staff & HR", icon: "♙", group: "School operations" as const, description: "Staff profiles and HR workflows" },
-      { key: "finance" as const, label: "Finance & funding", icon: "¤", group: "School operations" as const, description: "Fees, funding, invoices and payments" },
-      { key: "library" as const, label: "Library", icon: "▥", group: "School operations" as const, description: "Catalog, copies, issues and returns" },
       { key: "operations" as const, label: "Operations center", icon: "⌘", group: "School operations" as const, description: "Admissions, transport, inventory and assets" },
       { key: "assessment" as const, label: "AI assessment studio", icon: "✧", group: "Administration" as const, description: "Generate, review and publish assessments" },
       { key: "documents" as const, label: "Document center", icon: "▧", group: "Administration" as const, description: "Official school documents and records" },
       { key: "cms" as const, label: "Website & announcements", icon: "▤", group: "Administration" as const, description: "Pages, notices and events" },
       { key: "backups" as const, label: "Backup & recovery", icon: "⟳", group: "Administration" as const, description: "Backup verification and recovery controls" },
       { key: "admin" as const, label: "Users & access", icon: "⚙", group: "Administration" as const, description: "Users, roles and academic structure" },
+    ] : []),
+    ...((isAdmin || isAccountant) ? [
+      { key: "finance" as const, label: "Finance & funding", icon: "¤", group: "School operations" as const, description: "Fees, funding, invoices and payments" },
+    ] : []),
+    ...((isAdmin || isLibrarian) ? [
+      { key: "library" as const, label: "Library", icon: "▥", group: "School operations" as const, description: "Catalog, copies, issues and returns" },
     ] : []),
   ];
 
@@ -141,7 +147,13 @@ export default function App() {
   const currentItem = allItems.find((item) => item.key === view) ?? allItems[0];
   const initials = user.fullName.trim().split(/\s+/).slice(0, 2).map((part) => part[0] ?? "").join("").toUpperCase();
   const requestedAdminTab = adminTabs[view] ?? "users";
-  const blockedAdminView = Boolean(adminTabs[view]) && !isAdmin;
+  const canAccessAdminView = Boolean(adminTabs[view]) && (
+    isAdmin || (view === "finance" && isAccountant) || (view === "library" && isLibrarian)
+  );
+  const allowedAdminTabs: AdminTab[] = isAdmin ? [
+    "users", "staff", "students", "finance", "library", "assessment", "documents", "cms", "backups", "operations",
+  ] : isAccountant ? ["finance"] : isLibrarian ? ["library"] : [];
+  const blockedAdminView = Boolean(adminTabs[view]) && !canAccessAdminView;
   const blockedTeacherView = view === "teacher" && !isTeacher;
   const blockedAttendanceView = view === "attendance" && !canAttendance;
   const blockedStudentView = view === "quizzes" && !isStudent;
@@ -239,7 +251,7 @@ export default function App() {
               <h1>{currentItem.label}</h1>
               <p>{currentItem.description}</p>
             </div>
-            <span className="workspace-role-pill">{isAdmin ? "Administrator access" : isTeacher ? "Teaching workspace" : isParent ? "Family workspace" : isStudent ? "Student workspace" : "School account"}</span>
+            <span className="workspace-role-pill">{isAdmin ? "Administrator access" : isAccountant ? "Finance workspace" : isLibrarian ? "Library workspace" : isTeacher ? "Teaching workspace" : isParent ? "Family workspace" : isStudent ? "Student workspace" : "School account"}</span>
           </section>
 
           <div className="workspace-content">
@@ -249,7 +261,7 @@ export default function App() {
             {view === "timetable" && <TimetablePage />}
             {view === "quizzes" && isStudent && user.studentProfile && <QuizzesPage studentProfileId={user.studentProfile.id} />}
             {view === "parent" && isParent && <ParentPage />}
-            {adminTabs[view] && isAdmin && <AdminPage initialTab={requestedAdminTab} />}
+            {adminTabs[view] && canAccessAdminView && <AdminPage initialTab={requestedAdminTab} allowedTabs={isAdmin ? undefined : allowedAdminTabs} />}
           </div>
         </div>
       </div>
