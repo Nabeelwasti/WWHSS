@@ -8,10 +8,17 @@ import { env } from "../../config/env.js";
 export const authRouter = Router();
 
 const hostedHttps = env.nodeEnv === "production" || env.vercelEnv === "preview" || env.vercelEnv === "production";
+// The frontend and API are separate Vercel sites in this deployment. A
+// SameSite=Strict cookie is not sent on the cross-site fetch used by the
+// frontend, so refresh silently fails after login. Vercel deployments must
+// use Secure + SameSite=None; the CORS origin allowlist remains enforced in app.ts.
+// For other hosting setups, AUTH_COOKIE_CROSS_SITE remains the explicit opt-in.
+const crossSiteCookieDeployment =
+  env.authCookieCrossSite || env.vercelEnv === "preview" || env.vercelEnv === "production";
 const refreshCookieOptions = {
   httpOnly: true,
-  secure: hostedHttps || env.authCookieCrossSite,
-  sameSite: (env.authCookieCrossSite ? "none" : hostedHttps ? "strict" : "lax") as "strict" | "none" | "lax",
+  secure: hostedHttps || crossSiteCookieDeployment,
+  sameSite: (crossSiteCookieDeployment ? "none" : hostedHttps ? "strict" : "lax") as "strict" | "none" | "lax",
   path: "/api/auth",
 };
 
