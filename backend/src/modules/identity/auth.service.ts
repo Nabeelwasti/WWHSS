@@ -46,6 +46,24 @@ export async function refresh(presentedToken: string) {
     }
 
     if (record.revoked) {
+      // Parallel tabs may present the previous cookie just after another tab
+      // rotated it. Allow a short, bounded grace period to avoid revoking the
+      // winning session for an ordinary race; still record the retry. A later
+      // replay of a consumed token revokes every remaining session.
+      const recentlyRotated = record.rotatedAt !== null
+        && record.rotatedAt !== undefined
+        && now.getTime() - record.rotatedAt.getTime() <= 5_000;
+      if (recentlyRotated) {
+        await tx.auditLog.create({
+          data: {
+            userId: record.userId,
+            action: "auth:refresh_concurrent_retry",
+            metadata: { refreshTokenId: record.id },
+          },
+        });
+        return { kind: "invalid" as const };
+      }
+
       await tx.refreshToken.updateMany({
         where: { userId: record.userId, revoked: false },
         data: { revoked: true },
@@ -67,7 +85,7 @@ export async function refresh(presentedToken: string) {
         revoked: false,
         expiresAt: { gt: now },
       },
-      data: { revoked: true },
+      data: { revoked: true, rotatedAt: now },
     });
 
     if (claimResult.count !== 1) {
