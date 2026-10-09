@@ -86,18 +86,19 @@ test("finance workspace exposes the real billing and welfare workflows", async (
 
 test("document center exposes every backend-supported document type", async ({ page }) => {
   await loginAsAdmin(page);
-  // Verify the deep link independently of the global finder so this test isolates
-  // document-type coverage rather than duplicating the finder interaction test.
+  // A deep link must restore the authenticated shell from the HttpOnly refresh
+  // cookie after a full document navigation. Assert the cookie and refresh exchange
+  // explicitly so an auth restoration regression cannot masquerade as a UI failure.
+  const refreshCookies = await page.context().cookies();
+  expect(refreshCookies.some((cookie) => cookie.name === "refresh_token" && cookie.httpOnly)).toBe(true);
+  const refreshResponsePromise = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === "/api/auth/refresh"
+  );
   await page.goto("/documents", { waitUntil: "networkidle" });
   await expect(page).toHaveURL(/\/documents$/);
-  page.on("response", (response) => {
-    const pathname = new URL(response.url()).pathname;
-    if (pathname === "/api/auth/refresh" || pathname === "/api/auth/me") {
-      console.log(`deep-link auth diagnostic: ${pathname} -> ${response.status()}`);
-    }
-  });
-  // A deep link must restore the authenticated shell before checking workspace content.
-  await expect(page.getByRole("textbox", { name: "Search available workspaces" })).toBeVisible();
+  const refreshResponse = await refreshResponsePromise;
+  expect(refreshResponse.status(), "refresh-cookie exchange must succeed after a deep link").toBe(200);
+  await expect(page.getByRole("textbox", { name: "Search available workspaces" })).toBeVisible({ timeout: 15000 });
   // The workspace shell now owns the page-level heading; the document center
   // component supplies the functional form beneath that shared workspace context.
   await expect(page.getByRole("heading", { name: "Document center", level: 1 })).toBeVisible();
