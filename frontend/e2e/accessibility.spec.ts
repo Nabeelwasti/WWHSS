@@ -83,7 +83,11 @@ test("finance workspace exposes the real billing and welfare workflows", async (
 
 test("document center exposes every backend-supported document type", async ({ page }) => {
   await loginAsAdmin(page);
-  await page.goto("/documents", { waitUntil: "networkidle" });
+  await page.goto("/", { waitUntil: "networkidle" });
+  const finder = page.getByRole("textbox", { name: "Search available workspaces" });
+  await finder.fill("document center");
+  await page.getByRole("button", { name: "Document center", exact: true }).click();
+  await expect(page).toHaveURL(/\/documents$/);
   await expect(page.getByRole("heading", { name: "Document & Print Center" })).toBeVisible();
   const documentType = page.getByLabel("Document type");
   await expect(documentType).toBeVisible();
