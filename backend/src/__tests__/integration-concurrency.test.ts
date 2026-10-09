@@ -358,9 +358,16 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
     const userTokens = await prisma.refreshToken.findMany({ where: { userId: user.id, revoked: false } });
     expect(userTokens.length).toBe(1);
 
-    // Replaying a consumed token must fail closed, revoke the replacement
-    // session, and COMMIT the security audit instead of rolling it back with
-    // the expected authentication error.
+    // Model a replay after the bounded concurrency grace window. The normal
+    // concurrent requests above must not log the user out merely because two
+    // browser tabs rotated the same cookie at nearly the same time.
+    await prisma.refreshToken.update({
+      where: { id: dbOriginalRow!.id },
+      data: { rotatedAt: new Date(Date.now() - 6000) },
+    });
+
+    // A later replay must fail closed, revoke the replacement session, and
+    // COMMIT the security audit instead of rolling it back with the auth error.
     await expect(refresh(rawToken)).rejects.toThrow();
 
     const activeAfterReplay = await prisma.refreshToken.findMany({
