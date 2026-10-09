@@ -358,8 +358,20 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
     const userTokens = await prisma.refreshToken.findMany({ where: { userId: user.id, revoked: false } });
     expect(userTokens.length).toBe(1);
 
-    // Assert replay attempt with original token fails
+    // Replaying a consumed token must fail closed, revoke the replacement
+    // session, and COMMIT the security audit instead of rolling it back with
+    // the expected authentication error.
     await expect(refresh(rawToken)).rejects.toThrow();
+
+    const activeAfterReplay = await prisma.refreshToken.findMany({
+      where: { userId: user.id, revoked: false },
+    });
+    expect(activeAfterReplay).toHaveLength(0);
+
+    const replayAudit = await prisma.auditLog.findMany({
+      where: { userId: user.id, action: "auth:refresh_reuse_detected" },
+    });
+    expect(replayAudit.length).toBeGreaterThan(0);
   });
 
   it("proves database integrity constraints independently reject inconsistent class/section/exam/subject relationships for UserRole, StudentProfile, AttendanceRecord, TimetableSlot, and ExamResult", async () => {
