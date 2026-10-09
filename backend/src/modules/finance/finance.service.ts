@@ -611,6 +611,44 @@ export async function getPaymentReceipt(paymentId: string) {
   return payment;
 }
 
+export async function listFinanceInvoices(options: {
+  query?: string;
+  status?: string;
+  studentProfileId?: string;
+  page?: number;
+  limit?: number;
+} = {}) {
+  const page = Math.max(1, Math.floor(options.page || 1));
+  const limit = Math.min(100, Math.max(1, Math.floor(options.limit || 25)));
+  const query = options.query?.trim();
+  const where: Prisma.FeeInvoiceWhereInput = {};
+  if (options.status) where.status = options.status;
+  if (options.studentProfileId) where.studentProfileId = options.studentProfileId;
+  if (query) {
+    where.OR = [
+      { invoiceNumber: { contains: query, mode: "insensitive" } },
+      { student: { admissionNo: { contains: query, mode: "insensitive" } } },
+      { student: { user: { fullName: { contains: query, mode: "insensitive" } } } },
+    ];
+  }
+  const [invoices, total] = await Promise.all([
+    prisma.feeInvoice.findMany({
+      where,
+      include: {
+        student: { include: { user: { select: { id: true, fullName: true, email: true, phone: true } }, class: true, section: true } },
+        feeStructure: true,
+        payments: { include: { adjustments: true }, orderBy: { paidAt: "desc" } },
+        feeWaivers: true,
+      },
+      orderBy: [{ dueDate: "desc" }, { invoiceNumber: "asc" }],
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.feeInvoice.count({ where }),
+  ]);
+  return { invoices, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+}
+
 export async function getFinancialSummaryReport() {
   const [invoices, payments, waivers, fundingCategories] = await Promise.all([
     prisma.feeInvoice.findMany({ include: { feeStructure: { include: { academicYear: true } }, student: { include: { fundingRecords: { orderBy: { startDate: "desc" } } } } } }),
