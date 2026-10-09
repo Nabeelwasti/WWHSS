@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { LoginPage } from "./pages/LoginPage";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -132,12 +132,10 @@ export default function App() {
     ] : []),
   ];
 
-  const visibleItems = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return query
-      ? allItems.filter((item) => `${item.label} ${item.description} ${item.group}`.toLowerCase().includes(query))
-      : allItems;
-  }, [search, user.id, isAdmin, isTeacher, canAttendance, isStudent, isParent, t]);
+  const query = search.trim().toLowerCase();
+  const visibleItems = query
+    ? allItems.filter((item) => `${item.label} ${item.description} ${item.group}`.toLowerCase().includes(query))
+    : allItems;
 
   const groups = ["Workspace", "Teaching & learning", "School operations", "Administration"] as const;
   const currentItem = allItems.find((item) => item.key === view) ?? allItems[0];
