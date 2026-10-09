@@ -35,20 +35,32 @@ export async function refresh(presentedToken: string) {
   const hash = hashRefreshToken(presentedToken);
   const now = new Date();
 
-  return prisma.$transaction(async (tx) => {
+  // Return security failures from the transaction instead of throwing inside it.
+  // Throwing inside Prisma's interactive transaction would roll back the reuse
+  // response's session revocation and audit event, defeating replay detection.
+  const outcome = await prisma.$transaction(async (tx) => {
     const record = await tx.refreshToken.findFirst({ where: { tokenHash: hash } });
 
-    if (!record || record.expiresAt < now) {
-      throw new AuthError("Invalid or expired refresh token");
+    if (!record || record.expiresAt <= now) {
+      return { kind: "invalid" as const };
     }
 
     if (record.revoked) {
-      await tx.refreshToken.updateMany({ where: { userId: record.userId, revoked: false }, data: { revoked: true } });
-      await tx.auditLog.create({ data: { userId: record.userId, action: "auth:refresh_reuse_detected", metadata: { refreshTokenId: record.id } } });
-      throw new AuthError("Invalid or expired refresh token");
+      await tx.refreshToken.updateMany({
+        where: { userId: record.userId, revoked: false },
+        data: { revoked: true },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: record.userId,
+          action: "auth:refresh_reuse_detected",
+          metadata: { refreshTokenId: record.id },
+        },
+      });
+      return { kind: "reuse" as const };
     }
 
-    // Atomic conditional update: exactly one concurrent request can flip revoked: false -> true
+    // Atomic conditional update: exactly one concurrent request can flip revoked: false -> true.
     const claimResult = await tx.refreshToken.updateMany({
       where: {
         id: record.id,
@@ -59,19 +71,50 @@ export async function refresh(presentedToken: string) {
     });
 
     if (claimResult.count !== 1) {
-      throw new AuthError("Invalid or expired refresh token");
+      // Re-read after the conditional claim. If another request consumed this
+      // token, revoke every remaining session and commit the security audit.
+      const latest = await tx.refreshToken.findFirst({ where: { tokenHash: hash } });
+      if (latest?.revoked) {
+        await tx.refreshToken.updateMany({
+          where: { userId: latest.userId, revoked: false },
+          data: { revoked: true },
+        });
+        await tx.auditLog.create({
+          data: {
+            userId: latest.userId,
+            action: "auth:refresh_reuse_detected",
+            metadata: { refreshTokenId: latest.id },
+          },
+        });
+        return { kind: "reuse" as const };
+      }
+      return { kind: "invalid" as const };
     }
 
     const user = await tx.user.findUnique({ where: { id: record.userId } });
-    if (!user || !user.isActive) throw new AuthError("Account inactive");
+    if (!user || !user.isActive) {
+      await tx.auditLog.create({
+        data: {
+          userId: record.userId,
+          action: "auth:refresh_inactive_account",
+          metadata: { refreshTokenId: record.id },
+        },
+      });
+      return { kind: "invalid" as const };
+    }
 
     const accessToken = signAccessToken({ sub: user.id, email: user.email, tokenVersion: user.tokenVersion });
     const { token: newRefresh, hash: newHash } = newRefreshTokenValue();
     const expiresAt = new Date(Date.now() + env.refreshTokenTtlDays * 24 * 60 * 60 * 1000);
     await tx.refreshToken.create({ data: { userId: user.id, tokenHash: newHash, expiresAt } });
 
-    return { accessToken, refreshToken: newRefresh };
+    return { kind: "rotated" as const, accessToken, refreshToken: newRefresh };
   });
+
+  if (outcome.kind !== "rotated") {
+    throw new AuthError("Invalid or expired refresh token");
+  }
+  return { accessToken: outcome.accessToken, refreshToken: outcome.refreshToken };
 }
 
 
