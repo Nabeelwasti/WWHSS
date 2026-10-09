@@ -1,4 +1,6 @@
 import { Router } from "express";
+import { Prisma } from "@prisma/client";
+import { prisma } from "../../db/client.js";
 import { z } from "zod";
 import { authenticate } from "../../middleware/authenticate.js";
 import { authorize } from "../../middleware/authorize.js";
@@ -25,9 +27,49 @@ import {
 export const financeRouter = Router();
 financeRouter.use(authenticate);
 
+// Finance read models deliberately use finance permissions instead of granting accountants broad academic-administration access.
+financeRouter.get("/options", authorize("finance:view"), async (_req, res) => {
+  const [classes, academicYears] = await Promise.all([
+    prisma.class.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.academicYear.findMany({ select: { id: true, label: true, isActive: true }, orderBy: { startDate: "desc" } }),
+  ]);
+  res.json({ classes, academicYears });
+});
+
+financeRouter.get("/students/search", authorize("finance:view"), async (req, res) => {
+  const query = typeof req.query.query === "string" ? req.query.query.trim() : "";
+  const rawLimit = typeof req.query.limit === "string" ? Number.parseInt(req.query.limit, 10) : 100;
+  if (query.length > 200) return res.status(400).json({ error: "Search query must be 200 characters or fewer." });
+  if (!Number.isInteger(rawLimit) || rawLimit < 1 || rawLimit > 100) return res.status(400).json({ error: "Limit must be between 1 and 100." });
+  const where: Prisma.StudentProfileWhereInput = query ? {
+    OR: [
+      { user: { fullName: { contains: query, mode: "insensitive" } } },
+      { admissionNo: { contains: query, mode: "insensitive" } },
+      { rollNumber: { contains: query, mode: "insensitive" } },
+      { registrationNo: { contains: query, mode: "insensitive" } },
+      { fatherName: { contains: query, mode: "insensitive" } },
+      { guardianName: { contains: query, mode: "insensitive" } },
+      { guardianPhone: { contains: query, mode: "insensitive" } },
+      { user: { phone: { contains: query, mode: "insensitive" } } },
+    ],
+  } : {};
+  const students = await prisma.studentProfile.findMany({
+    where,
+    select: {
+      id: true, admissionNo: true, rollNumber: true,
+      user: { select: { fullName: true, phone: true } },
+      class: { select: { name: true } },
+      section: { select: { name: true } },
+    },
+    orderBy: { user: { fullName: "asc" } },
+    take: rawLimit,
+  });
+  res.json({ students });
+});
+
 // ---------- FUNDING CATEGORIES & RECORDS ----------
 
-financeRouter.get("/funding-categories", authorize("academics:view"), async (_req, res) => {
+financeRouter.get("/funding-categories", authorize("finance:view"), async (_req, res) => {
   res.json({ categories: await listFundingCategories() });
 });
 
@@ -82,7 +124,7 @@ financeRouter.get(
 
 // ---------- FEE STRUCTURES & INVOICE GENERATION ----------
 
-financeRouter.get("/fee-structures", authorize("academics:view"), async (req, res) => {
+financeRouter.get("/fee-structures", authorize("finance:view"), async (req, res) => {
   const classId = typeof req.query.classId === "string" ? req.query.classId : undefined;
   const academicYearId = typeof req.query.academicYearId === "string" ? req.query.academicYearId : undefined;
   res.json({ feeStructures: await listFeeStructures(classId, academicYearId) });
