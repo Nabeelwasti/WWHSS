@@ -14,7 +14,7 @@ import { useLanguage } from "../i18n";
 type ClassSummary = { id: string; name: string; sections: { id: string; name: string }[] };
 
 export function DashboardPage() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const { t } = useLanguage();
   const [classes, setClasses] = useState<ClassSummary[] | null>(null);
   const [schoolWide, setSchoolWide] = useState(false);
@@ -60,7 +60,6 @@ export function DashboardPage() {
         </div>
         <div className="welcome-actions">
           <NotificationsBell />
-          <button onClick={logout} className="btn btn-secondary btn-sm">{t("common.signOut")}</button>
         </div>
       </section>
 
