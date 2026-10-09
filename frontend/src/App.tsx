@@ -233,14 +233,14 @@ export default function App() {
         </aside>
 
         <div className="campus-main">
-          <div className="page-context">
+          <section className="page-context" aria-label="Current workspace">
             <div>
               <p className="page-breadcrumb">Digital Campus <span>/</span> {currentItem.group}</p>
               <h1>{currentItem.label}</h1>
               <p>{currentItem.description}</p>
             </div>
             <span className="workspace-role-pill">{isAdmin ? "Administrator access" : isTeacher ? "Teaching workspace" : isParent ? "Family workspace" : isStudent ? "Student workspace" : "School account"}</span>
-          </div>
+          </section>
 
           <div className="workspace-content">
             {(view === "dashboard" || blockedAdminView || blockedTeacherView || blockedAttendanceView || blockedStudentView || blockedParentView) && <DashboardPage />}
