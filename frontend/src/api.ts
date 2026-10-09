@@ -553,7 +553,7 @@ export const api = {
     const q = new URLSearchParams();
     if (params.query) q.set("query", params.query);
     if (params.limit) q.set("limit", String(params.limit));
-    return request<{ students: { id: string; admissionNo: string; rollNumber?: string | null; user?: { fullName?: string; phone?: string | null }; class?: { name?: string } | null; section?: { name?: string } | null }[] }>(\`/finance/students/search\${q.size ? \`?\${q}\` : ""}\`);
+    return request<{ students: { id: string; admissionNo: string; rollNumber?: string | null; user?: { fullName?: string; phone?: string | null }; class?: { name?: string } | null; section?: { name?: string } | null }[] }>(`/finance/students/search${q.size ? `?${q}` : ""}`);
   },
 
   // ---- Funding & Fee Extensions ----
