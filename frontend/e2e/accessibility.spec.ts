@@ -42,7 +42,7 @@ async function loginAsAdmin(page: import("@playwright/test").Page) {
 
 test("authenticated dashboard and admin surfaces have no WCAG violations", async ({ page }) => {
   await loginAsAdmin(page);
-  const pages = ["/", "/admin"];
+  const pages = ["/", "/admin", "/operations"];
   for (const target of pages) {
     await page.goto(target, { waitUntil: "networkidle" });
     const results = await new AxeBuilder({ page }).analyze();
