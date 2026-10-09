@@ -563,7 +563,7 @@ export const api = {
   applyFeeWaiver: (input: { invoiceId: string; studentProfileId: string; amount: number; reason: string }) =>
     request("/finance/waivers", { method: "POST", body: JSON.stringify(input) }),
 
-  getFinancialSummary: () => request<unknown>("/finance/summary-report"),
+  getFinancialSummary: () => request<unknown>("/finance/reports/summary"),
 
   // ---- Document Engine ----
   listDocuments: (docType?: string) =>
