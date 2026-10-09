@@ -37,7 +37,7 @@ export function DocumentEngineSection() {
       {error && <p role="alert" className="alert alert-danger">{error}</p>}
 
       <form onSubmit={handleFetchPayload} className="flex gap-2 flex-wrap" style={{ marginBottom: 16 }}>
-        <select className="input" value={docType} onChange={(e) => { setDocType(e.target.value); setReferenceId(""); setPayload(null); }}>
+        <select className="input" aria-label="Document type" value={docType} onChange={(e) => { setDocType(e.target.value); setReferenceId(""); setPayload(null); }}>
           <optgroup label="Student and academic records">
             <option value="result_card">Result card</option><option value="report_card">Report card</option><option value="transcript">Academic transcript</option><option value="academic_history">Academic history</option><option value="progress_report">Progress report</option><option value="admission_document">Admission document</option><option value="transfer_certificate">Transfer / leaving certificate</option><option value="attendance_report">Attendance report</option><option value="timetable">Student timetable</option><option value="class_sheet">Class student sheet</option><option value="teacher_timetable">Teacher timetable</option><option value="room_schedule">Room schedule</option><option value="exam_schedule">Exam schedule</option>
           </optgroup>
@@ -50,7 +50,7 @@ export function DocumentEngineSection() {
         </select>
         <input
           className="input"
-          placeholder="Paste the relevant record ID (UUID); student and payment records are supported"
+          aria-label="Document reference ID" placeholder="Paste the relevant record ID (UUID); student and payment records are supported"
           value={referenceId}
           onChange={(e) => setReferenceId(e.target.value)}
           style={{ flex: 1, minWidth: 240 }}
