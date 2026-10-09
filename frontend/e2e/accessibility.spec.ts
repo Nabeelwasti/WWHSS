@@ -83,10 +83,9 @@ test("finance workspace exposes the real billing and welfare workflows", async (
 
 test("document center exposes every backend-supported document type", async ({ page }) => {
   await loginAsAdmin(page);
-  await page.goto("/", { waitUntil: "networkidle" });
-  const finder = page.getByRole("textbox", { name: "Search available workspaces" });
-  await finder.fill("document center");
-  await page.getByRole("button", { name: "Document center", exact: true }).click();
+  // Verify the deep link independently of the global finder so this test isolates
+  // document-type coverage rather than duplicating the finder interaction test.
+  await page.goto("/documents", { waitUntil: "networkidle" });
   await expect(page).toHaveURL(/\/documents$/);
   await expect(page.getByRole("heading", { name: "Document & Print Center" })).toBeVisible();
   const documentType = page.getByLabel("Document type");
