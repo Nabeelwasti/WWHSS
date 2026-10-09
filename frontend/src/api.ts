@@ -548,6 +548,14 @@ export const api = {
     emergencyContact?: string;
   }) => request<{ staff: StaffSummary }>("/users/staff", { method: "POST", body: JSON.stringify(input) }),
 
+  listFinanceOptions: () => request<{ classes: { id: string; name: string }[]; academicYears: { id: string; label: string; isActive: boolean }[] }>("/finance/options"),
+  searchFinanceStudents: (params: { query?: string; limit?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (params.query) q.set("query", params.query);
+    if (params.limit) q.set("limit", String(params.limit));
+    return request<{ students: { id: string; admissionNo: string; rollNumber?: string | null; user?: { fullName?: string; phone?: string | null }; class?: { name?: string } | null; section?: { name?: string } | null }[] }>(\`/finance/students/search\${q.size ? \`?\${q}\` : ""}\`);
+  },
+
   // ---- Funding & Fee Extensions ----
   listFundingCategories: () => request<{ categories: { id: string; name: string; code: string; description?: string | null; isDefault: boolean }[] }>("/finance/funding-categories"),
 
