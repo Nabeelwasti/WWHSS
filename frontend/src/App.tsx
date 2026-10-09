@@ -150,9 +150,12 @@ export default function App() {
   const canAccessAdminView = Boolean(adminTabs[view]) && (
     isAdmin || (view === "finance" && isAccountant) || (view === "library" && isLibrarian)
   );
-  const allowedAdminTabs: AdminTab[] = isAdmin ? [
-    "users", "staff", "students", "finance", "library", "assessment", "documents", "cms", "backups", "operations",
-  ] : isAccountant ? ["finance"] : isLibrarian ? ["library"] : [];
+  const allowedAdminTabs: AdminTab[] = isAdmin
+    ? ["users", "staff", "students", "finance", "library", "assessment", "documents", "cms", "backups", "operations"]
+    : [
+        ...(isAccountant ? ["finance" as const] : []),
+        ...(isLibrarian ? ["library" as const] : []),
+      ];
   const blockedAdminView = Boolean(adminTabs[view]) && !canAccessAdminView;
   const blockedTeacherView = view === "teacher" && !isTeacher;
   const blockedAttendanceView = view === "attendance" && !canAttendance;
