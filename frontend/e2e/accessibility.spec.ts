@@ -90,7 +90,10 @@ test("document center exposes every backend-supported document type", async ({ p
   // document-type coverage rather than duplicating the finder interaction test.
   await page.goto("/documents", { waitUntil: "networkidle" });
   await expect(page).toHaveURL(/\/documents$/);
-  await expect(page.getByRole("heading", { name: "Document & Print Center" })).toBeVisible();
+  // The workspace shell now owns the page-level heading; the document center
+  // component supplies the functional form beneath that shared workspace context.
+  await expect(page.getByRole("heading", { name: "Document center", level: 1 })).toBeVisible();
+  await expect(page.getByText("Generate official school-branded A4 PDF / Print documents", { exact: false })).toBeVisible();
   const documentType = page.getByLabel("Document type");
   await expect(documentType).toBeVisible();
   await expect(documentType.locator("option")).toHaveCount(23);
