@@ -8,7 +8,7 @@
 
 **Status: substantial production-oriented foundation; not yet a complete, fully autonomous school product.** The baseline CI run is green, but a green build proves compilation and the tests currently encoded in CI—not complete feature coverage, visual quality, operational automation, or production disaster-recovery readiness.
 
-The repository tree contains **253 entries**, including **39 files under `frontend/src/`** and **106 entries under `backend/src/`**. The backend is organized into 18 domain modules, backed by Prisma migrations and PostgreSQL. The frontend is a React 18 + TypeScript + Vite app with a custom route/view switcher and a shared CSS design system.
+The repository tree contains **253 entries**, including **39 entries under `frontend/src/` (36 files plus 3 directories)** and **106 entries under `backend/src/`**. The backend is organized into 18 domain modules, backed by Prisma migrations and PostgreSQL. The frontend is a React 18 + TypeScript + Vite app with a custom route/view switcher and a shared CSS design system.
 
 ## 1. Repository inventory
 
