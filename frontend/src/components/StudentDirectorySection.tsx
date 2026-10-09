@@ -59,6 +59,28 @@ export function StudentDirectorySection() {
     fetchStudents(1);
   }
 
+  async function clearFilters() {
+    setQuery("");
+    setStatus("");
+    setClassId("");
+    setSectionId("");
+    setAcademicYearId("");
+    setFundingCategoryId("");
+    setGender("");
+    setDateOfBirth("");
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.searchStudents({ page: 1, limit: 10 });
+      setStudents(res.students);
+      setPagination(res.pagination);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not reset student search.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function viewStudentProfile(id: string) {
     try {
       const res = await api.getStudentProfile(id);
@@ -125,7 +147,7 @@ export function StudentDirectorySection() {
         {filtersError && <p className="text-muted text-sm" role="status">{filtersError}</p>}
         <div className="flex gap-2 flex-wrap">
           <button type="submit" className="btn btn-primary" disabled={loading}>{loading ? "Searching…" : "Search students"}</button>
-          <button type="button" className="btn btn-secondary" onClick={() => { setQuery(""); setStatus(""); setClassId(""); setSectionId(""); setAcademicYearId(""); setFundingCategoryId(""); setGender(""); setDateOfBirth(""); }}>Clear filters</button>
+          <button type="button" className="btn btn-secondary" onClick={() => void clearFilters()}>Clear filters</button>
         </div>
       </form>
 
@@ -196,6 +218,8 @@ export function StudentDirectorySection() {
       {/* Student Profile Modal */}
       {selectedStudent && (
         <div
+          role="presentation"
+          onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedStudent(null); }}
           style={{
             position: "fixed",
             top: 0,
@@ -210,11 +234,14 @@ export function StudentDirectorySection() {
           }}
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="student-master-profile-title"
             className="card"
             style={{ width: "90%", maxWidth: 650, maxHeight: "85vh", overflowY: "auto", margin: 0, background: "var(--surface)" }}
           >
             <div className="flex justify-between items-center" style={{ marginBottom: 12 }}>
-              <h3 style={{ margin: 0 }}>Student Master Profile</h3>
+              <h3 id="student-master-profile-title" style={{ margin: 0 }}>Student Master Profile</h3>
               <button onClick={() => setSelectedStudent(null)} className="btn btn-ghost btn-sm">
                 ✕ Close
               </button>
