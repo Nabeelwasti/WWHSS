@@ -3,6 +3,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import { createRequire } from "node:module";
 import { rateLimit } from "express-rate-limit";
+import { loginAccountRateLimitKey } from "./middleware/login-rate-limit-key.js";
 import crypto from "node:crypto";
 import "./middleware/express-async-errors.js";
 import { env } from "./config/env.js";
@@ -106,10 +107,7 @@ const authAccountLimiter = rateLimit({
   limit: 8,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
-    return email || req.ip || "unknown";
-  },
+  keyGenerator: (req) => loginAccountRateLimitKey(req.body?.email, req.ip),
   message: { error: "Too many login attempts for this account. Please try again later." },
 });
 app.use("/api/auth/login", authLimiter);
