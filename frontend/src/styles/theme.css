@@ -566,3 +566,73 @@ a { color: var(--navy-l); }
   .dashboard-empty strong { color: #dce8f5; }
   .dashboard-welcome { background: linear-gradient(120deg,#102b45 0%,#153e60 62%,#1e5276 100%); }
 }
+
+
+/* Enterprise operations — data-backed workflow controls */
+.operations-workspace { display: grid; gap: 16px; }
+.ops-tab-strip { display: flex; flex-wrap: wrap; gap: 7px; padding: 5px; border: 1px solid var(--campus-line); border-radius: 14px; background: #fff; }
+.ops-tab-strip .btn { min-height: 38px; border-radius: 9px; }
+.ops-tab-strip .btn[aria-pressed="true"] { box-shadow: 0 3px 9px rgba(23,63,103,.12); }
+.ops-overview-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; }
+.ops-overview-card { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 16px; border: 1px solid var(--campus-line); border-radius: 14px; background: #fff; }
+.ops-overview-icon { display: grid; place-items: center; width: 40px; height: 40px; flex: 0 0 auto; border-radius: 12px; color: #174b7d; background: #e8f1fa; font-size: 19px; }
+.ops-overview-card > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ops-overview-card > div > span { color: #526579; font-size: 10px; font-weight: 650; }
+.ops-overview-card strong { overflow-wrap: anywhere; color: var(--campus-ink); font-size: 20px; letter-spacing: -.025em; }
+.ops-form-card,.ops-records-card { padding: clamp(14px,2vw,22px); border: 1px solid var(--campus-line); border-radius: 16px; background: #fff; }
+.ops-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.ops-section-heading h2 { margin: 5px 0 4px; color: var(--campus-ink); font-size: 17px; letter-spacing: -.025em; }
+.ops-section-heading p { margin: 0; color: #526579; font-size: 11px; line-height: 1.6; }
+.ops-live-indicator { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; padding: 7px 9px; border: 1px solid #cce9dc; border-radius: 20px; color: #246d50; background: #f1faf5; font-size: 10px; font-weight: 750; }
+.ops-live-indicator > span { width: 6px; height: 6px; border-radius: 50%; background: #1e9a64; }
+.ops-form-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; align-items: end; }
+.ops-field { display: flex; flex-direction: column; gap: 7px; min-width: 0; color: #354b62; font-size: 11px; font-weight: 750; }
+.ops-field > span { line-height: 1.4; }
+.ops-field .input { width: 100%; min-width: 0; min-height: 42px; box-sizing: border-box; border: 1px solid #d5dee8; border-radius: 9px; padding: 10px 11px; color: #23384f; background: #fff; font: inherit; font-size: 12px; font-weight: 500; }
+.ops-field .input:focus { border-color: #2867a3; outline: 3px solid rgba(40,103,163,.14); }
+.ops-field textarea.input { resize: vertical; }
+.ops-form-actions { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding-top: 5px; }
+.ops-form-actions > span { color: #526579; font-size: 10px; line-height: 1.5; }
+.ops-form-actions button:disabled,.ops-row-actions button:disabled { opacity: .6; cursor: not-allowed; }
+.ops-table-wrap { width: 100%; overflow-x: auto; }
+.ops-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; }
+.ops-table th { padding: 11px 12px; color: #526579; background: #f5f8fb; text-align: start; font-size: 10px; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+.ops-table th:first-child { border-radius: 9px 0 0 9px; }
+.ops-table th:last-child { border-radius: 0 9px 9px 0; }
+.ops-table td { padding: 13px 12px; border-bottom: 1px solid #e6ecf2; vertical-align: top; color: #354b62; }
+.ops-record-name { color: #243b53; font-size: 12px; font-weight: 800; }
+.ops-table td small { display: block; margin-top: 5px; color: #526579; font-size: 10px; }
+.ops-record-details { margin-bottom: 7px; color: #526579; font-size: 11px; }
+.ops-status-chip { display: inline-flex; padding: 5px 8px; border: 1px solid #dce4ec; border-radius: 20px; color: #526579; background: #f5f7fa; font-size: 9px; font-weight: 800; white-space: nowrap; }
+.ops-status-chip.status-pending,.ops-status-chip.status-draft { color: #7a5010; border-color: #f0d9a9; background: #fff7e5; }
+.ops-status-chip.status-approved,.ops-status-chip.status-paid,.ops-status-chip.status-returned,.ops-status-chip.status-completed { color: #246d50; border-color: #cce9dc; background: #f1faf5; }
+.ops-status-chip.status-rejected,.ops-status-chip.status-cancelled,.ops-status-chip.status-overdue { color: #9a3535; border-color: #f0c9c9; background: #fff3f3; }
+.ops-row-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.ops-loading { display: flex; align-items: center; gap: 10px; padding: 22px 5px; color: #526579; font-size: 11px; }
+.ops-spinner { width: 17px; height: 17px; border: 2px solid #d8e5f2; border-top-color: #2867a3; border-radius: 50%; animation: ops-spin .8s linear infinite; }
+@keyframes ops-spin { to { transform: rotate(360deg); } }
+.ops-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 26px 10px; text-align: center; }
+.ops-empty > span { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 12px; color: #174b7d; background: #e8f1fa; font-size: 20px; }
+.ops-empty strong { color: #354b62; font-size: 12px; }
+.ops-empty p { margin: 0; color: #526579; font-size: 11px; }
+@media (max-width: 720px) {
+  .ops-overview-grid { grid-template-columns: 1fr; }
+  .ops-overview-card { padding: 12px; }
+  .ops-overview-card strong { font-size: 17px; }
+  .ops-form-grid { grid-template-columns: minmax(0,1fr); }
+  .ops-form-actions { align-items: flex-start; flex-direction: column; }
+  .ops-section-heading { align-items: flex-start; }
+  .ops-live-indicator { display: none; }
+}
+@media (prefers-color-scheme: dark) {
+  .ops-tab-strip,.ops-overview-card,.ops-form-card,.ops-records-card { background: #121e2a; border-color: #283746; }
+  .ops-overview-icon { color: #b8d7f4; background: #23384b; }
+  .ops-overview-card > div > span,.ops-section-heading p,.ops-form-actions > span,.ops-record-details,.ops-table td small,.ops-loading,.ops-empty p { color: #c0cfdf; }
+  .ops-section-heading h2,.ops-record-name,.ops-empty strong { color: #e4edf7; }
+  .ops-field { color: #d7e2ee; }
+  .ops-field .input { color: #e4edf7; background: #172533; border-color: #41566a; }
+  .ops-table th { color: #d7e2ee; background: #1b2b3a; }
+  .ops-table td { color: #d7e2ee; border-color: #283746; }
+  .ops-status-chip { color: #d7e2ee; background: #1b2b3a; border-color: #41566a; }
+  .ops-live-indicator { color: #a8e5c9; background: #15352b; border-color: #285b48; }
+}
