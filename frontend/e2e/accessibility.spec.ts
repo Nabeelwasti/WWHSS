@@ -38,6 +38,9 @@ async function loginAsAdmin(page: import("@playwright/test").Page) {
   await page.getByLabel(/password/i).fill(process.env.E2E_ADMIN_PASSWORD || "ChangeMe!123");
   await page.getByRole("button", { name: /login|sign in|submit/i }).click();
   await expect(page.getByText(/welcome/i)).toBeVisible({ timeout: 15000 });
+  // Do not navigate away until the authenticated workspace has replaced the login screen.
+  await expect(page.getByRole("textbox", { name: "Search available workspaces" })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole("button", { name: /signed in as/i })).toBeVisible({ timeout: 15000 });
 }
 
 test("authenticated dashboard and admin surfaces have no WCAG violations", async ({ page }) => {
