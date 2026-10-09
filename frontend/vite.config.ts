@@ -19,19 +19,30 @@ function swVersionPlugin(): Plugin {
 }
 
 export default defineConfig(({ mode }) => {
+  // Vercel injects configured environment variables into the build process.
+  // Prefer that process environment and fall back to Vite's .env-file loader.
+  // This avoids incorrectly rejecting a variable that exists in the host
+  // environment but is not returned by loadEnv for the current mode.
   const env = loadEnv(mode, process.cwd(), "");
-  if (process.env.VERCEL_ENV && !env.VITE_API_BASE_URL) {
-    throw new Error("VITE_API_BASE_URL must be configured for Vercel builds; hosted production must point to the Cloud Run backend.");
+  const apiBaseUrl = (process.env.VITE_API_BASE_URL ?? env.VITE_API_BASE_URL ?? "").trim();
+
+  if (process.env.VERCEL_ENV && !apiBaseUrl) {
+    throw new Error(
+      "VITE_API_BASE_URL is missing from this Vercel deployment's build environment. " +
+        "Set it for the matching Production/Preview environment and redeploy. " +
+        "Hosted production must point to the Cloud Run backend."
+    );
   }
+
   return {
-  plugins: [react(), swVersionPlugin()],
-  server: {
-    proxy: {
-      "/api": {
-        target: env.VITE_API_TARGET ?? "http://localhost:4000",
-        changeOrigin: true,
+    plugins: [react(), swVersionPlugin()],
+    server: {
+      proxy: {
+        "/api": {
+          target: env.VITE_API_TARGET ?? "http://localhost:4000",
+          changeOrigin: true,
+        },
       },
     },
-  },
-  }; 
+  };
 });
