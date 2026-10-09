@@ -90,6 +90,8 @@ test("document center exposes every backend-supported document type", async ({ p
   // document-type coverage rather than duplicating the finder interaction test.
   await page.goto("/documents", { waitUntil: "networkidle" });
   await expect(page).toHaveURL(/\/documents$/);
+  // A deep link must restore the authenticated shell before checking workspace content.
+  await expect(page.getByRole("textbox", { name: "Search available workspaces" })).toBeVisible();
   // The workspace shell now owns the page-level heading; the document center
   // component supplies the functional form beneath that shared workspace context.
   await expect(page.getByRole("heading", { name: "Document center", level: 1 })).toBeVisible();
