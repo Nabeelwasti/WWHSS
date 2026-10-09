@@ -644,4 +644,7 @@ export const api = {
   createBackup: () => request<{ backup: unknown }>("/backup/create", { method: "POST" }),
 
   verifyBackup: (filename: string) => request<{ verification: unknown }>(`/backup/verify/${filename}`, { method: "POST" }),
+
+  restoreBackup: (filename: string, input: { mode: "DRY_RUN" | "MERGE" | "REPLACE"; confirm?: "RESTORE_MERGE" | "RESTORE_REPLACE" }) =>
+    request<{ restore: unknown }>(`/backup/restore/${encodeURIComponent(filename)}`, { method: "POST", body: JSON.stringify(input) }),
 };
