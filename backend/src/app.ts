@@ -101,18 +101,34 @@ app.use((req, res, next) => {
   next();
 });
 
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: true, legacyHeaders: false, message: { error: "Too many attempts. Please try again later." } });
+const loginIpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many login attempts from this network. Please try again later." },
+});
 const authAccountLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 8,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => loginAccountRateLimitKey(req.body?.email, req.ip),
-  message: { error: "Too many login attempts for this account. Please try again later." },
+  message: { error: "Too many login attempts for this account from this network. Please try again later." },
 });
-app.use("/api/auth/login", authLimiter);
+// Refresh requests are made during normal session restoration and token renewal.
+// They need an independent, higher ceiling so login attempts cannot consume the
+// refresh budget and routine page/API activity cannot lock users out mid-session.
+const authRefreshLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 180,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many session refresh requests. Please try again shortly." },
+});
+app.use("/api/auth/login", loginIpLimiter);
 app.use("/api/auth/login", authAccountLimiter);
-app.use("/api/auth/refresh", authLimiter);
+app.use("/api/auth/refresh", authRefreshLimiter);
 const aiLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false, message: { error: "You've asked a lot of questions this hour. Please try again later." } });
 app.use("/api/ai", aiLimiter);
 const generalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 600, standardHeaders: true, legacyHeaders: false, message: { error: "Too many requests. Please slow down and try again shortly." } });
