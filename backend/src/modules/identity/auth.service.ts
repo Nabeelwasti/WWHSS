@@ -71,23 +71,11 @@ export async function refresh(presentedToken: string) {
     });
 
     if (claimResult.count !== 1) {
-      // Re-read after the conditional claim. If another request consumed this
-      // token, revoke every remaining session and commit the security audit.
-      const latest = await tx.refreshToken.findFirst({ where: { tokenHash: hash } });
-      if (latest?.revoked) {
-        await tx.refreshToken.updateMany({
-          where: { userId: latest.userId, revoked: false },
-          data: { revoked: true },
-        });
-        await tx.auditLog.create({
-          data: {
-            userId: latest.userId,
-            action: "auth:refresh_reuse_detected",
-            metadata: { refreshTokenId: latest.id },
-          },
-        });
-        return { kind: "reuse" as const };
-      }
+      // This request read the token as active before attempting the atomic
+      // claim, so a failed claim is treated as a concurrent rotation loser.
+      // Do not revoke the winner's replacement session: parallel browser tabs
+      // can legitimately race. A later presentation that starts after rotation
+      // sees record.revoked above and triggers family revocation + audit.
       return { kind: "invalid" as const };
     }
 
