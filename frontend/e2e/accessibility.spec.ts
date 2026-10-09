@@ -90,6 +90,12 @@ test("document center exposes every backend-supported document type", async ({ p
   // document-type coverage rather than duplicating the finder interaction test.
   await page.goto("/documents", { waitUntil: "networkidle" });
   await expect(page).toHaveURL(/\/documents$/);
+  page.on("response", (response) => {
+    const pathname = new URL(response.url()).pathname;
+    if (pathname === "/api/auth/refresh" || pathname === "/api/auth/me") {
+      console.log(`deep-link auth diagnostic: ${pathname} -> ${response.status()}`);
+    }
+  });
   // A deep link must restore the authenticated shell before checking workspace content.
   await expect(page.getByRole("textbox", { name: "Search available workspaces" })).toBeVisible();
   // The workspace shell now owns the page-level heading; the document center
