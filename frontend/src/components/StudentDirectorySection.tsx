@@ -6,6 +6,16 @@ export function StudentDirectorySection() {
   const { t } = useLanguage();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
+  const [classId, setClassId] = useState("");
+  const [sectionId, setSectionId] = useState("");
+  const [academicYearId, setAcademicYearId] = useState("");
+  const [fundingCategoryId, setFundingCategoryId] = useState("");
+  const [gender, setGender] = useState("");
+  const [dateOfBirth, setDateOfBirth] = useState("");
+  const [classes, setClasses] = useState<{ id: string; name: string; sections: { id: string; name: string }[] }[]>([]);
+  const [academicYears, setAcademicYears] = useState<{ id: string; label: string; isActive: boolean }[]>([]);
+  const [fundingCategories, setFundingCategories] = useState<{ id: string; name: string }[]>([]);
+  const [filtersError, setFiltersError] = useState<string | null>(null);
   const [students, setStudents] = useState<any[]>([]);
   const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
   const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
@@ -16,7 +26,7 @@ export function StudentDirectorySection() {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.searchStudents({ query, status, page, limit: 10 });
+      const res = await api.searchStudents({ query, status, classId, sectionId, academicYearId, fundingCategoryId, gender, dateOfBirth, page, limit: 10 });
       setStudents(res.students);
       setPagination(res.pagination);
     } catch (e) {
@@ -27,8 +37,22 @@ export function StudentDirectorySection() {
   }
 
   useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      api.listClasses(),
+      api.listAcademicYears(),
+      api.listFundingCategories(),
+    ]).then(([classResult, yearResult, fundingResult]) => {
+      if (cancelled) return;
+      setClasses(classResult.classes);
+      setAcademicYears(yearResult.academicYears);
+      setFundingCategories(fundingResult.categories);
+    }).catch((e) => {
+      if (!cancelled) setFiltersError(e instanceof ApiError ? e.message : "Some student filters could not be loaded.");
+    });
     fetchStudents(1);
-  }, [status]);
+    return () => { cancelled = true; };
+  }, []);
 
   function handleSearch(e: FormEvent) {
     e.preventDefault();
@@ -54,26 +78,55 @@ export function StudentDirectorySection() {
         </p>
       )}
 
-      <form onSubmit={handleSearch} className="flex gap-2 flex-wrap" style={{ marginBottom: 16 }}>
-        <input
-          className="input"
-          placeholder="Search by name, roll no, admission no, CNIC/B-form, phone..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          style={{ flex: 1, minWidth: 200 }}
-        />
-        <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">All Statuses</option>
-          <option value="ACTIVE">ACTIVE</option>
-          <option value="PROMOTED">PROMOTED</option>
-          <option value="TRANSFERRED">TRANSFERRED</option>
-          <option value="WITHDRAWN">WITHDRAWN</option>
-          <option value="SUSPENDED">SUSPENDED</option>
-          <option value="GRADUATED">GRADUATED</option>
-        </select>
-        <button type="submit" className="btn btn-primary">
-          Search
-        </button>
+      <form onSubmit={handleSearch} className="student-search-form" style={{ marginBottom: 16 }}>
+        <label className="student-search-query">
+          <span>Search student records</span>
+          <input className="input" placeholder="Name, father's/guardian's name, admission, roll, registration or phone" value={query} onChange={(e) => setQuery(e.target.value)} />
+        </label>
+        <div className="student-filter-grid">
+          <label><span>Academic year</span>
+            <select className="input" value={academicYearId} onChange={(e) => setAcademicYearId(e.target.value)}>
+              <option value="">All academic years</option>
+              {academicYears.map((year) => <option key={year.id} value={year.id}>{year.label}{year.isActive ? " (Active)" : ""}</option>)}
+            </select>
+          </label>
+          <label><span>Class</span>
+            <select className="input" value={classId} onChange={(e) => { setClassId(e.target.value); setSectionId(""); }}>
+              <option value="">All classes</option>
+              {classes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </label>
+          <label><span>Section</span>
+            <select className="input" value={sectionId} onChange={(e) => setSectionId(e.target.value)} disabled={!classId}>
+              <option value="">All sections</option>
+              {classes.find((item) => item.id === classId)?.sections.map((section) => <option key={section.id} value={section.id}>{section.name}</option>)}
+            </select>
+          </label>
+          <label><span>Funding category</span>
+            <select className="input" value={fundingCategoryId} onChange={(e) => setFundingCategoryId(e.target.value)}>
+              <option value="">All funding categories</option>
+              {fundingCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+            </select>
+          </label>
+          <label><span>Gender</span>
+            <select className="input" value={gender} onChange={(e) => setGender(e.target.value)}>
+              <option value="">Any gender</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option>
+            </select>
+          </label>
+          <label><span>Date of birth</span><input className="input" type="date" value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} /></label>
+          <label><span>Status</span>
+            <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
+              <option value="">All statuses</option>
+              <option value="ACTIVE">Active</option><option value="PROMOTED">Promoted</option><option value="TRANSFERRED">Transferred</option>
+              <option value="WITHDRAWN">Withdrawn</option><option value="SUSPENDED">Suspended</option><option value="GRADUATED">Graduated</option>
+            </select>
+          </label>
+        </div>
+        {filtersError && <p className="text-muted text-sm" role="status">{filtersError}</p>}
+        <div className="flex gap-2 flex-wrap">
+          <button type="submit" className="btn btn-primary" disabled={loading}>{loading ? "Searching…" : "Search students"}</button>
+          <button type="button" className="btn btn-secondary" onClick={() => { setQuery(""); setStatus(""); setClassId(""); setSectionId(""); setAcademicYearId(""); setFundingCategoryId(""); setGender(""); setDateOfBirth(""); }}>Clear filters</button>
+        </div>
       </form>
 
       {loading ? (
