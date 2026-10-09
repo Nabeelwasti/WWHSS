@@ -53,8 +53,8 @@ test("authenticated dashboard and admin surfaces have no WCAG violations", async
 
 test("admin library workflow is keyboard reachable and functional", async ({ page }) => {
   await loginAsAdmin(page);
-  await page.goto("/admin", { waitUntil: "networkidle" });
-  await page.getByRole("button", { name: "Library" }).click();
+  // The library is now a first-class deep link in the role-aware workspace shell.
+  await page.goto("/library", { waitUntil: "networkidle" });
   await expect(page.getByRole("heading", { name: "Library Catalog Administration" })).toBeVisible();
   await page.getByRole("textbox", { name: "Title" }).fill("CI Accessibility Book");
   await page.getByRole("textbox", { name: "Author" }).fill("WWHSS Test");
