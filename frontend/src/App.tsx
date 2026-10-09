@@ -54,7 +54,7 @@ function hasTeacherRole(roleKeys: string[]) {
 }
 
 function resolveView(pathname: string): View {
-  const candidate = pathname.replace(/^\\/+|\\/+$/g, "").split("/")[0] as View;
+  const candidate = pathname.replace(/^\/+|\/+$/g, "").split("/")[0] as View;
   return validViews.includes(candidate) ? candidate : "dashboard";
 }
 
@@ -139,7 +139,7 @@ export default function App() {
 
   const groups = ["Workspace", "Teaching & learning", "School operations", "Administration"] as const;
   const currentItem = allItems.find((item) => item.key === view) ?? allItems[0];
-  const initials = user.fullName.trim().split(/\\s+/).slice(0, 2).map((part) => part[0] ?? "").join("").toUpperCase();
+  const initials = user.fullName.trim().split(/\s+/).slice(0, 2).map((part) => part[0] ?? "").join("").toUpperCase();
   const requestedAdminTab = adminTabs[view] ?? "users";
   const blockedAdminView = Boolean(adminTabs[view]) && !isAdmin;
   const blockedTeacherView = view === "teacher" && !isTeacher;
