@@ -4,7 +4,7 @@ import { api, ApiError, type StaffSummary, type UserSummary } from "../api";
 type Row = Record<string, any>;
 type Tab = "hr" | "payroll" | "admissions" | "transport" | "inventory" | "assets" | "ptm";
 type PayrollAction = "period" | "record";
-type TransportAction = "vehicle" | "route";
+type TransportAction = "vehicle" | "route" | "assignment";
 type InventoryAction = "item" | "transaction";
 
 const tabs: [Tab, string][] = [
@@ -32,6 +32,7 @@ export function EnterpriseOperationsSection() {
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [vehicles, setVehicles] = useState<Row[]>([]);
   const [inventoryItems, setInventoryItems] = useState<Row[]>([]);
+  const [lowStockItems, setLowStockItems] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [payrollAction, setPayrollAction] = useState<PayrollAction>("period");
@@ -63,7 +64,7 @@ export function EnterpriseOperationsSection() {
         if (sequence !== loadSequence.current) return;
         setStaff(result.staff);
       }
-      if (tab === "assets" || tab === "ptm") {
+      if (tab === "assets" || tab === "ptm" || tab === "transport") {
         const result = await api.searchStudents({ limit: 100 });
         if (sequence !== loadSequence.current) return;
         setStudents(result.students as Row[]);
@@ -80,8 +81,10 @@ export function EnterpriseOperationsSection() {
       }
       if (tab === "inventory") {
         const result = await api.listInventoryItems();
+        const lowStock = await api.listLowStockItems();
         if (sequence !== loadSequence.current) return;
         setInventoryItems(result.items as Row[]);
+        setLowStockItems(lowStock.items as Row[]);
       }
     } catch (e) {
       if (sequence === loadSequence.current) setError(e instanceof ApiError ? e.message : "Could not load operations data.");
@@ -144,12 +147,24 @@ export function EnterpriseOperationsSection() {
             driverName: String(f.get("driverName") || "") || undefined,
             driverPhone: String(f.get("driverPhone") || "") || undefined,
           });
-        } else {
+        } else if (transportAction === "route") {
           await api.createTransportRoute({
             name: String(f.get("routeName")),
-            pickupPoints: String(f.get("pickupPoints") || "").split("\n").map(name => ({ name: name.trim() })).filter(x => x.name),
+            pickupPoints: String(f.get("pickupPoints") || "").split("\\n").map(name => ({ name: name.trim() })).filter(x => x.name),
             monthlyFee: Number(f.get("monthlyFee") || 0),
             vehicleId: String(f.get("vehicleId") || "") || undefined,
+          });
+        } else {
+          const startDate = new Date(String(f.get("assignmentStartDate")));
+          const rawEndDate = String(f.get("assignmentEndDate") || "");
+          const endDate = rawEndDate ? new Date(rawEndDate) : undefined;
+          if (endDate && endDate < startDate) throw new Error("Assignment end date cannot be before its start date.");
+          await api.assignTransport({
+            studentProfileId: String(f.get("studentProfileId")),
+            routeId: String(f.get("routeId")),
+            pickupPoint: String(f.get("pickupPoint") || "") || undefined,
+            startDate: startDate.toISOString(),
+            endDate: endDate?.toISOString(),
           });
         }
       } else if (tab === "inventory") {
@@ -287,17 +302,23 @@ export function EnterpriseOperationsSection() {
     </>
   ) : tab === "transport" ? (
     <>
-      <Field label="Transport action"><select className="input" value={transportAction} onChange={e => setTransportAction(e.target.value as TransportAction)}><option value="vehicle">Register vehicle</option><option value="route">Create route</option></select></Field>
+      <Field label="Transport action"><select className="input" value={transportAction} onChange={e => setTransportAction(e.target.value as TransportAction)}><option value="vehicle">Register vehicle</option><option value="route">Create route</option><option value="assignment">Assign student to route</option></select></Field>
       {transportAction === "vehicle" ? <>
         <Field label="Vehicle registration"><input className="input" name="registrationNo" required placeholder="Registration number" /></Field>
         <Field label="Seating capacity"><input className="input" name="capacity" type="number" min="1" required placeholder="Number of seats" /></Field>
         <Field label="Driver name"><input className="input" name="driverName" placeholder="Driver name" /></Field>
         <Field label="Driver phone"><input className="input" name="driverPhone" type="tel" placeholder="Contact number" /></Field>
-      </> : <>
+      </> : transportAction === "route" ? <>
         <Field label="Route name"><input className="input" name="routeName" required placeholder="e.g. Canal Road Route" /></Field>
         <Field label="Pickup points"><textarea className="input" name="pickupPoints" required placeholder="One pickup point per line" rows={3} /></Field>
         <Field label="Monthly fee (PKR)"><input className="input" name="monthlyFee" type="number" min="0" step="0.01" defaultValue="0" /></Field>
         <Field label="Assigned vehicle (optional)"><select className="input" name="vehicleId">{selectPlaceholder("No vehicle assigned")}{vehicles.map(v => <option key={v.id} value={v.id}>{v.registrationNo} — capacity {v.capacity}</option>)}</select></Field>
+      </> : <>
+        <Field label="Student"><select className="input" name="studentProfileId" required>{selectPlaceholder("Choose student…")}{students.map(s => <option key={s.id} value={s.id}>{s.admissionNo || s.rollNumber || s.id} — {personLabel(s)}</option>)}</select></Field>
+        <Field label="Active route"><select className="input" name="routeId" required>{selectPlaceholder("Choose route…")}{rows.filter(r => r.status === "ACTIVE").map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select></Field>
+        <Field label="Pickup point (optional)"><input className="input" name="pickupPoint" placeholder="Student pickup point" /></Field>
+        <Field label="Assignment start date"><input className="input" name="assignmentStartDate" type="date" required /></Field>
+        <Field label="Assignment end date (optional)"><input className="input" name="assignmentEndDate" type="date" /></Field>
       </>}
     </>
   ) : tab === "inventory" ? (
@@ -340,9 +361,18 @@ export function EnterpriseOperationsSection() {
     </>
   );
 
-  const attentionCount = rows.filter(r => ["PENDING", "DRAFT"].includes(String(r.status || "").toUpperCase())).length;
+  const attentionCount = tab === "inventory" ? lowStockItems.length : rows.filter(r => ["PENDING", "DRAFT"].includes(String(r.status || "").toUpperCase())).length;
   const currentLabel = tabs.find(x => x[0] === tab)?.[1] ?? "Operations";
-  const hasNoOptions = (tab === "hr" || (tab === "payroll" && payrollAction === "record")) && staff.length === 0;
+  const hasNoOptions =
+    ((tab === "hr" || (tab === "payroll" && payrollAction === "record")) && staff.length === 0) ||
+    (tab === "transport" && transportAction === "assignment" && (students.length === 0 || !rows.some(r => r.status === "ACTIVE"))) ||
+    (tab === "inventory" && inventoryAction === "transaction" && inventoryItems.length === 0) ||
+    (tab === "ptm" && students.length === 0);
+  const noOptionsMessage = tab === "hr" ? "Add staff profiles before submitting a leave request."
+    : tab === "payroll" ? "Add staff profiles before creating a payroll record."
+    : tab === "transport" ? "Student profiles and at least one active transport route are required for an assignment."
+    : tab === "inventory" ? "Register an inventory item before recording a stock movement."
+    : "Student profiles are required to schedule a parent meeting.";
 
   return (
     <section className="operations-workspace" aria-label="Enterprise operations">
@@ -361,12 +391,19 @@ export function EnterpriseOperationsSection() {
 
       <section className="card ops-form-card">
         <div className="ops-section-heading"><div><span className="section-eyebrow">WORKFLOW</span><h2>{currentLabel}</h2><p>Enter validated details and save them to the school record.</p></div><span className="ops-live-indicator"><span /> Live data</span></div>
-        {hasNoOptions && !loading && !error && <p role="status" className="alert alert-info">No staff profiles are available yet. Add staff profiles before submitting this workflow.</p>}
+        {hasNoOptions && !loading && !error && <p role="status" className="alert alert-info">{noOptionsMessage}</p>}
         <form onSubmit={submit} className="ops-form-grid">
           {form}
           <div className="ops-form-actions"><button className="btn btn-primary" type="submit" disabled={saving || loading || hasNoOptions}>{saving ? "Saving…" : loading ? "Loading…" : "Save record"}</button><span>Changes are recorded by the school system.</span></div>
         </form>
       </section>
+
+      {tab === "inventory" && <section className="card ops-alert-card" aria-label="Automatic inventory reorder alerts">
+        <div className="ops-section-heading"><div><span className="section-eyebrow">STOCK MONITOR</span><h2>Reorder watch</h2><p>Items reported by the backend as at or below their configured reorder threshold.</p></div><span className="ops-alert-count">{loading ? "…" : lowStockItems.length + " alerts"}</span></div>
+        {loading ? <div className="ops-loading" role="status"><span className="ops-spinner" /> Checking stock thresholds…</div>
+          : lowStockItems.length === 0 ? <p className="ops-stock-clear" role="status">No low-stock alerts are currently reported.</p>
+          : <div className="ops-low-stock-list">{lowStockItems.map(item => <div className="ops-low-stock-row" key={item.id}><span className="ops-stock-warning">!</span><div><strong>{item.name}</strong><small>{item.sku} · Reorder at {item.reorderLevel} {item.unit || ""}</small></div><span className="ops-stock-quantity">{item.quantity} {item.unit || "units"} left</span></div>)}</div>}
+      </section>}
 
       <section className="card ops-records-card">
         <div className="ops-section-heading"><div><span className="section-eyebrow">REGISTER</span><h2>Current records</h2><p>Live records for {currentLabel.toLowerCase()}.</p></div><button className="btn btn-secondary btn-sm" type="button" onClick={() => void load()} disabled={loading || saving}>{loading ? "Refreshing…" : "Refresh records"}</button></div>
