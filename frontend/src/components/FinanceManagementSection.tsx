@@ -30,26 +30,25 @@ export function FinanceManagementSection() {
     const results = await Promise.allSettled([
       api.listFundingCategories(),
       api.getFinancialSummary(),
-      api.listClasses(),
-      api.listAcademicYears(),
+      api.listFinanceOptions(),
       api.listFeeStructures(),
       api.listFinanceInvoices({ limit: 100 }),
-      api.searchStudents({ limit: 100 }),
+      api.searchFinanceStudents({ limit: 100 }),
     ]);
     const failures: string[] = [];
     if (results[0].status === "fulfilled") setCategories(results[0].value.categories);
     else failures.push("Funding categories could not be loaded.");
     if (results[1].status === "fulfilled") setSummary(results[1].value);
     else failures.push("Financial summary could not be loaded.");
-    if (results[2].status === "fulfilled") setClasses(results[2].value.classes);
-    else failures.push("Class options are unavailable to this account.");
-    if (results[3].status === "fulfilled") setAcademicYears(results[3].value.academicYears);
-    else failures.push("Academic-year options are unavailable to this account.");
-    if (results[4].status === "fulfilled") setFeeStructures(results[4].value.feeStructures as FeeStructure[]);
+    if (results[2].status === "fulfilled") {
+      setClasses(results[2].value.classes);
+      setAcademicYears(results[2].value.academicYears);
+    } else failures.push("Class and academic-year options are unavailable to this account.");
+    if (results[3].status === "fulfilled") setFeeStructures(results[3].value.feeStructures as FeeStructure[]);
     else failures.push("Fee structures could not be loaded.");
-    if (results[5].status === "fulfilled") setInvoices(results[5].value.invoices as InvoiceRow[]);
+    if (results[4].status === "fulfilled") setInvoices(results[4].value.invoices as InvoiceRow[]);
     else failures.push("Invoice register could not be loaded.");
-    if (results[6].status === "fulfilled") setStudents(results[6].value.students as StudentOption[]);
+    if (results[5].status === "fulfilled") setStudents(results[5].value.students as StudentOption[]);
     else failures.push("Student search is unavailable to this account.");
     if (failures.length) setError(failures.join(" "));
     setLoading(false);
@@ -176,7 +175,7 @@ export function FinanceManagementSection() {
     setLoading(true);
     setError(null);
     try {
-      const result = await api.searchStudents({ query: studentSearch.trim(), limit: 100 });
+      const result = await api.searchFinanceStudents({ query: studentSearch.trim(), limit: 100 });
       setStudents(result.students as StudentOption[]);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Student search failed.");
