@@ -658,3 +658,56 @@ a { color: var(--navy-l); }
   .ops-low-stock-row small { color: #c0cfdf; }
   .ops-stock-quantity { color: #f5d998; }
 }
+
+
+/* Complete finance workspace: responsive forms, real-record selectors and register */
+.finance-workspace { display: grid; gap: 18px; min-width: 0; }
+.finance-workspace-header,.finance-register-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.finance-workspace-header h2,.finance-register-header h3 { margin: 4px 0 6px; }
+.finance-metric-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; }
+.finance-metric { display: flex; flex-direction: column; gap: 9px; padding: 17px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); min-width: 0; }
+.finance-metric span { color: var(--muted); font-size: 12px; font-weight: 650; }
+.finance-metric strong { color: var(--text); font-size: clamp(17px,2vw,23px); overflow-wrap: anywhere; }
+.finance-card-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; align-items: start; }
+.finance-card { display: grid; gap: 12px; min-width: 0; margin: 0; padding: clamp(14px,2vw,20px); }
+.finance-card h3,.finance-invoice-register h3 { margin: 0; font-size: 16px; color: var(--text); }
+.finance-card > p { margin: -5px 0 0; }
+.finance-form { display: grid; gap: 11px; min-width: 0; }
+.finance-form > label,.finance-two-col > label,.finance-inline-search > label { display: flex; flex-direction: column; gap: 6px; min-width: 0; color: var(--text); font-size: 12px; font-weight: 650; }
+.finance-form .input,.finance-inline-search .input { width: 100%; min-width: 0; }
+.finance-two-col { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.finance-check { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 12px; }
+.finance-inline-search { display: flex; align-items: flex-end; gap: 10px; margin-bottom: 12px; }
+.finance-inline-search > label { flex: 1; }
+.finance-list { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); color: var(--text); font-size: 12px; }
+.finance-list > div { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.finance-list > div span { min-width: 0; overflow-wrap: anywhere; }
+.finance-list small { color: var(--muted); white-space: nowrap; }
+.finance-invoice-register { display: grid; gap: 12px; min-width: 0; }
+.finance-table-wrap { width: 100%; overflow-x: auto; }
+.finance-table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 640px; }
+.finance-table th,.finance-table td { padding: 11px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+.finance-table th { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; background: var(--surface-2); }
+.finance-table td { color: var(--text); }
+.student-search-form { display: grid; gap: 12px; }
+.student-search-query,.student-filter-grid > label { display: flex; flex-direction: column; gap: 6px; min-width: 0; color: var(--text); font-size: 12px; font-weight: 650; }
+.student-filter-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+.student-filter-grid .input { width: 100%; min-width: 0; }
+@media (max-width: 860px) {
+  .finance-metric-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .finance-card-grid { grid-template-columns: minmax(0,1fr); }
+  .student-filter-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media (max-width: 520px) {
+  .finance-workspace-header,.finance-register-header { flex-direction: column; align-items: stretch; }
+  .finance-two-col,.finance-metric-grid,.student-filter-grid { grid-template-columns: minmax(0,1fr); }
+  .finance-inline-search { flex-direction: column; align-items: stretch; }
+  .finance-inline-search > label { width: 100%; }
+}
+@media (prefers-color-scheme: dark) {
+  .finance-metric,.finance-card,.finance-invoice-register { background: #121e2a; border-color: #283746; }
+  .finance-metric span,.finance-card .text-muted,.finance-register-header .text-muted { color: #c0cfdf; }
+  .finance-metric strong,.finance-card h3,.finance-invoice-register h3,.finance-form > label,.finance-two-col > label,.finance-inline-search > label,.finance-check,.finance-list,.finance-table td,.student-search-query,.student-filter-grid > label { color: #e4edf7; }
+  .finance-list small,.finance-table th { color: #c0cfdf; }
+  .finance-table th { background: #1b2b3a; }
+}
