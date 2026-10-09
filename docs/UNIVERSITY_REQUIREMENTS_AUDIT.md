@@ -62,6 +62,7 @@ Status key:
 5. **Document center expanded:** all 23 backend-supported document types are selectable rather than only five.
 6. **Backup recovery UI hardened:** dry-run preflight is required before restore, with exact typed confirmation for MERGE and destructive REPLACE.
 7. **Responsive/accessibility styles added** for finance, student filters and backup restore states.
+8. **Least-privilege accountant lookup added:** finance class/year options and minimal student search use finance permissions, so accountant workflows do not depend on broad academic-administration permission. Funding-category and fee-structure reads now use finance-view permission.
 
 These are implementation changes, not claims that the whole product is now complete. The latest commit must pass the full CI workflow, including TypeScript build, backend tests, OpenAPI exact route contract, Docker builds and authenticated browser/accessibility E2E.
 
