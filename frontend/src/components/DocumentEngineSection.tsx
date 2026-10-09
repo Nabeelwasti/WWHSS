@@ -37,16 +37,20 @@ export function DocumentEngineSection() {
       {error && <p role="alert" className="alert alert-danger">{error}</p>}
 
       <form onSubmit={handleFetchPayload} className="flex gap-2 flex-wrap" style={{ marginBottom: 16 }}>
-        <select className="input" value={docType} onChange={(e) => setDocType(e.target.value)}>
-          <option value="result_card">Report Card / Result Card</option>
-          <option value="fee_receipt">Fee Payment Receipt</option>
-          <option value="transfer_certificate">Transfer / Leaving Certificate</option>
-          <option value="fee_statement">Fee Account Statement</option>
-          <option value="attendance_report">Attendance Log & Report</option>
+        <select className="input" value={docType} onChange={(e) => { setDocType(e.target.value); setReferenceId(""); setPayload(null); }}>
+          <optgroup label="Student and academic records">
+            <option value="result_card">Result card</option><option value="report_card">Report card</option><option value="transcript">Academic transcript</option><option value="academic_history">Academic history</option><option value="progress_report">Progress report</option><option value="admission_document">Admission document</option><option value="transfer_certificate">Transfer / leaving certificate</option><option value="attendance_report">Attendance report</option><option value="timetable">Student timetable</option><option value="class_sheet">Class student sheet</option><option value="teacher_timetable">Teacher timetable</option><option value="room_schedule">Room schedule</option><option value="exam_schedule">Exam schedule</option>
+          </optgroup>
+          <optgroup label="Finance and welfare">
+            <option value="fee_receipt">Fee payment receipt</option><option value="invoice">Invoice</option><option value="fee_statement">Fee account statement</option><option value="financial_summary">Student financial summary</option><option value="funding_report">Student funding / welfare report</option>
+          </optgroup>
+          <optgroup label="Library, communications and other">
+            <option value="library_card">Library card</option><option value="loan_report">Library loan report</option><option value="notice">Notice</option><option value="event_schedule">Event schedule</option><option value="letter">Official school letter</option>
+          </optgroup>
         </select>
         <input
           className="input"
-          placeholder="Student Profile ID or Payment ID (UUID)"
+          placeholder="Paste the relevant record ID (UUID); student and payment records are supported"
           value={referenceId}
           onChange={(e) => setReferenceId(e.target.value)}
           style={{ flex: 1, minWidth: 240 }}
