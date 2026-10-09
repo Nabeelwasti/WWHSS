@@ -45,7 +45,7 @@ const adminTabs: Partial<Record<View, AdminTab>> = {
 };
 
 function hasAdminRole(roleKeys: string[]) {
-  return roleKeys.some((key) => key === "super_admin" || key === "principal");
+  return roleKeys.some((key) => ["super_admin", "principal", "admin", "administrator", "school_admin"].includes(key));
 }
 function canMarkAttendance(roleKeys: string[]) {
   return roleKeys.some((key) => key === "teacher" || key === "class_teacher" || key === "super_admin");
@@ -265,7 +265,7 @@ export default function App() {
             {view === "timetable" && <TimetablePage />}
             {view === "quizzes" && isStudent && user.studentProfile && <QuizzesPage studentProfileId={user.studentProfile.id} />}
             {view === "parent" && isParent && <ParentPage />}
-            {view === "documents" && isAdmin && <DocumentEngineSection />}
+            {view === "documents" && canAccessAdminView && <DocumentEngineSection />}
             {adminTabs[view] && view !== "documents" && canAccessAdminView && <AdminPage key={view} initialTab={requestedAdminTab} allowedTabs={isAdmin ? undefined : allowedAdminTabs} />}
           </div>
         </div>
