@@ -83,7 +83,7 @@ describe("Refresh Token Rotation Security", () => {
     expect(mockUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ id: "rt-1", revoked: false }),
-        data: { revoked: true },
+        data: expect.objectContaining({ revoked: true, rotatedAt: expect.any(Date) }),
       })
     );
   });
