@@ -16,6 +16,7 @@ import {
   getStudentFundingHistory,
   applyFeeWaiver,
   getFinancialSummaryReport,
+  listFinanceInvoices,
   adjustPayment,
   refreshInvoiceStatus,
   FinanceValidationError,
@@ -132,6 +133,24 @@ financeRouter.post("/generate-invoices", authorize("finance:manage"), async (req
     if (e instanceof FinanceValidationError) return res.status(400).json({ error: e.message });
     throw e;
   }
+});
+
+// Finance-wide invoice search is restricted to finance managers; student/guardian views use the scoped routes below.
+financeRouter.get("/invoices", authorize("finance:manage"), async (req, res) => {
+  const query = typeof req.query.query === "string" ? req.query.query : undefined;
+  const status = typeof req.query.status === "string" ? req.query.status : undefined;
+  const studentProfileId = typeof req.query.studentProfileId === "string" ? req.query.studentProfileId : undefined;
+  const page = typeof req.query.page === "string" ? Number.parseInt(req.query.page, 10) : undefined;
+  const limit = typeof req.query.limit === "string" ? Number.parseInt(req.query.limit, 10) : undefined;
+  if (status && !["draft", "issued", "partial", "paid", "overdue", "waived", "cancelled", "void", "written_off", "refunded", "pending"].includes(status)) {
+    return res.status(400).json({ error: "Unsupported invoice status filter." });
+  }
+  if (studentProfileId && !z.string().uuid().safeParse(studentProfileId).success) {
+    return res.status(400).json({ error: "Invalid student profile ID." });
+  }
+  if (page !== undefined && (!Number.isInteger(page) || page < 1)) return res.status(400).json({ error: "Page must be a positive integer." });
+  if (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 100)) return res.status(400).json({ error: "Limit must be between 1 and 100." });
+  res.json(await listFinanceInvoices({ query, status, studentProfileId, page, limit }));
 });
 
 // ---------- PAYMENTS & WAIVERS ----------
