@@ -105,6 +105,7 @@ describe("Refresh Token Rotation Security", () => {
       id: "rt-replayed",
       userId: "u-1",
       revoked: true,
+      rotatedAt: new Date(Date.now() - 6000),
       expiresAt: new Date(Date.now() + 86400000),
     });
     mockUpdateMany.mockResolvedValue({ count: 2 });
@@ -121,6 +122,28 @@ describe("Refresh Token Rotation Security", () => {
         userId: "u-1",
         action: "auth:refresh_reuse_detected",
         metadata: { refreshTokenId: "rt-replayed" },
+      },
+    });
+  });
+
+  it("does not revoke other sessions for a bounded concurrent refresh retry", async () => {
+    mockFindFirst.mockResolvedValue({
+      id: "rt-recent",
+      userId: "u-1",
+      revoked: true,
+      rotatedAt: new Date(Date.now() - 1000),
+      expiresAt: new Date(Date.now() + 86400000),
+    });
+    mockAuditCreate.mockResolvedValue({});
+
+    await expect(refresh("concurrent-token")).rejects.toThrow(AuthError);
+
+    expect(mockUpdateMany).not.toHaveBeenCalled();
+    expect(mockAuditCreate).toHaveBeenCalledWith({
+      data: {
+        userId: "u-1",
+        action: "auth:refresh_concurrent_retry",
+        metadata: { refreshTokenId: "rt-recent" },
       },
     });
   });
