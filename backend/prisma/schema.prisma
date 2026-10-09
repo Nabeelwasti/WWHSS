@@ -72,6 +72,7 @@ model RefreshToken {
   expiresAt DateTime
   createdAt DateTime @default(now())
   revoked   Boolean  @default(false)
+  rotatedAt DateTime?
 
   @@index([userId])
   @@map("refresh_tokens")
