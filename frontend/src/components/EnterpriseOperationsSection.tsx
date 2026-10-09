@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { api, ApiError, type StaffSummary, type UserSummary } from "../api";
 
 type Row = Record<string, any>;
@@ -19,12 +19,13 @@ const recordLabel = (row: Row) =>
 const personLabel = (row: Row) =>
   row.user?.fullName || row.fullName || row.name || row.admissionNo || "Unnamed person";
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className="ops-field"><span>{label}</span>{children}</label>;
 }
 
 export function EnterpriseOperationsSection() {
   const [tab, setTab] = useState<Tab>("hr");
+  const loadSequence = useRef(0);
   const [rows, setRows] = useState<Row[]>([]);
   const [staff, setStaff] = useState<StaffSummary[]>([]);
   const [students, setStudents] = useState<Row[]>([]);
@@ -40,6 +41,7 @@ export function EnterpriseOperationsSection() {
   const [notice, setNotice] = useState<string | null>(null);
 
   async function load() {
+    const sequence = ++loadSequence.current;
     setLoading(true);
     setError(null);
     try {
@@ -53,32 +55,38 @@ export function EnterpriseOperationsSection() {
         await api.listPtmMeetings();
 
       const nextRows = (data.leaves || data.periods || data.leads || data.routes || data.items || data.assets || data.meetings || []) as Row[];
+      if (sequence !== loadSequence.current) return;
       setRows(nextRows);
 
       if (tab === "hr" || tab === "payroll" || tab === "assets") {
         const result = await api.listStaff();
+        if (sequence !== loadSequence.current) return;
         setStaff(result.staff);
       }
       if (tab === "assets" || tab === "ptm") {
         const result = await api.searchStudents({ limit: 100 });
+        if (sequence !== loadSequence.current) return;
         setStudents(result.students as Row[]);
       }
       if (tab === "ptm") {
         const result = await api.listUsers();
+        if (sequence !== loadSequence.current) return;
         setUsers(result.users);
       }
       if (tab === "transport") {
         const result = await api.listTransportVehicles();
+        if (sequence !== loadSequence.current) return;
         setVehicles(result.vehicles as Row[]);
       }
       if (tab === "inventory") {
         const result = await api.listInventoryItems();
+        if (sequence !== loadSequence.current) return;
         setInventoryItems(result.items as Row[]);
       }
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not load operations data.");
+      if (sequence === loadSequence.current) setError(e instanceof ApiError ? e.message : "Could not load operations data.");
     } finally {
-      setLoading(false);
+      if (sequence === loadSequence.current) setLoading(false);
     }
   }
 
@@ -208,7 +216,9 @@ export function EnterpriseOperationsSection() {
       setSaving(true); setError(null); setNotice(null);
       if (action === "approve") await api.approvePayrollPeriod(id);
       else {
-        const reference = window.prompt("Payment reference (optional):") || undefined;
+        const enteredReference = window.prompt("Payment reference (optional):");
+        if (enteredReference === null) return;
+        const reference = enteredReference.trim() || undefined;
         await api.payPayrollPeriod(id, reference ? { paymentReference: reference } : {});
       }
       setNotice(action === "approve" ? "Payroll period approved." : "Payroll period paid."); await load();
@@ -332,7 +342,7 @@ export function EnterpriseOperationsSection() {
 
   const attentionCount = rows.filter(r => ["PENDING", "DRAFT"].includes(String(r.status || "").toUpperCase())).length;
   const currentLabel = tabs.find(x => x[0] === tab)?.[1] ?? "Operations";
-  const hasNoOptions = (tab === "hr" || tab === "payroll") && staff.length === 0;
+  const hasNoOptions = (tab === "hr" || (tab === "payroll" && payrollAction === "record")) && staff.length === 0;
 
   return (
     <section className="operations-workspace" aria-label="Enterprise operations">
