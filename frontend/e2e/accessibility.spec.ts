@@ -74,7 +74,7 @@ test("workspace finder opens the requested admin workspace", async ({ page }) =>
 test("finance workspace exposes the real billing and welfare workflows", async ({ page }) => {
   await loginAsAdmin(page);
   await page.goto("/finance", { waitUntil: "networkidle" });
-  await expect(page.getByRole("heading", { name: "Finance & Funding" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Finance & funding", exact: true, level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Invoice register" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Assign funding to a student" })).toBeVisible();
   await expect(page.getByLabel("Fee policy")).toBeVisible();
@@ -84,6 +84,7 @@ test("finance workspace exposes the real billing and welfare workflows", async (
 test("document center exposes every backend-supported document type", async ({ page }) => {
   await loginAsAdmin(page);
   await page.goto("/documents", { waitUntil: "networkidle" });
+  await expect(page.getByRole("heading", { name: "Document & Print Center" })).toBeVisible();
   const documentType = page.getByLabel("Document type");
   await expect(documentType).toBeVisible();
   await expect(documentType.locator("option")).toHaveCount(23);
