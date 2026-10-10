@@ -35,43 +35,92 @@ export async function refresh(presentedToken: string) {
   const hash = hashRefreshToken(presentedToken);
   const now = new Date();
 
-  return prisma.$transaction(async (tx) => {
+  // Return security failures from the transaction instead of throwing inside it.
+  // Throwing inside Prisma's interactive transaction would roll back the reuse
+  // response's session revocation and audit event, defeating replay detection.
+  const outcome = await prisma.$transaction(async (tx) => {
     const record = await tx.refreshToken.findFirst({ where: { tokenHash: hash } });
 
-    if (!record || record.expiresAt < now) {
-      throw new AuthError("Invalid or expired refresh token");
+    if (!record || record.expiresAt <= now) {
+      return { kind: "invalid" as const };
     }
 
     if (record.revoked) {
-      await tx.refreshToken.updateMany({ where: { userId: record.userId, revoked: false }, data: { revoked: true } });
-      await tx.auditLog.create({ data: { userId: record.userId, action: "auth:refresh_reuse_detected", metadata: { refreshTokenId: record.id } } });
-      throw new AuthError("Invalid or expired refresh token");
+      // Parallel tabs may present the previous cookie just after another tab
+      // rotated it. Allow a short, bounded grace period to avoid revoking the
+      // winning session for an ordinary race; still record the retry. A later
+      // replay of a consumed token revokes every remaining session.
+      const recentlyRotated = record.rotatedAt !== null
+        && record.rotatedAt !== undefined
+        && now.getTime() - record.rotatedAt.getTime() <= 5_000;
+      if (recentlyRotated) {
+        await tx.auditLog.create({
+          data: {
+            userId: record.userId,
+            action: "auth:refresh_concurrent_retry",
+            metadata: { refreshTokenId: record.id },
+          },
+        });
+        return { kind: "invalid" as const };
+      }
+
+      await tx.refreshToken.updateMany({
+        where: { userId: record.userId, revoked: false },
+        data: { revoked: true },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: record.userId,
+          action: "auth:refresh_reuse_detected",
+          metadata: { refreshTokenId: record.id },
+        },
+      });
+      return { kind: "reuse" as const };
     }
 
-    // Atomic conditional update: exactly one concurrent request can flip revoked: false -> true
+    // Atomic conditional update: exactly one concurrent request can flip revoked: false -> true.
     const claimResult = await tx.refreshToken.updateMany({
       where: {
         id: record.id,
         revoked: false,
         expiresAt: { gt: now },
       },
-      data: { revoked: true },
+      data: { revoked: true, rotatedAt: now },
     });
 
     if (claimResult.count !== 1) {
-      throw new AuthError("Invalid or expired refresh token");
+      // This request read the token as active before attempting the atomic
+      // claim, so a failed claim is treated as a concurrent rotation loser.
+      // Do not revoke the winner's replacement session: parallel browser tabs
+      // can legitimately race. A later presentation that starts after rotation
+      // sees record.revoked above and triggers family revocation + audit.
+      return { kind: "invalid" as const };
     }
 
     const user = await tx.user.findUnique({ where: { id: record.userId } });
-    if (!user || !user.isActive) throw new AuthError("Account inactive");
+    if (!user || !user.isActive) {
+      await tx.auditLog.create({
+        data: {
+          userId: record.userId,
+          action: "auth:refresh_inactive_account",
+          metadata: { refreshTokenId: record.id },
+        },
+      });
+      return { kind: "invalid" as const };
+    }
 
     const accessToken = signAccessToken({ sub: user.id, email: user.email, tokenVersion: user.tokenVersion });
     const { token: newRefresh, hash: newHash } = newRefreshTokenValue();
     const expiresAt = new Date(Date.now() + env.refreshTokenTtlDays * 24 * 60 * 60 * 1000);
     await tx.refreshToken.create({ data: { userId: user.id, tokenHash: newHash, expiresAt } });
 
-    return { accessToken, refreshToken: newRefresh };
+    return { kind: "rotated" as const, accessToken, refreshToken: newRefresh };
   });
+
+  if (outcome.kind !== "rotated") {
+    throw new AuthError("Invalid or expired refresh token");
+  }
+  return { accessToken: outcome.accessToken, refreshToken: outcome.refreshToken };
 }
 
 

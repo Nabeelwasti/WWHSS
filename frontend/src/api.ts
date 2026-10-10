@@ -425,7 +425,14 @@ export const api = {
 
   // ---- Admin: Finance ----
 
-  createFeeStructure: (input: { classId: string; academicYearId: string; name: string; amount: number }) =>
+  listFeeStructures: (params: { classId?: string; academicYearId?: string } = {}) => {
+    const q = new URLSearchParams();
+    if (params.classId) q.set("classId", params.classId);
+    if (params.academicYearId) q.set("academicYearId", params.academicYearId);
+    return request<{ feeStructures: { id: string; name: string; amount: number | string; classId: string; academicYearId: string; class?: { name: string }; academicYear?: { label: string } }[] }>(`/finance/fee-structures${q.size ? `?${q}` : ""}`);
+  },
+
+  createFeeStructure: (input: { classId: string; academicYearId: string; name: string; amount: number; fundingCategoryId?: string; feeType?: string }) =>
     request("/finance/fee-structures", { method: "POST", body: JSON.stringify(input) }),
 
   generateInvoices: (input: { feeStructureId: string; dueDate: string; billingPeriodStart?: string; billingPeriodEnd?: string }) =>
@@ -433,6 +440,15 @@ export const api = {
 
   recordPayment: (input: { invoiceId: string; amount: number; method: string }) =>
     request("/finance/payments", { method: "POST", body: JSON.stringify(input) }),
+
+  listFinanceInvoices: (params: { query?: string; status?: string; studentProfileId?: string; page?: number; limit?: number } = {}) => {
+    const q = new URLSearchParams();
+    for (const key of ["query", "status", "studentProfileId", "page", "limit"] as const) {
+      const value = params[key];
+      if (value !== undefined && value !== "") q.set(key, String(value));
+    }
+    return request<{ invoices: any[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(`/finance/invoices${q.size ? `?${q}` : ""}`);
+  },
 
   // ---- Parent Portal ----
   listParentChildren: () => request<{ children: unknown[] }>("/parent/children"),
@@ -532,19 +548,30 @@ export const api = {
     emergencyContact?: string;
   }) => request<{ staff: StaffSummary }>("/users/staff", { method: "POST", body: JSON.stringify(input) }),
 
+  listFinanceOptions: () => request<{ classes: { id: string; name: string }[]; academicYears: { id: string; label: string; isActive: boolean }[] }>("/finance/options"),
+  searchFinanceStudents: (params: { query?: string; limit?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (params.query) q.set("query", params.query);
+    if (params.limit) q.set("limit", String(params.limit));
+    return request<{ students: { id: string; admissionNo: string; rollNumber?: string | null; user?: { fullName?: string; phone?: string | null }; class?: { name?: string } | null; section?: { name?: string } | null }[] }>(`/finance/students/search${q.size ? `?${q}` : ""}`);
+  },
+
   // ---- Funding & Fee Extensions ----
-  listFundingCategories: () => request<unknown[]>("/finance/funding-categories"),
+  listFundingCategories: () => request<{ categories: { id: string; name: string; code: string; description?: string | null; isDefault: boolean }[] }>("/finance/funding-categories"),
 
   createFundingCategory: (input: { name: string; code: string; description?: string; isDefault?: boolean }) =>
     request("/finance/funding-categories", { method: "POST", body: JSON.stringify(input) }),
 
-  assignStudentFunding: (input: Record<string, unknown>) =>
-    request("/finance/student-funding", { method: "POST", body: JSON.stringify(input) }),
+  assignStudentFunding: (input: { studentProfileId: string; fundingCategoryId: string; programName?: string; startDate: string; endDate?: string; evidenceRef?: string; approvalAuthority?: string; feePolicy?: "FULLY_WAIVED" | "PARTIALLY_WAIVED" | "STANDARD" | "CUSTOM"; waiverPercentage?: number; customFeeAmount?: number; notes?: string }) =>
+    request("/finance/funding-records", { method: "POST", body: JSON.stringify(input) }),
+
+  getStudentFundingHistory: (studentProfileId: string) =>
+    request<{ records: any[] }>(`/finance/funding-records/student/${studentProfileId}`),
 
   applyFeeWaiver: (input: { invoiceId: string; studentProfileId: string; amount: number; reason: string }) =>
     request("/finance/waivers", { method: "POST", body: JSON.stringify(input) }),
 
-  getFinancialSummary: () => request<unknown>("/finance/summary-report"),
+  getFinancialSummary: () => request<unknown>("/finance/reports/summary"),
 
   // ---- Document Engine ----
   listDocuments: (docType?: string) =>
@@ -625,4 +652,7 @@ export const api = {
   createBackup: () => request<{ backup: unknown }>("/backup/create", { method: "POST" }),
 
   verifyBackup: (filename: string) => request<{ verification: unknown }>(`/backup/verify/${filename}`, { method: "POST" }),
+
+  restoreBackup: (filename: string, input: { mode: "DRY_RUN" | "MERGE" | "REPLACE"; confirm?: "RESTORE_MERGE" | "RESTORE_REPLACE" }) =>
+    request<{ restore: unknown }>(`/backup/restore/${encodeURIComponent(filename)}`, { method: "POST", body: JSON.stringify(input) }),
 };

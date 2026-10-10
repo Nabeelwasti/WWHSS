@@ -7,7 +7,21 @@ vi.mock("../../../db/client.js", () => ({
   },
 }));
 
-import { classifyTask, orderByTier, type ProviderConfig } from "../ai.service.js";
+import { classifyTask, classifySchoolAnalyticsIntent, orderByTier, type ProviderConfig } from "../ai.service.js";
+
+describe("classifySchoolAnalyticsIntent", () => {
+  it("routes funded-student count requests to the authorized database analytics path", () => {
+    expect(classifySchoolAnalyticsIntent("How many students are funded by the welfare program?")).toBe("funded_student_count");
+  });
+
+  it("routes active-student count requests to the academic analytics path", () => {
+    expect(classifySchoolAnalyticsIntent("What is the total number of active students?")).toBe("active_student_count");
+  });
+
+  it("does not classify general tutoring questions as school analytics", () => {
+    expect(classifySchoolAnalyticsIntent("Explain quadratic equations to a student")).toBeNull();
+  });
+});
 
 describe("classifyTask", () => {
   it("classifies a short casual question as fast", () => {

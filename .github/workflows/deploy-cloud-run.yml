@@ -17,14 +17,20 @@ jobs:
     name: Verify exact commit passed CI
     runs-on: ubuntu-latest
     steps:
-      - name: Check successful CI workflow
+      - name: Check latest CI workflow for exact main commit
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          RUN_ID="$(gh run list --repo "${{ github.repository }}" --workflow ci.yml --commit "${{ github.sha }}" --status completed --json databaseId,conclusion --jq '.[] | select(.conclusion=="success") | .databaseId' | head -n1)"
+          test "${GITHUB_REF}" = "refs/heads/main"
+          RUNS="$(gh run list --repo "${{ github.repository }}" --workflow ci.yml --commit "${GITHUB_SHA}" --limit 100 --json databaseId,conclusion,createdAt,headSha)"
+          LATEST="$(printf '%s' "$RUNS" | jq -c 'sort_by(.createdAt) | last // empty')"
+          test -n "$LATEST"
+          test "$(printf '%s' "$LATEST" | jq -r '.headSha')" = "$GITHUB_SHA"
+          test "$(printf '%s' "$LATEST" | jq -r '.conclusion')" = "success"
+          RUN_ID="$(printf '%s' "$LATEST" | jq -r '.databaseId')"
           test -n "$RUN_ID"
-          gh run view "$RUN_ID" --repo "${{ github.repository }}" --json conclusion --jq '.conclusion' | grep -qx success
+          gh run view "$RUN_ID" --repo "${{ github.repository }}" --json conclusion,headSha --jq '.conclusion + ":" + .headSha' | grep -Fx "success:$GITHUB_SHA"
 
   deploy:
     needs: verify-release
@@ -62,6 +68,7 @@ jobs:
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+          token_format: access_token
 
       - name: Authenticate Docker to Artifact Registry
         uses: docker/login-action@v3
@@ -128,6 +135,21 @@ jobs:
           FRONTEND_ORIGIN: ${{ vars.PRODUCTION_FRONTEND_ORIGIN }}
         run: |
           set -euo pipefail
+          FRONTEND_ORIGIN="${FRONTEND_ORIGIN%/}"
+          curl --fail --silent --show-error --retry 10 --retry-delay 5 "$FRONTEND_ORIGIN/" -o /tmp/frontend.html
+          curl --fail --silent --show-error --retry 10 --retry-delay 5 "$FRONTEND_ORIGIN/dashboard" -o /tmp/frontend-dashboard.html
+          grep -qi '<html' /tmp/frontend.html
+          grep -qi '<html' /tmp/frontend-dashboard.html
+          ASSET_PATH="$(grep -oE 'src="[^"]+\.js[^"]*"' /tmp/frontend.html | head -n1 | cut -d'"' -f2)"
+          test -n "$ASSET_PATH"
+          case "$ASSET_PATH" in
+            https://*) ASSET_URL="$ASSET_PATH" ;;
+            /*) ASSET_URL="$FRONTEND_ORIGIN$ASSET_PATH" ;;
+            *) ASSET_URL="$FRONTEND_ORIGIN/$ASSET_PATH" ;;
+          esac
+          curl --fail --silent --show-error --retry 5 --retry-delay 2 "$ASSET_URL" -o /tmp/frontend.js
+          test -s /tmp/frontend.js
+
           curl --fail --silent --show-error --retry 10 --retry-delay 5 "$REVISION_URL/health" | tee /tmp/health.json
           curl --fail --silent --show-error --retry 10 --retry-delay 5 "$REVISION_URL/ready" | tee /tmp/ready.json
           curl --fail --silent --show-error --retry 10 --retry-delay 5 "$REVISION_URL/api/health" | tee /tmp/api-health.json
@@ -138,8 +160,13 @@ jobs:
           rm -f /tmp/cookies.txt
           curl --fail --silent --show-error --dump-header /tmp/login.headers --cookie-jar /tmp/cookies.txt -H "Origin: $FRONTEND_ORIGIN" -H "Content-Type: application/json" --data "{\"email\":\"$SMOKE_EMAIL\",\"password\":\"$SMOKE_PASSWORD\"}" "$REVISION_URL/api/auth/login" >/tmp/login.json
           grep -q '^HTTP/.* 200 ' /tmp/login.headers
-          ACCESS_TOKEN="$(sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p' /tmp/login.json)"
+          grep -Eqi '^set-cookie: refresh_token=.*HttpOnly' /tmp/login.headers
+          grep -Eqi '^set-cookie: refresh_token=.*Secure' /tmp/login.headers
+          grep -Eqi '^set-cookie: refresh_token=.*SameSite=None' /tmp/login.headers
+          ACCESS_TOKEN="$(sed -n 's/.*"accessToken":"\\([^"]*\\)".*/\\1/p' /tmp/login.json)"
           test -n "$ACCESS_TOKEN"
+          INITIAL_REFRESH_TOKEN="$(awk '$6=="refresh_token" {print $7}' /tmp/cookies.txt)"
+          test -n "$INITIAL_REFRESH_TOKEN"
 
           UNAUTH_STATUS="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' -H "Origin: $FRONTEND_ORIGIN" "$REVISION_URL/api/school/profile")"
           test "$UNAUTH_STATUS" = "401"
@@ -151,10 +178,18 @@ jobs:
           curl --fail --silent --show-error -H "Origin: $FRONTEND_ORIGIN" -H "Authorization: Bearer $ACCESS_TOKEN" "$REVISION_URL/api/school/profile" >/tmp/school.json
           grep -q '"profile"' /tmp/school.json
 
-          curl --fail --silent --show-error -H "Origin: $FRONTEND_ORIGIN" --cookie /tmp/cookies.txt --cookie-jar /tmp/cookies.txt -X POST "$REVISION_URL/api/auth/refresh" >/tmp/refresh.json
+          curl --fail --silent --show-error --dump-header /tmp/refresh.headers -H "Origin: $FRONTEND_ORIGIN" --cookie /tmp/cookies.txt --cookie-jar /tmp/cookies.txt -X POST "$REVISION_URL/api/auth/refresh" >/tmp/refresh.json
           grep -q '"accessToken"' /tmp/refresh.json
+          grep -Eqi '^set-cookie: refresh_token=.*HttpOnly' /tmp/refresh.headers
+          grep -Eqi '^set-cookie: refresh_token=.*Secure' /tmp/refresh.headers
+          ROTATED_REFRESH_TOKEN="$(awk '$6=="refresh_token" {print $7}' /tmp/cookies.txt)"
+          test -n "$ROTATED_REFRESH_TOKEN"
+          test "$ROTATED_REFRESH_TOKEN" != "$INITIAL_REFRESH_TOKEN"
 
+          cp /tmp/cookies.txt /tmp/cookies-after-refresh.txt
           curl --fail --silent --show-error -H "Origin: $FRONTEND_ORIGIN" --cookie /tmp/cookies.txt -X POST "$REVISION_URL/api/auth/logout" >/dev/null
+          LOGOUT_REPLAY_STATUS="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' -H "Origin: $FRONTEND_ORIGIN" --cookie /tmp/cookies-after-refresh.txt -X POST "$REVISION_URL/api/auth/refresh")"
+          test "$LOGOUT_REPLAY_STATUS" = "401"
 
       - name: Promote verified revision
         run: |

@@ -304,16 +304,44 @@ export async function savePrivateFile(
 
   if (!uploadedByUserId) throw new StorageAuthorizationError("An authenticated uploader is required");
 
+  if (input.classId) {
+    const classRecord = await prisma.class.findUnique({ where: { id: input.classId }, select: { id: true } });
+    if (!classRecord) throw new StorageValidationError("Class not found");
+  }
+  if (input.sectionId) {
+    const section = await prisma.section.findUnique({ where: { id: input.sectionId }, select: { classId: true } });
+    if (!section) throw new StorageValidationError("Section not found");
+    if (input.classId && section.classId !== input.classId) {
+      throw new StorageAuthorizationError("The selected section does not belong to the requested class");
+    }
+    input.classId = input.classId ?? section.classId;
+  }
+  if (input.subjectId) {
+    const subject = await prisma.subject.findUnique({ where: { id: input.subjectId }, select: { id: true } });
+    if (!subject) throw new StorageValidationError("Subject not found");
+  }
+
   if (input.studentProfileId) {
     const student = await prisma.studentProfile.findUnique({ where: { id: input.studentProfileId }, select: { userId: true, classId: true, sectionId: true } });
     if (!student) throw new StorageValidationError("Student profile not found");
-    const allowed = student.userId === uploadedByUserId || await userHasPermission(uploadedByUserId, "students:manage", { classId: student.classId ?? undefined, sectionId: student.sectionId ?? undefined });
+    if ((input.classId && input.classId !== student.classId) || (input.sectionId && input.sectionId !== student.sectionId)) {
+      throw new StorageAuthorizationError("The requested file scope does not match the selected student");
+    }
+    const studentScope = { classId: student.classId ?? undefined, sectionId: student.sectionId ?? undefined, subjectId: input.subjectId };
+    const allowed = student.userId === uploadedByUserId || await userHasPermission(uploadedByUserId, "students:manage", studentScope);
     if (!allowed) throw new StorageAuthorizationError("You are not authorized to upload for this student");
   }
   if (input.staffProfileId) {
     const staff = await prisma.staffProfile.findUnique({ where: { id: input.staffProfileId }, select: { userId: true, departmentId: true } });
     if (!staff) throw new StorageValidationError("Staff profile not found");
     if (staff.userId !== uploadedByUserId && !(await userHasPermission(uploadedByUserId, "users:manage", { departmentId: staff.departmentId ?? undefined }))) throw new StorageAuthorizationError("You are not authorized to upload for this staff member");
+  }
+
+  if (input.classId || input.sectionId || input.subjectId) {
+    const scope = { classId: input.classId, sectionId: input.sectionId, subjectId: input.subjectId };
+    if (!(await userHasPermission(uploadedByUserId, "storage:upload", scope))) {
+      throw new StorageAuthorizationError("You are not authorized to upload into the requested academic scope");
+    }
   }
 
   const safeName = sanitizeFilename(input.originalFilename);

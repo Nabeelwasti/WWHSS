@@ -358,8 +358,27 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
     const userTokens = await prisma.refreshToken.findMany({ where: { userId: user.id, revoked: false } });
     expect(userTokens.length).toBe(1);
 
-    // Assert replay attempt with original token fails
+    // Model a replay after the bounded concurrency grace window. The normal
+    // concurrent requests above must not log the user out merely because two
+    // browser tabs rotated the same cookie at nearly the same time.
+    await prisma.refreshToken.update({
+      where: { id: dbOriginalRow!.id },
+      data: { rotatedAt: new Date(Date.now() - 6000) },
+    });
+
+    // A later replay must fail closed, revoke the replacement session, and
+    // COMMIT the security audit instead of rolling it back with the auth error.
     await expect(refresh(rawToken)).rejects.toThrow();
+
+    const activeAfterReplay = await prisma.refreshToken.findMany({
+      where: { userId: user.id, revoked: false },
+    });
+    expect(activeAfterReplay).toHaveLength(0);
+
+    const replayAudit = await prisma.auditLog.findMany({
+      where: { userId: user.id, action: "auth:refresh_reuse_detected" },
+    });
+    expect(replayAudit.length).toBeGreaterThan(0);
   });
 
   it("proves database integrity constraints independently reject inconsistent class/section/exam/subject relationships for UserRole, StudentProfile, AttendanceRecord, TimetableSlot, and ExamResult", async () => {
@@ -713,6 +732,29 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
     expect(first.docNumber).toMatch(/^TEST-INTEGRATION_CERTIFICATE-/);
     expect(second.docNumber).toMatch(/^TEST-INTEGRATION_CERTIFICATE-/);
     expect(school.id).toBe("default");
+  });
+
+  it("uses atomic shared PostgreSQL counters for concurrent rate-limit requests", async () => {
+    const { PrismaRateLimitStore } = await import("../middleware/prisma-rate-limit-store.js");
+    const store = new PrismaRateLimitStore("integration-test");
+    store.init({ windowMs: 60_000 });
+    const key = `shared-counter-${crypto.randomUUID()}`;
+
+    try {
+      const increments = await Promise.all(
+        Array.from({ length: 25 }, () => store.increment(key))
+      );
+      expect(increments.map((entry) => entry.totalHits).sort((a, b) => a - b))
+        .toEqual(Array.from({ length: 25 }, (_, index) => index + 1));
+      expect(increments.every((entry) => entry.resetTime instanceof Date)).toBe(true);
+
+      await store.decrement(key);
+      expect((await store.increment(key)).totalHits).toBe(25);
+      await store.resetKey(key);
+      expect((await store.increment(key)).totalHits).toBe(1);
+    } finally {
+      await store.resetKey(key);
+    }
   });
 
 });
