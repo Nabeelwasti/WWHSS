@@ -60,7 +60,7 @@ function resolveView(pathname: string): View {
 }
 
 export default function App() {
-  const { user, booting, logout } = useAuth();
+  const { user, booting, logout, error } = useAuth();
   const { t } = useLanguage();
   const [view, setView] = useState<View>(() => resolveView(window.location.pathname));
   const [showLogin, setShowLogin] = useState(false);
@@ -165,6 +165,7 @@ export default function App() {
 
   return (
     <div className="campus-app">
+      {error && <p className="auth-error" role="alert">{error}</p>}
       <header className="campus-topbar">
         <button className="campus-brand" onClick={() => navigate("dashboard")} aria-label="WWHSS Digital Campus home">
           <span className="campus-brand-mark">W</span>
