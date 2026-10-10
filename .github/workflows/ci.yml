@@ -164,6 +164,8 @@ jobs:
           ! grep -q "Vercel /api/\* proxy" docs/RELEASE_RUNBOOK.md
           grep -q -- "--no-traffic" .github/workflows/deploy-cloud-run.yml
           grep -q "npx prisma migrate deploy" .github/workflows/deploy-cloud-run.yml
+          grep -q "token_format: access_token" .github/workflows/deploy-cloud-run.yml
+          grep -q 'password: ${{ steps.auth.outputs.access_token }}' .github/workflows/deploy-cloud-run.yml
           grep -q '"$REVISION_URL/ready"' .github/workflows/deploy-cloud-run.yml
           grep -q '"$REVISION_URL/api/health"' .github/workflows/deploy-cloud-run.yml
           grep -q "update-traffic" .github/workflows/deploy-cloud-run.yml
