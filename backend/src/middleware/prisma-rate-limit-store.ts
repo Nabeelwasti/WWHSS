@@ -10,6 +10,9 @@ import { prisma } from "../db/client.js";
 export class PrismaRateLimitStore {
   private windowMs = 15 * 60 * 1000;
   private operations = 0;
+  private fallbackMode = false;
+  private readonly fallbackAllowed = process.env.VERCEL_ENV === "preview" || process.env.NODE_ENV !== "production";
+  private readonly fallbackCounters = new Map<string, { totalHits: number; resetTime: Date }>();
 
   constructor(private readonly namespace: string) {}
 
@@ -17,11 +20,32 @@ export class PrismaRateLimitStore {
     this.windowMs = options.windowMs;
   }
 
+  private incrementFallback(key: string, now: Date): { totalHits: number; resetTime: Date } {
+    const existing = this.fallbackCounters.get(key);
+    if (!existing || existing.resetTime.getTime() <= now.getTime()) {
+      const fresh = { totalHits: 1, resetTime: new Date(now.getTime() + this.windowMs) };
+      this.fallbackCounters.set(key, fresh);
+      return fresh;
+    }
+    existing.totalHits += 1;
+    return { ...existing };
+  }
+
+  private isMissingTable(error: unknown): boolean {
+    const value = error as { code?: string; meta?: { code?: string; message?: string }; message?: string };
+    return value?.code === "P2021" ||
+      value?.meta?.code === "42P01" ||
+      /relation ["']rate_limit_counters["'] does not exist/i.test(value?.meta?.message ?? value?.message ?? "");
+  }
+
   async increment(key: string): Promise<{ totalHits: number; resetTime: Date }> {
     const now = new Date();
     const resetAt = new Date(now.getTime() + this.windowMs);
     const namespacedKey = `${this.namespace}:${key}`;
-    const rows = await prisma.$queryRaw<Array<{ totalHits: number; resetTime: Date }>>`
+    if (this.fallbackMode) return this.incrementFallback(namespacedKey, now);
+    let rows: Array<{ totalHits: number; resetTime: Date }>;
+    try {
+      rows = await prisma.$queryRaw<Array<{ totalHits: number; resetTime: Date }>>`
       INSERT INTO "rate_limit_counters" ("key", "count", "resetAt", "createdAt", "updatedAt")
       VALUES (${namespacedKey}, 1, ${resetAt}, ${now}, ${now})
       ON CONFLICT ("key") DO UPDATE SET
@@ -36,6 +60,14 @@ export class PrismaRateLimitStore {
         "updatedAt" = ${now}
       RETURNING "count" AS "totalHits", "resetAt" AS "resetTime"
     `;
+    } catch (error) {
+      if (this.fallbackAllowed && this.isMissingTable(error)) {
+        this.fallbackMode = true;
+        console.warn("Rate-limit migration is missing; using per-instance fallback only for preview/development.");
+        return this.incrementFallback(namespacedKey, now);
+      }
+      throw error;
+    }
     const row = rows[0];
     if (!row) throw new Error("Rate-limit counter update returned no row");
 
@@ -61,6 +93,11 @@ export class PrismaRateLimitStore {
 
   async decrement(key: string): Promise<void> {
     const namespacedKey = `${this.namespace}:${key}`;
+    if (this.fallbackMode) {
+      const existing = this.fallbackCounters.get(namespacedKey);
+      if (existing) existing.totalHits = Math.max(0, existing.totalHits - 1);
+      return;
+    }
     await prisma.$executeRaw`
       UPDATE "rate_limit_counters"
       SET "count" = GREATEST("count" - 1, 0), "updatedAt" = CURRENT_TIMESTAMP
@@ -70,6 +107,10 @@ export class PrismaRateLimitStore {
 
   async resetKey(key: string): Promise<void> {
     const namespacedKey = `${this.namespace}:${key}`;
+    if (this.fallbackMode) {
+      this.fallbackCounters.delete(namespacedKey);
+      return;
+    }
     await prisma.$executeRaw`DELETE FROM "rate_limit_counters" WHERE "key" = ${namespacedKey}`;
   }
 }
