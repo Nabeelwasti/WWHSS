@@ -553,7 +553,7 @@ export async function verifyBackupRecovery(
 
   const declaredTables = Object.keys(fileContent.tableCounts).sort();
   const actualTables = Object.keys(parsed.tables).sort();
-  if (declaredTables.length === 0 || declaredTables.join("\\0") !== actualTables.join("\\0")) {
+  if (declaredTables.length === 0 || JSON.stringify(declaredTables) !== JSON.stringify(actualTables)) {
     throw new BackupError("Backup table manifest does not match the encrypted payload");
   }
 
