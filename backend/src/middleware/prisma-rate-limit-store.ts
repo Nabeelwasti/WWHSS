@@ -11,7 +11,7 @@ export class PrismaRateLimitStore {
   private windowMs = 15 * 60 * 1000;
   private operations = 0;
   private fallbackMode = false;
-  private readonly fallbackAllowed = process.env.VERCEL_ENV === "preview" || process.env.NODE_ENV !== "production";
+  private readonly fallbackAllowed = process.env.VERCEL_ENV === "preview" || process.env.NODE_ENV === "development";
   private readonly fallbackCounters = new Map<string, { totalHits: number; resetTime: Date }>();
 
   constructor(private readonly namespace: string) {}
