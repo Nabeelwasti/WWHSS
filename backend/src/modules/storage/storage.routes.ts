@@ -15,7 +15,11 @@ storageRouter.use(authenticate);
 
 storageRouter.post(
   "/upload",
-  authorize("storage:upload"),
+  authorize("storage:upload", (req) => ({
+    classId: typeof req.headers["x-class-id"] === "string" ? req.headers["x-class-id"] : undefined,
+    sectionId: typeof req.headers["x-section-id"] === "string" ? req.headers["x-section-id"] : undefined,
+    subjectId: typeof req.headers["x-subject-id"] === "string" ? req.headers["x-subject-id"] : undefined,
+  })),
   raw({ type: () => true, limit: "10mb" }),
   async (req, res) => {
     if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });
