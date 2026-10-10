@@ -734,4 +734,27 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
     expect(school.id).toBe("default");
   });
 
+  it("uses atomic shared PostgreSQL counters for concurrent rate-limit requests", async () => {
+    const { PrismaRateLimitStore } = await import("../middleware/prisma-rate-limit-store.js");
+    const store = new PrismaRateLimitStore("integration-test");
+    store.init({ windowMs: 60_000 });
+    const key = `shared-counter-${crypto.randomUUID()}`;
+
+    try {
+      const increments = await Promise.all(
+        Array.from({ length: 25 }, () => store.increment(key))
+      );
+      expect(increments.map((entry) => entry.totalHits).sort((a, b) => a - b))
+        .toEqual(Array.from({ length: 25 }, (_, index) => index + 1));
+      expect(increments.every((entry) => entry.resetTime instanceof Date)).toBe(true);
+
+      await store.decrement(key);
+      expect((await store.increment(key)).totalHits).toBe(25);
+      await store.resetKey(key);
+      expect((await store.increment(key)).totalHits).toBe(1);
+    } finally {
+      await store.resetKey(key);
+    }
+  });
+
 });
