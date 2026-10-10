@@ -4,6 +4,7 @@ import cookieParser from "cookie-parser";
 import { createRequire } from "node:module";
 import { rateLimit } from "express-rate-limit";
 import { loginAccountRateLimitKey } from "./middleware/login-rate-limit-key.js";
+import { PrismaRateLimitStore } from "./middleware/prisma-rate-limit-store.js";
 import crypto from "node:crypto";
 import "./middleware/express-async-errors.js";
 import { env } from "./config/env.js";
@@ -102,6 +103,7 @@ app.use((req, res, next) => {
 });
 
 const loginIpLimiter = rateLimit({
+  store: new PrismaRateLimitStore("login-ip"),
   windowMs: 15 * 60 * 1000,
   limit: 20,
   standardHeaders: true,
@@ -109,6 +111,7 @@ const loginIpLimiter = rateLimit({
   message: { error: "Too many login attempts from this network. Please try again later." },
 });
 const authAccountLimiter = rateLimit({
+  store: new PrismaRateLimitStore("login-account"),
   windowMs: 15 * 60 * 1000,
   limit: 8,
   standardHeaders: true,
@@ -120,6 +123,7 @@ const authAccountLimiter = rateLimit({
 // They need an independent, higher ceiling so login attempts cannot consume the
 // refresh budget and routine page/API activity cannot lock users out mid-session.
 const authRefreshLimiter = rateLimit({
+  store: new PrismaRateLimitStore("auth-refresh"),
   windowMs: 15 * 60 * 1000,
   limit: 180,
   standardHeaders: true,
@@ -129,13 +133,13 @@ const authRefreshLimiter = rateLimit({
 app.use("/api/auth/login", loginIpLimiter);
 app.use("/api/auth/login", authAccountLimiter);
 app.use("/api/auth/refresh", authRefreshLimiter);
-const aiLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false, message: { error: "You've asked a lot of questions this hour. Please try again later." } });
+const aiLimiter = rateLimit({ store: new PrismaRateLimitStore("ai"), windowMs: 60 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false, message: { error: "You've asked a lot of questions this hour. Please try again later." } });
 app.use("/api/ai", aiLimiter);
-const generalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 600, standardHeaders: true, legacyHeaders: false, message: { error: "Too many requests. Please slow down and try again shortly." } });
+const generalLimiter = rateLimit({ store: new PrismaRateLimitStore("general-api"), windowMs: 15 * 60 * 1000, limit: 600, standardHeaders: true, legacyHeaders: false, message: { error: "Too many requests. Please slow down and try again shortly." } });
 app.use("/api", generalLimiter);
-const expensiveOperationLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 60, standardHeaders: true, legacyHeaders: false, message: { error: "This operation is temporarily rate-limited. Please try again later." } });
-const backupOperationLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false, message: { error: "Backup operations are temporarily rate-limited. Please try again later." } });
-const paymentWebhookLimiter = rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: true, legacyHeaders: false, message: { error: "Payment webhook rate limit exceeded. Please retry later." } });
+const expensiveOperationLimiter = rateLimit({ store: new PrismaRateLimitStore("expensive-operations"), windowMs: 15 * 60 * 1000, limit: 60, standardHeaders: true, legacyHeaders: false, message: { error: "This operation is temporarily rate-limited. Please try again later." } });
+const backupOperationLimiter = rateLimit({ store: new PrismaRateLimitStore("backup-operations"), windowMs: 60 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false, message: { error: "Backup operations are temporarily rate-limited. Please try again later." } });
+const paymentWebhookLimiter = rateLimit({ store: new PrismaRateLimitStore("payment-webhooks"), windowMs: 60 * 1000, limit: 120, standardHeaders: true, legacyHeaders: false, message: { error: "Payment webhook rate limit exceeded. Please retry later." } });
 app.use("/api/storage/upload", expensiveOperationLimiter);
 app.use("/api/documents", expensiveOperationLimiter);
 app.use("/api/ai/assessment", expensiveOperationLimiter);
