@@ -520,23 +520,65 @@ export async function verifyBackupRecovery(
   const provider = getBackupProvider();
   const rawPayload = await provider.getBackupPayload(filename);
 
-  const fileContent = JSON.parse(rawPayload);
+  let fileContent: any;
+  try {
+    fileContent = JSON.parse(rawPayload);
+  } catch {
+    throw new BackupError("Invalid backup envelope JSON");
+  }
   const secret = encryptionSecret || env.backupEncryptionKey;
-
-  if (!fileContent.encrypted || !fileContent.data) {
+  if (
+    !fileContent ||
+    fileContent.encrypted !== true ||
+    !fileContent.data ||
+    typeof fileContent.version !== "string" ||
+    !fileContent.tableCounts ||
+    typeof fileContent.tableCounts !== "object"
+  ) {
     throw new BackupError("Invalid backup format or unencrypted file");
   }
 
-  const decryptedJson = decryptData(fileContent.data, secret);
-  const parsed = JSON.parse(decryptedJson);
-
-  if (!parsed.meta || !parsed.tables) {
+  let parsed: any;
+  try {
+    parsed = JSON.parse(decryptData(fileContent.data, secret));
+  } catch {
+    throw new BackupError("Backup decryption or payload JSON validation failed");
+  }
+  if (!parsed.meta || !parsed.tables || typeof parsed.tables !== "object" || Array.isArray(parsed.tables)) {
     throw new BackupError("Decrypted backup payload is missing required schema sections");
   }
+  if (parsed.meta.version !== fileContent.version) {
+    throw new BackupError("Backup envelope and payload schema versions do not match");
+  }
 
-  const summary = Object.fromEntries(
-    Object.entries(parsed.tables).map(([k, v]) => [k, Array.isArray(v) ? v.length : typeof v === "number" ? v : 0])
-  );
+  const declaredTables = Object.keys(fileContent.tableCounts).sort();
+  const actualTables = Object.keys(parsed.tables).sort();
+  if (declaredTables.length === 0 || declaredTables.join("\\0") !== actualTables.join("\\0")) {
+    throw new BackupError("Backup table manifest does not match the encrypted payload");
+  }
+
+  const summary: Record<string, number> = {};
+  for (const tableName of declaredTables) {
+    const rows = parsed.tables[tableName];
+    const declaredCount = fileContent.tableCounts[tableName];
+    if (!Array.isArray(rows) || !Number.isSafeInteger(declaredCount) || declaredCount < 0 || rows.length !== declaredCount) {
+      throw new BackupError(`Backup table count or structure is invalid: ${tableName}`);
+    }
+    summary[tableName] = rows.length;
+  }
+
+  if (parsed.meta.storageObjectsIncluded === true) {
+    if (!Array.isArray(parsed.storageObjects)) throw new BackupError("Backup storage manifest is missing");
+    for (const object of parsed.storageObjects) {
+      if (!object || typeof object.storageKey !== "string" || path.basename(object.storageKey) !== object.storageKey || typeof object.dataBase64 !== "string" || !Number.isSafeInteger(object.size) || object.size < 0) {
+        throw new BackupError("Backup contains an invalid storage object");
+      }
+      const bytes = Buffer.from(object.dataBase64, "base64");
+      if (bytes.length !== object.size) throw new BackupError(`Backup storage object size mismatch: ${object.storageKey}`);
+    }
+  } else if (Array.isArray(parsed.storageObjects) && parsed.storageObjects.length > 0) {
+    throw new BackupError("Backup storage objects are present without the storage inclusion flag");
+  }
 
   return { valid: true, summary };
 }
@@ -649,7 +691,8 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
       if (!sequence.sequenceName) continue;
       const table = `"public"."${sequence.tableName.replace(/"/g, '""')}"`;
       const column = `"${sequence.columnName.replace(/"/g, '""')}"`;
-      await tx.$executeRawUnsafe(`SELECT setval(${JSON.stringify(sequence.sequenceName)}::regclass, COALESCE((SELECT MAX(${column}) FROM ${table}), 1), true)`);
+      const sequenceLiteral = `'${sequence.sequenceName.replace(/'/g, "''")}'`;
+      await tx.$executeRawUnsafe(`SELECT setval(${sequenceLiteral}::regclass, COALESCE((SELECT MAX(${column}) FROM ${table}), 1), true)`);
     }
 
     await tx.$executeRawUnsafe(`DELETE FROM "public"."refresh_tokens"`);
