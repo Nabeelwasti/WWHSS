@@ -304,6 +304,23 @@ export async function savePrivateFile(
 
   if (!uploadedByUserId) throw new StorageAuthorizationError("An authenticated uploader is required");
 
+  if (input.classId) {
+    const classRecord = await prisma.class.findUnique({ where: { id: input.classId }, select: { id: true } });
+    if (!classRecord) throw new StorageValidationError("Class not found");
+  }
+  if (input.sectionId) {
+    const section = await prisma.section.findUnique({ where: { id: input.sectionId }, select: { classId: true } });
+    if (!section) throw new StorageValidationError("Section not found");
+    if (input.classId && section.classId !== input.classId) {
+      throw new StorageAuthorizationError("The selected section does not belong to the requested class");
+    }
+    input.classId = input.classId ?? section.classId;
+  }
+  if (input.subjectId) {
+    const subject = await prisma.subject.findUnique({ where: { id: input.subjectId }, select: { id: true } });
+    if (!subject) throw new StorageValidationError("Subject not found");
+  }
+
   if (input.studentProfileId) {
     const student = await prisma.studentProfile.findUnique({ where: { id: input.studentProfileId }, select: { userId: true, classId: true, sectionId: true } });
     if (!student) throw new StorageValidationError("Student profile not found");
