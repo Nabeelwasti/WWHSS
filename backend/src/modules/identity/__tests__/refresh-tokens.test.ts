@@ -19,12 +19,12 @@ vi.mock("../../../config/env.js", () => ({
   },
 }));
 
-const { mockFindFirst, mockUpdateMany, mockCreate, mockUserFindUnique, mockAuditLogCreate } = vi.hoisted(() => ({
+const { mockFindFirst, mockUpdateMany, mockCreate, mockUserFindUnique, mockAuditCreate } = vi.hoisted(() => ({
   mockFindFirst: vi.fn(),
   mockUpdateMany: vi.fn(),
   mockCreate: vi.fn(),
   mockUserFindUnique: vi.fn(),
-  mockAuditLogCreate: vi.fn(),
+  mockAuditCreate: vi.fn(),
 }));
 
 vi.mock("../../../db/client.js", () => ({
@@ -40,7 +40,7 @@ vi.mock("../../../db/client.js", () => ({
           findUnique: mockUserFindUnique,
         },
         auditLog: {
-          create: mockAuditLogCreate,
+          create: mockAuditCreate,
         },
       })
     ),
@@ -51,9 +51,6 @@ vi.mock("../../../db/client.js", () => ({
     },
     user: {
       findUnique: mockUserFindUnique,
-    },
-    auditLog: {
-      create: mockAuditLogCreate,
     },
   },
 }));
@@ -66,6 +63,7 @@ describe("Refresh Token Rotation Security", () => {
     mockUpdateMany.mockReset();
     mockCreate.mockReset();
     mockUserFindUnique.mockReset();
+    mockAuditCreate.mockReset();
   });
 
   it("rotates refresh token cleanly on valid presentation", async () => {
@@ -85,7 +83,7 @@ describe("Refresh Token Rotation Security", () => {
     expect(mockUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ id: "rt-1", revoked: false }),
-        data: { revoked: true },
+        data: expect.objectContaining({ revoked: true, rotatedAt: expect.any(Date) }),
       })
     );
   });
@@ -102,6 +100,54 @@ describe("Refresh Token Rotation Security", () => {
     await expect(refresh("stolen-or-replayed-token")).rejects.toThrow(AuthError);
   });
 
+  it("commits session revocation and an audit event when a revoked refresh token is replayed", async () => {
+    mockFindFirst.mockResolvedValue({
+      id: "rt-replayed",
+      userId: "u-1",
+      revoked: true,
+      rotatedAt: new Date(Date.now() - 6000),
+      expiresAt: new Date(Date.now() + 86400000),
+    });
+    mockUpdateMany.mockResolvedValue({ count: 2 });
+    mockAuditCreate.mockResolvedValue({});
+
+    await expect(refresh("replayed-token")).rejects.toThrow(AuthError);
+
+    expect(mockUpdateMany).toHaveBeenCalledWith({
+      where: { userId: "u-1", revoked: false },
+      data: { revoked: true },
+    });
+    expect(mockAuditCreate).toHaveBeenCalledWith({
+      data: {
+        userId: "u-1",
+        action: "auth:refresh_reuse_detected",
+        metadata: { refreshTokenId: "rt-replayed" },
+      },
+    });
+  });
+
+  it("does not revoke other sessions for a bounded concurrent refresh retry", async () => {
+    mockFindFirst.mockResolvedValue({
+      id: "rt-recent",
+      userId: "u-1",
+      revoked: true,
+      rotatedAt: new Date(Date.now() - 1000),
+      expiresAt: new Date(Date.now() + 86400000),
+    });
+    mockAuditCreate.mockResolvedValue({});
+
+    await expect(refresh("concurrent-token")).rejects.toThrow(AuthError);
+
+    expect(mockUpdateMany).not.toHaveBeenCalled();
+    expect(mockAuditCreate).toHaveBeenCalledWith({
+      data: {
+        userId: "u-1",
+        action: "auth:refresh_concurrent_retry",
+        metadata: { refreshTokenId: "rt-recent" },
+      },
+    });
+  });
+
   it("rejects an inactive user account during refresh attempt", async () => {
     mockFindFirst.mockResolvedValue({
       id: "rt-1",
@@ -113,33 +159,5 @@ describe("Refresh Token Rotation Security", () => {
     mockUserFindUnique.mockResolvedValue({ id: "u-1", email: "user@school.edu", isActive: false });
 
     await expect(refresh("token-for-deactivated-user")).rejects.toThrow(AuthError);
-  });
-
-  it("commits token-family revocation and security audit event when replaying a revoked token", async () => {
-    mockFindFirst.mockResolvedValue({
-      id: "rt-compromised",
-      userId: "u-victim",
-      revoked: true,
-      expiresAt: new Date(Date.now() + 86400000),
-    });
-    mockUpdateMany.mockResolvedValue({ count: 2 });
-    mockAuditLogCreate.mockResolvedValue({});
-
-    await expect(refresh("replayed-revoked-token")).rejects.toThrow(AuthError);
-
-    // Verify token family revocation was invoked inside transaction
-    expect(mockUpdateMany).toHaveBeenCalledWith({
-      where: { userId: "u-victim", revoked: false },
-      data: { revoked: true },
-    });
-
-    // Verify audit log creation was invoked inside transaction
-    expect(mockAuditLogCreate).toHaveBeenCalledWith({
-      data: {
-        userId: "u-victim",
-        action: "auth:refresh_reuse_detected",
-        metadata: { refreshTokenId: "rt-compromised" },
-      },
-    });
   });
 });

@@ -40,6 +40,21 @@ describe("Backup & Recovery Service", () => {
     expect((await verifyBackupRecovery(filename, secret)).valid).toBe(true);
   });
 
+  it("rejects encrypted backups whose table manifest counts do not match the payload", async () => {
+    const tables = { users: [{ id: "user-1" }], roles: [] };
+    const encrypted = encryptData(JSON.stringify({ meta: { version: "1.0.0" }, tables }), secret);
+    const filename = "backup-invalid-counts.enc.json";
+    await memoryProvider.saveBackup(filename, JSON.stringify({
+      id: "backup-invalid-counts",
+      createdAt: new Date().toISOString(),
+      version: "1.0.0",
+      encrypted: true,
+      data: encrypted,
+      tableCounts: { users: 0, roles: 0 },
+    }));
+    await expect(verifyBackupRecovery(filename, secret)).rejects.toThrow("table count or structure is invalid");
+  });
+
   it("requires a privileged user before any restore is attempted", async () => {
     await expect(restoreFromBackup("missing.enc.json", secret)).rejects.toThrow("privileged restoring user");
   });

@@ -24,7 +24,19 @@ async function resolveDocumentScope(docType: string, referenceId: string) {
   if (docType === "class_sheet") {
     return { classId: referenceId };
   }
-  if (["teacher_timetable", "room_schedule", "exam_schedule", "notice", "event_schedule", "invoice"].includes(docType)) {
+  if (docType === "invoice") {
+    const invoice = await prisma.feeInvoice.findUnique({
+      where: { id: referenceId },
+      select: { studentProfileId: true, student: { select: { classId: true, sectionId: true } } },
+    });
+    if (!invoice) throw new DocumentValidationError(`Invoice ${referenceId} not found`);
+    return {
+      studentId: invoice.studentProfileId,
+      classId: invoice.student.classId ?? undefined,
+      sectionId: invoice.student.sectionId ?? undefined,
+    };
+  }
+  if (["teacher_timetable", "room_schedule", "exam_schedule", "notice", "event_schedule"].includes(docType)) {
     return {};
   }
   if (docType === "fee_receipt") {
