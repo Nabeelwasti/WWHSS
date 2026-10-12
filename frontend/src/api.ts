@@ -1,23 +1,6 @@
-// Vercel project/deployment hostnames are not interchangeable for cookie-backed auth.
-// Keep the stable backend project alias when a deployment-specific alias is configured;
-// this preserves one consistent origin for refresh-cookie issuance and subsequent requests.
-const API_BASE_URL = (() => {
-  const configured = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
-  try {
-    const url = new URL(configured);
-    const hostname = url.hostname.toLowerCase();
-    if (
-      url.protocol === "https:" &&
-      hostname.startsWith("wwhss-backend-nabeel-wasti-") &&
-      hostname.endsWith("-aqeelqadri366-droid.vercel.app")
-    ) {
-      return "https://wwhss-backend-nabeel-wasti.vercel.app";
-    }
-  } catch {
-    // Preserve the configured value; network/configuration errors must remain visible.
-  }
-  return configured;
-})();
+// The API origin is deployment configuration, not application logic.
+// Production must point VITE_API_BASE_URL at the intended HTTPS backend origin.
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
 export type ParentChildDashboard = {
   student: { id: string; admissionNo: string; status: string; user: { fullName: string; email: string; phone?: string | null }; class?: { name: string } | null; section?: { name: string } | null; fundingCategory?: { name: string } | null };
