@@ -11,8 +11,17 @@ function flatten(value: unknown, prefix = ""): Array<[string, string]> {
 
 export function renderDocumentCsv(payload: unknown): Buffer {
   const rows = flatten(payload);
-  const csvEscape = (value: string) => `"${value.replace(/"/g, '""')}"`;
-  return Buffer.from([["Field", "Value"], ...rows].map((row) => row.map((cell) => csvEscape(String(cell))).join(",")).join("\r\n") + "\r\n", "utf8");
+  const csvEscape = (value: unknown) => {
+    const text = String(value);
+    // Spreadsheet programs execute formula-like cells. Prefix untrusted strings
+    // beginning with a control/space and =, +, -, or @ with an apostrophe.
+    const firstNonWhitespace = text.trimStart()[0];
+    const safe = typeof value === "string" && ["=", "+", "-", "@"].includes(firstNonWhitespace ?? "")
+      ? `'${text}`
+      : text;
+    return `"${safe.replace(/"/g, '""')}"`;
+  };
+  return Buffer.from([["Field", "Value"], ...rows].map((row) => row.map(csvEscape).join(",")).join("\r\n") + "\r\n", "utf8");
 }
 
 function escapeHtml(value: string): string {

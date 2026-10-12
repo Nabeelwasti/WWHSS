@@ -89,7 +89,7 @@ async function getStudentOutstandingBalance(studentProfileId: string) {
     if (["cancelled", "void"].includes(invoice.status)) continue;
     billed += invoice.amountDue.toNumber();
     waived += invoice.feeWaivers.reduce((s, w) => s + w.amount.toNumber(), 0);
-    paid += invoice.payments.filter((p) => p.status !== "reversed").reduce((s, p) => s + Math.max(0, p.amount.toNumber() - p.adjustments.reduce((a, x) => a + x.amount.toNumber(), 0)), 0);
+    paid += invoice.payments.filter((p) => p.status === "posted").reduce((s, p) => s + Math.max(0, p.amount.toNumber() - p.adjustments.reduce((a, x) => a + x.amount.toNumber(), 0)), 0);
   }
   return { totalBilled: billed, totalPaid: paid, totalWaived: waived, outstanding: Math.max(0, billed - paid - waived) };
 }
@@ -100,7 +100,7 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
   switch (docType) {
     case "result_card":
     case "report_card": {
-      const student = await prisma.studentProfile.findUnique({ where: { id: referenceId }, include: { user: { select: { fullName: true, email: true } }, class: true, section: true, fundingCategory: true, examResults: { include: { exam: true, subject: true } } } });
+      const student = await prisma.studentProfile.findUnique({ where: { id: referenceId }, include: { user: { select: { fullName: true, email: true } }, class: true, section: true, fundingCategory: true, examResults: { where: { exam: { status: { in: ["PUBLISHED", "LOCKED", "FINALIZED"] } } }, include: { exam: true, subject: true } } } });
       if (!student) throw new DocumentValidationError(`Student ${referenceId} not found`);
       return { docType, docNumber: await getOrCreateDocumentNumber(docType, referenceId), issueDate, header, title: "Official Student Performance Report Card / نتیجہ کارڈ", entity: { name: student.user.fullName, admissionNo: student.admissionNo, rollNumber: student.rollNumber || "N/A", className: student.class?.name || "N/A", sectionName: student.section?.name || "N/A", fundingCategory: student.fundingCategory?.name || "Standard" }, records: student.examResults.map((r) => ({ examName: r.exam.name, subjectName: r.subject.name, marksObtained: r.marksObtained.toNumber(), maxMarks: r.maxMarks.toNumber(), grade: r.grade || "N/A", remarks: r.remarks || "" })), signatures: [{ title: "Class Teacher", name: null, status: "PENDING_SIGNATURE" }, { title: "Principal / Headmaster", name: null, status: "PENDING_SIGNATURE" }] };
     }
@@ -119,7 +119,7 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
     case "fee_statement": {
       const student = await prisma.studentProfile.findUnique({ where: { id: referenceId }, include: { user: { select: { fullName: true, email: true } }, class: true, section: true, fundingCategory: true, feeInvoices: { include: { feeStructure: true, payments: { include: { adjustments: true } }, feeWaivers: true } } } });
       if (!student) throw new DocumentValidationError(`Student ${referenceId} not found`);
-      return { docType, docNumber: await getOrCreateDocumentNumber(docType, student.id), issueDate, header, title: "Student Fee Account Statement / فيس والى تفصيل", entity: { name: student.user.fullName, admissionNo: student.admissionNo, className: student.class?.name || "N/A", fundingCategory: student.fundingCategory?.name || "Standard" }, records: student.feeInvoices.map((inv) => ({ invoiceName: inv.feeStructure.name, dueDate: inv.dueDate.toISOString().slice(0, 10), amountDue: inv.amountDue.toNumber(), paid: inv.payments.filter((p) => p.status !== "reversed").reduce((s, p) => s + p.amount.toNumber() - p.adjustments.reduce((a, x) => a + x.amount.toNumber(), 0), 0), waived: inv.feeWaivers.reduce((s, w) => s + w.amount.toNumber(), 0), status: inv.status.toUpperCase() })), signatures: [{ title: "Accounts Officer", name: null, status: "PENDING_SIGNATURE" }] };
+      return { docType, docNumber: await getOrCreateDocumentNumber(docType, student.id), issueDate, header, title: "Student Fee Account Statement / فيس والى تفصيل", entity: { name: student.user.fullName, admissionNo: student.admissionNo, className: student.class?.name || "N/A", fundingCategory: student.fundingCategory?.name || "Standard" }, records: student.feeInvoices.map((inv) => ({ invoiceName: inv.feeStructure.name, dueDate: inv.dueDate.toISOString().slice(0, 10), amountDue: inv.amountDue.toNumber(), paid: inv.payments.filter((p) => p.status === "posted").reduce((s, p) => s + p.amount.toNumber() - p.adjustments.reduce((a, x) => a + x.amount.toNumber(), 0), 0), waived: inv.feeWaivers.reduce((s, w) => s + w.amount.toNumber(), 0), status: inv.status.toUpperCase() })), signatures: [{ title: "Accounts Officer", name: null, status: "PENDING_SIGNATURE" }] };
     }
     case "timetable": {
       const student = await prisma.studentProfile.findUnique({ where: { id: referenceId }, include: { user: { select: { fullName: true } }, class: true, section: true } });
@@ -141,7 +141,11 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
           user: { select: { fullName: true, email: true } },
           class: true,
           section: true,
-          examResults: { include: { exam: true, subject: true }, orderBy: { exam: { startDate: "asc" } } },
+          examResults: {
+            where: { exam: { status: { in: ["PUBLISHED", "LOCKED", "FINALIZED"] } } },
+            include: { exam: true, subject: true },
+            orderBy: { exam: { startDate: "asc" } },
+          },
         },
       });
       if (!student) throw new DocumentValidationError(`Student ${referenceId} not found`);
@@ -173,7 +177,7 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
         include: { feeStructure: true, student: { include: { user: { select: { fullName: true, email: true } }, class: true, section: true } }, payments: { include: { adjustments: true } }, feeWaivers: true },
       });
       if (!invoice) throw new DocumentValidationError(`Invoice ${referenceId} not found`);
-      const paid = invoice.payments.filter((p) => p.status !== "reversed").reduce((s, p) => s + p.amount.toNumber() - p.adjustments.reduce((a, x) => a + x.amount.toNumber(), 0), 0);
+      const paid = invoice.payments.filter((p) => p.status === "posted").reduce((s, p) => s + p.amount.toNumber() - p.adjustments.reduce((a, x) => a + x.amount.toNumber(), 0), 0);
       const waived = invoice.feeWaivers.reduce((s, w) => s + w.amount.toNumber(), 0);
       return {
         docType, docNumber: await getOrCreateDocumentNumber("invoice", invoice.id, invoice.feeStructure.academicYearId), issueDate,

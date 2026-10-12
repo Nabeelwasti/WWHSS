@@ -92,6 +92,17 @@ model BackupRestoreCheckpoint {
   @@map("backup_restore_checkpoints")
 }
 
+// Ephemeral distributed API rate-limit counters. Expired rows are cleaned up by
+// the store and must not be treated as business records.
+model RateLimitBucket {
+  key       String   @id
+  totalHits Int      @map("total_hits")
+  resetTime DateTime @map("reset_time") @db.Timestamptz(6)
+
+  @@index([resetTime], map: "rate_limit_buckets_reset_time_idx")
+  @@map("rate_limit_buckets")
+}
+
 model Role {
   id          String  @id @default(uuid())
   key         String  @unique

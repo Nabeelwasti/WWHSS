@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { PrismaClient, Prisma } from "@prisma/client";
+import { PostgresRateLimitStore } from "../middleware/rate-limit-store.js";
 
 function getIntegrationTestDbUrl(): string {
   const url = process.env.INTEGRATION_TEST_DB_URL;
@@ -60,6 +61,24 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
   afterAll(async () => {
     if (prisma) {
       await prisma.$disconnect();
+    }
+  });
+
+  it("shares atomic rate-limit counters across independent store instances and namespaces", async () => {
+    const namespace = `integration-${Date.now()}`;
+    const first = new PostgresRateLimitStore(namespace);
+    const second = new PostgresRateLimitStore(namespace);
+    first.init({ windowMs: 60_000 } as any);
+    second.init({ windowMs: 60_000 } as any);
+    try {
+      expect((await first.increment("same-client")).totalHits).toBe(1);
+      expect((await second.increment("same-client")).totalHits).toBe(2);
+      await first.decrement("same-client");
+      expect((await second.increment("same-client")).totalHits).toBe(2);
+    } finally {
+      await first.resetAll();
+      await second.shutdown();
+      first.shutdown();
     }
   });
 
@@ -132,6 +151,7 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
         billingPeriodStart: new Date("2026-09-01"),
         billingPeriodEnd: new Date("2026-09-30"),
         dueDate: new Date("2026-09-15"),
+        status: "issued",
       },
     });
 
@@ -201,6 +221,7 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
         billingPeriodStart: new Date("2026-09-01"),
         billingPeriodEnd: new Date("2026-09-30"),
         dueDate: new Date("2026-09-30"),
+        status: "issued",
       },
     });
 
@@ -219,6 +240,22 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
       });
 
     try {
+      // Draft invoices must never reserve money, even when the caller has the
+      // finance permission and knows the invoice identifier.
+      await prisma.feeInvoice.update({ where: { id: invoice.id }, data: { status: "draft" } });
+      const draftIntent = await post("/api/payments/intents", { invoiceId: invoice.id, provider: "OTHER", amount: 50 });
+      expect(draftIntent.status).toBe(400);
+      await prisma.feeInvoice.update({ where: { id: invoice.id }, data: { status: "issued" } });
+
+      // A frontend/CORS host is not implicitly a trusted checkout provider.
+      const untrustedCheckout = await post("/api/payments/intents", {
+        invoiceId: invoice.id,
+        provider: "OTHER",
+        amount: 50,
+        checkoutUrl: "https://untrusted-checkout.example.invalid/pay",
+      });
+      expect(untrustedCheckout.status).toBe(400);
+
       const intentResponses = await Promise.all([
         post("/api/payments/intents", { invoiceId: invoice.id, provider: "OTHER", amount: 200 }),
         post("/api/payments/intents", { invoiceId: invoice.id, provider: "OTHER", amount: 200 }),
@@ -659,7 +696,7 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
       },
       include: { feeWaivers: true },
     });
-    expect(invoice?.feeWaivers.filter((w) => w.reason.startsWith("Automatic Workers Welfare Funding Waiver (")).length).toBe(1);
+    expect(invoice?.feeWaivers.filter((w) => w.reason.startsWith("Automatic Funding Waiver [")).length).toBe(1);
     expect(invoice?.feeWaivers[0]?.amount.toString()).toBe("1000");
   });
 

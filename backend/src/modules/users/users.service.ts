@@ -222,9 +222,9 @@ export async function searchStudentProfiles(options: SearchStudentsOptions = {})
   if (options.sectionId) where.sectionId = options.sectionId;
   if (options.academicYearId) where.class = { academicYearId: options.academicYearId };
   if (options.status) where.status = options.status;
-  if (options.fundingCategoryId) where.fundingCategoryId = options.fundingCategoryId;
-  if (options.gender) where.gender = options.gender;
-  if (options.dateOfBirth) {
+  if (options.includeSensitive && options.fundingCategoryId) where.fundingCategoryId = options.fundingCategoryId;
+  if (options.includeSensitive && options.gender) where.gender = options.gender;
+  if (options.includeSensitive && options.dateOfBirth) {
     const parsedDate = new Date(`${options.dateOfBirth}T00:00:00.000Z`);
     if (!Number.isNaN(parsedDate.getTime())) {
       const nextDate = new Date(parsedDate);
@@ -241,13 +241,15 @@ export async function searchStudentProfiles(options: SearchStudentsOptions = {})
       { admissionNo: { contains: q, mode: "insensitive" } },
       { rollNumber: { contains: q, mode: "insensitive" } },
       { registrationNo: { contains: q, mode: "insensitive" } },
-      { fatherName: { contains: q, mode: "insensitive" } },
-      { motherName: { contains: q, mode: "insensitive" } },
-      { guardianName: { contains: q, mode: "insensitive" } },
-      { guardianPhone: { contains: q, mode: "insensitive" } },
-      { user: { phone: { contains: q, mode: "insensitive" } } },
-      { boardRegistrationNo: { contains: q, mode: "insensitive" } },
-      ...(options.includeSensitive ? [{ fundingCategory: { name: { contains: q, mode: Prisma.QueryMode.insensitive } } }] : []),
+      ...(options.includeSensitive ? [
+        { fatherName: { contains: q, mode: Prisma.QueryMode.insensitive } },
+        { motherName: { contains: q, mode: Prisma.QueryMode.insensitive } },
+        { guardianName: { contains: q, mode: Prisma.QueryMode.insensitive } },
+        { guardianPhone: { contains: q, mode: Prisma.QueryMode.insensitive } },
+        { user: { phone: { contains: q, mode: Prisma.QueryMode.insensitive } } },
+        { boardRegistrationNo: { contains: q, mode: Prisma.QueryMode.insensitive } },
+        { fundingCategory: { name: { contains: q, mode: Prisma.QueryMode.insensitive } } },
+      ] : []),
     ];
   }
 
@@ -265,12 +267,41 @@ export async function searchStudentProfiles(options: SearchStudentsOptions = {})
   const [students, total] = await Promise.all([
     prisma.studentProfile.findMany({
       where,
-      include: {
-        user: { select: { id: true, email: true, fullName: true, phone: true, photoUrl: true } },
+      select: {
+        id: true,
+        userId: true,
+        admissionNo: true,
+        classId: true,
+        sectionId: true,
+        rollNumber: true,
+        registrationNo: true,
+        status: true,
+        user: { select: { id: true, email: true, fullName: true, photoUrl: true, ...(options.includeSensitive ? { phone: true } : {}) } },
         class: true,
         section: true,
-        ...(options.includeSensitive ? { fundingCategory: true } : {}),
-        guardians: { include: { parent: { select: { id: true, fullName: true, email: true, phone: true } } } },
+        guardians: { include: { parent: { select: { id: true, fullName: true, email: true, ...(options.includeSensitive ? { phone: true } : {}) } } } },
+        ...(options.includeSensitive ? {
+          gender: true,
+          dateOfBirth: true,
+          admissionDate: true,
+          fatherName: true,
+          motherName: true,
+          guardianName: true,
+          guardianRelation: true,
+          guardianPhone: true,
+          emergencyContact: true,
+          address: true,
+          city: true,
+          bloodGroup: true,
+          medicalNotes: true,
+          previousSchool: true,
+          boardRegistrationNo: true,
+          withdrawalReason: true,
+          transferDate: true,
+          fundingCategoryId: true,
+          fundingCategory: true,
+          fundingRecords: { include: { fundingCategory: true }, orderBy: { createdAt: "desc" } },
+        } : {}),
       },
       orderBy,
       skip,
@@ -290,24 +321,64 @@ export async function searchStudentProfiles(options: SearchStudentsOptions = {})
   };
 }
 
-export async function getStudentProfileById(studentProfileId: string, includeSensitive = false) {
+export async function getStudentProfileById(studentProfileId: string, includeSensitive = false, includeFinancial = false) {
   const profile = await prisma.studentProfile.findUnique({
     where: { id: studentProfileId },
     include: {
-      user: { select: { id: true, email: true, fullName: true, phone: true, photoUrl: true } },
+      user: { select: { id: true, email: true, fullName: true, photoUrl: true, ...(includeSensitive ? { phone: true } : {}) } },
       class: true,
       section: true,
-      fundingCategory: true,
-      guardians: { include: { parent: { select: { id: true, fullName: true, email: true, phone: true } } } },
-      fundingRecords: { include: { fundingCategory: true }, orderBy: { createdAt: "desc" } },
+      ...(includeSensitive ? {
+        fundingCategory: true,
+        fundingRecords: { include: { fundingCategory: true }, orderBy: { createdAt: "desc" } },
+      } : {}),
+      guardians: { include: { parent: { select: { id: true, fullName: true, email: true, ...(includeSensitive ? { phone: true } : {}) } } } },
       documentRecords: { orderBy: { createdAt: "desc" } },
-      feeInvoices: { include: { feeStructure: true, payments: true }, orderBy: { dueDate: "desc" } },
+      ...(includeFinancial ? { feeInvoices: { include: { feeStructure: true, payments: true }, orderBy: { dueDate: "desc" } } } : {}),
     },
   });
   if (!profile) throw new UserValidationError(`Student profile ${studentProfileId} not found`);
   if (includeSensitive) return profile;
-  const { bloodGroup: _bloodGroup, medicalNotes: _medicalNotes, fundingCategory: _fundingCategory, fundingRecords: _fundingRecords, ...safeProfile } = profile;
-  return { ...safeProfile, sensitiveFieldsRedacted: true };
+
+  const {
+    gender: _gender,
+    dateOfBirth: _dateOfBirth,
+    admissionDate: _admissionDate,
+    fatherName: _fatherName,
+    motherName: _motherName,
+    guardianName: _guardianName,
+    guardianRelation: _guardianRelation,
+    guardianPhone: _guardianPhone,
+    emergencyContact: _emergencyContact,
+    address: _address,
+    city: _city,
+    bloodGroup: _bloodGroup,
+    medicalNotes: _medicalNotes,
+    previousSchool: _previousSchool,
+    boardRegistrationNo: _boardRegistrationNo,
+    withdrawalReason: _withdrawalReason,
+    transferDate: _transferDate,
+    fundingCategoryId: _fundingCategoryId,
+    fundingCategory: _fundingCategory,
+    fundingRecords: _fundingRecords,
+    feeInvoices: _feeInvoices,
+    ...safeProfile
+  } = profile;
+  const { phone: _userPhone, ...safeUser } = profile.user;
+  const safeGuardians = profile.guardians.map((guardian) => {
+    const { parent, ...guardianFields } = guardian;
+    const { phone: _guardianPhone, ...safeParent } = parent;
+    return { ...guardianFields, parent: safeParent };
+  });
+
+  return {
+    ...safeProfile,
+    user: safeUser,
+    guardians: safeGuardians,
+    ...(includeFinancial && _feeInvoices ? { feeInvoices: _feeInvoices } : {}),
+    sensitiveFieldsRedacted: true,
+    financialFieldsRedacted: !includeFinancial,
+  };
 }
 
 export async function updateStudentProfile(

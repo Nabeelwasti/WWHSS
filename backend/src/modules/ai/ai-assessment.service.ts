@@ -257,7 +257,7 @@ export async function submitAiAnswerSheet(
   });
   if (!test) throw new AiAssessmentError(`Test ${input.testId} not found`);
 
-  if (!["APPROVED", "PUBLISHED"].includes(test.status)) throw new AiAssessmentError("Only an approved or published assessment can accept answer sheets.");
+  if (test.status !== "PUBLISHED") throw new AiAssessmentError("Only a published assessment can accept answer sheets.");
   const student = await prisma.studentProfile.findUnique({ where: { id: input.studentProfileId }, select: { id: true, userId: true, classId: true, sectionId: true } });
   if (!student) throw new AiAssessmentError(`Student ${input.studentProfileId} not found`);
   if (student.classId !== test.classId || (test.sectionId && student.sectionId !== test.sectionId)) throw new AiAssessmentError("The student is not enrolled in this assessment's class/section.");
@@ -282,6 +282,16 @@ export async function submitAiAnswerSheet(
   const suggestedScore = autoScore;
 
   return prisma.$transaction(async (tx) => {
+    // Serialize submissions against publishing/locking and validate the
+    // committed state after obtaining the row lock, not only before the tx.
+    const lockedTest = await tx.$queryRaw<Array<{ status: string }>>`
+      SELECT "status" FROM "ai_assessment_tests" WHERE "id" = ${input.testId} FOR UPDATE
+    `;
+    if (!lockedTest[0]) throw new AiAssessmentError("Assessment not found");
+    if (lockedTest[0].status !== "PUBLISHED") {
+      throw new AiAssessmentError("Only a published assessment can accept answer sheets.");
+    }
+
     const sheet = await tx.aiAnswerSheet.create({
       data: {
         testId: input.testId,
