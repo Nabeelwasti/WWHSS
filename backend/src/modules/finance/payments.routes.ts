@@ -95,9 +95,12 @@ paymentsRouter.post("/intents", authenticate, authorize("finance:manage"), async
         include: { payments: true, feeWaivers: true },
       });
       if (!invoice) throw new Error("Invoice not found");
+      if (!["issued", "partial", "overdue", "pending"].includes(invoice.status)) {
+        throw new Error(`Cannot create a payment intent for an invoice with status '${invoice.status}'`);
+      }
 
       const paid = invoice.payments
-        .filter((payment) => payment.status !== "reversed")
+        .filter((payment) => payment.status === "posted")
         .reduce((sum, payment) => sum.add(payment.amount), new Prisma.Decimal(0));
       const waived = invoice.feeWaivers.reduce((sum, waiver) => sum.add(waiver.amount), new Prisma.Decimal(0));
       const pending = await tx.paymentIntent.findMany({
@@ -188,6 +191,9 @@ paymentsRouter.post("/webhooks/:provider", async (req, res) => {
           include: { payments: true, feeWaivers: true },
         });
         if (!invoice) throw new Error("Invoice not found for payment intent");
+        if (!["issued", "partial", "overdue", "pending"].includes(invoice.status)) {
+          throw new Error(`Provider reported success for a non-payable invoice (status '${invoice.status}'); manual reconciliation is required`);
+        }
 
         const paid = invoice.payments
           .filter((payment) => payment.status !== "reversed")

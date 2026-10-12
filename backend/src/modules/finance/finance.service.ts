@@ -19,7 +19,7 @@ export function calculateOutstandingBalance(
   const decAmountDue = new Prisma.Decimal(amountDue).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
 
   const decPaid = payments
-    .filter((p) => p.status !== "reversed")
+    .filter((p) => p.status === "posted")
     .reduce((sum, p) => {
       const pAmount = new Prisma.Decimal(p.amount);
       const adjTotal = (p.adjustments || []).reduce((aSum, a) => aSum.add(new Prisma.Decimal(a.amount)), new Prisma.Decimal(0));
@@ -373,30 +373,35 @@ export async function generateInvoicesForClass(
           },
         });
 
-        const automaticWaivers = await tx.feeWaiver.findMany({ where: { invoiceId: invoice.id } })
-          .then((rows) => rows.filter((w) => w.reason.startsWith(automaticReasonPrefix) || w.reason.startsWith("Automatic Workers Welfare Funding Waiver (")));
+        // Do not rewrite automatic waivers after a payment or a manual waiver
+        // exists. Changes to an established balance must use an explicit,
+        // auditable adjustment rather than invoice regeneration.
+        if (canRecalculate) {
+          const automaticWaivers = await tx.feeWaiver.findMany({ where: { invoiceId: invoice.id } })
+            .then((rows) => rows.filter((w) => w.reason.startsWith(automaticReasonPrefix) || w.reason.startsWith("Automatic Workers Welfare Funding Waiver (")));
 
-        if (desiredWaivedAmount.gt(0)) {
-          if (automaticWaivers.length > 0) {
-            const [first, ...duplicates] = automaticWaivers;
-            await tx.feeWaiver.update({
-              where: { id: first.id },
-              data: { amount: desiredWaivedAmount, reason: fundingReason },
-            });
-            if (duplicates.length > 0) await tx.feeWaiver.deleteMany({ where: { id: { in: duplicates.map((w) => w.id) } } });
-          } else {
-            await tx.feeWaiver.create({
-              data: {
-                invoiceId: invoice.id,
-                studentProfileId: student.id,
-                amount: desiredWaivedAmount,
-                reason: fundingReason,
-                approvedByUserId: actorId,
-              },
-            });
+          if (desiredWaivedAmount.gt(0)) {
+            if (automaticWaivers.length > 0) {
+              const [first, ...duplicates] = automaticWaivers;
+              await tx.feeWaiver.update({
+                where: { id: first.id },
+                data: { amount: desiredWaivedAmount, reason: fundingReason },
+              });
+              if (duplicates.length > 0) await tx.feeWaiver.deleteMany({ where: { id: { in: duplicates.map((w) => w.id) } } });
+            } else {
+              await tx.feeWaiver.create({
+                data: {
+                  invoiceId: invoice.id,
+                  studentProfileId: student.id,
+                  amount: desiredWaivedAmount,
+                  reason: fundingReason,
+                  approvedByUserId: actorId,
+                },
+              });
+            }
+          } else if (automaticWaivers.length > 0) {
+            await tx.feeWaiver.deleteMany({ where: { id: { in: automaticWaivers.map((w) => w.id) } } });
           }
-        } else if (automaticWaivers.length > 0) {
-          await tx.feeWaiver.deleteMany({ where: { id: { in: automaticWaivers.map((w) => w.id) } } });
         }
 
         return invoice;
@@ -511,8 +516,8 @@ export async function recordPayment(input: { invoiceId: string; amount: number; 
     });
     if (!invoice) throw new FinanceValidationError("Invoice not found");
 
-    const nonPayableStatuses = ["draft", "waived", "paid", "cancelled", "void", "written_off"];
-    if (nonPayableStatuses.includes(invoice.status)) {
+    const payableStatuses = new Set(["issued", "partial", "overdue", "pending"]);
+    if (!payableStatuses.has(invoice.status)) {
       throw new FinanceValidationError(`Cannot record payment for an invoice with status '${invoice.status}'`);
     }
 

@@ -274,7 +274,11 @@ function computePercentageGrade(obtained: number, max: number): string {
 
 export async function getStudentExamResults(studentProfileId: string, examId?: string) {
   return prisma.examResult.findMany({
-    where: { studentProfileId, ...(examId ? { examId } : {}) },
+    where: {
+      studentProfileId,
+      ...(examId ? { examId } : {}),
+      exam: { status: { in: ["PUBLISHED", "LOCKED", "FINALIZED"] } },
+    },
     include: { exam: true, subject: true, examSubject: true },
     orderBy: { exam: { startDate: "desc" } },
   });
@@ -315,6 +319,9 @@ export async function getStudentReportCard(studentProfileId: string, examId: str
     include: { academicYear: true },
   });
   if (!exam) throw new ExamValidationError("Exam not found");
+  if (!["PUBLISHED", "LOCKED", "FINALIZED"].includes(exam.status)) {
+    throw new ExamValidationError("Results are not available until the exam is published");
+  }
 
   const results = await prisma.examResult.findMany({
     where: { studentProfileId, examId },
