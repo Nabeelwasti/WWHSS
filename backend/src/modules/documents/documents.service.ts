@@ -177,7 +177,7 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
         include: { feeStructure: true, student: { include: { user: { select: { fullName: true, email: true } }, class: true, section: true } }, payments: { include: { adjustments: true } }, feeWaivers: true },
       });
       if (!invoice) throw new DocumentValidationError(`Invoice ${referenceId} not found`);
-      const paid = invoice.payments.filter((p) => p.status !== "reversed").reduce((s, p) => s + p.amount.toNumber() - p.adjustments.reduce((a, x) => a + x.amount.toNumber(), 0), 0);
+      const paid = invoice.payments.filter((p) => p.status === "posted").reduce((s, p) => s + p.amount.toNumber() - p.adjustments.reduce((a, x) => a + x.amount.toNumber(), 0), 0);
       const waived = invoice.feeWaivers.reduce((s, w) => s + w.amount.toNumber(), 0);
       return {
         docType, docNumber: await getOrCreateDocumentNumber("invoice", invoice.id, invoice.feeStructure.academicYearId), issueDate,

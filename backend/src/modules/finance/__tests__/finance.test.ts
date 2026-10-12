@@ -107,7 +107,7 @@ describe("Finance Hardening and Validation", () => {
   });
 
   it("REJECTS payments on cancelled, void, or written-off invoices", async () => {
-    for (const badStatus of ["cancelled", "void", "written_off", "draft"]) {
+    for (const badStatus of ["cancelled", "void", "written_off", "refunded", "draft"]) {
       const mockTx = {
         feeInvoice: { findUnique: vi.fn().mockResolvedValue({ id: "inv-1", status: badStatus, amountDue: 1000 }) },
         payment: { findMany: vi.fn().mockResolvedValue([]), create: vi.fn() },

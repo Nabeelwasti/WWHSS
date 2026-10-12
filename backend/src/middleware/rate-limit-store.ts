@@ -85,13 +85,13 @@ export class SharedRateLimitStore implements Store {
 export class PostgresRateLimitStore implements Store {
   private windowMs = 60_000;
   private cleanupCounter = 0;
-  private readonly prefix: string;
+  readonly namespacePrefix: string;
 
   constructor(namespace: string) {
     if (!/^[a-z0-9-]{1,64}$/i.test(namespace)) {
       throw new Error("Rate-limit namespace must be 1-64 alphanumeric or hyphen characters");
     }
-    this.prefix = `${namespace}:`;
+    this.namespacePrefix = `${namespace}:`;
   }
 
   init(options: Options): void {
@@ -99,7 +99,7 @@ export class PostgresRateLimitStore implements Store {
   }
 
   async increment(key: string): Promise<IncrementResponse> {
-    const storageKey = this.prefix + key;
+    const storageKey = this.namespacePrefix + key;
     const rows = await prisma.$queryRaw<Array<{ totalHits: number; resetTime: Date }>>`
       INSERT INTO "rate_limit_buckets" ("key", "total_hits", "reset_time")
       VALUES (${storageKey}, 1, NOW() + (${this.windowMs} * INTERVAL '1 millisecond'))
@@ -131,18 +131,18 @@ export class PostgresRateLimitStore implements Store {
     await prisma.$executeRaw`
       UPDATE "rate_limit_buckets"
       SET "total_hits" = GREATEST("total_hits" - 1, 0)
-      WHERE "key" = ${this.prefix + key} AND "reset_time" > NOW()
+      WHERE "key" = ${this.namespacePrefix + key} AND "reset_time" > NOW()
     `;
   }
 
   async resetKey(key: string): Promise<void> {
-    await prisma.$executeRaw`DELETE FROM "rate_limit_buckets" WHERE "key" = ${this.prefix + key}`;
+    await prisma.$executeRaw`DELETE FROM "rate_limit_buckets" WHERE "key" = ${this.namespacePrefix + key}`;
   }
 
   async resetAll(): Promise<void> {
     await prisma.$executeRaw`
       DELETE FROM "rate_limit_buckets"
-      WHERE LEFT("key", LENGTH(${this.prefix})) = ${this.prefix}
+      WHERE LEFT("key", LENGTH(${this.namespacePrefix})) = ${this.namespacePrefix}
     `;
   }
 
