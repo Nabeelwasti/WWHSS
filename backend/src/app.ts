@@ -143,23 +143,9 @@ const authAccountLimiter = rateLimit({
   message: { error: "Too many login attempts for this account from your address. Please try again later." },
 });
 
-app.use("/api/auth/login", authLoginLimiter);
-app.use("/api/auth/login", authAccountLimiter);
-app.use("/api/auth/refresh", authRefreshLimiter);
 
-const aiLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false, store: aiStore, message: { error: "You've asked a lot of questions this hour. Please try again later." } });
-app.use("/api/ai", aiLimiter);
-const generalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 600, standardHeaders: true, legacyHeaders: false, store: generalStore, message: { error: "Too many requests. Please slow down and try again shortly." } });
-app.use("/api", generalLimiter);
-const expensiveOperationLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 60, standardHeaders: true, legacyHeaders: false, store: expensiveOperationStore, message: { error: "This operation is temporarily rate-limited. Please try again later." } });
-const backupOperationLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false, store: backupOperationStore, message: { error: "Backup operations are temporarily rate-limited. Please try again later." } });
-const paymentWebhookLimiter = rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: true, legacyHeaders: false, store: paymentWebhookStore, message: { error: "Payment webhook rate limit exceeded. Please retry later." } });
-app.use("/api/storage/upload", expensiveOperationLimiter);
-app.use("/api/documents", expensiveOperationLimiter);
-app.use("/api/ai/assessment", expensiveOperationLimiter);
-app.use("/api/backup", backupOperationLimiter);
-app.use("/api/payments/webhooks", paymentWebhookLimiter);
-
+// Health/readiness endpoints intentionally bypass API rate-limit storage so
+// operators can distinguish database/schema problems from rate-limit failures.
 const healthHandler = async (_req: express.Request, res: express.Response) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
@@ -194,6 +180,23 @@ app.get("/api/ready", async (_req, res) => {
     res.status(503).json({ status: "not_ready" });
   }
 });
+
+app.use("/api/auth/login", authLoginLimiter);
+app.use("/api/auth/login", authAccountLimiter);
+app.use("/api/auth/refresh", authRefreshLimiter);
+
+const aiLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false, store: aiStore, message: { error: "You've asked a lot of questions this hour. Please try again later." } });
+app.use("/api/ai", aiLimiter);
+const generalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 600, standardHeaders: true, legacyHeaders: false, store: generalStore, message: { error: "Too many requests. Please slow down and try again shortly." } });
+app.use("/api", generalLimiter);
+const expensiveOperationLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 60, standardHeaders: true, legacyHeaders: false, store: expensiveOperationStore, message: { error: "This operation is temporarily rate-limited. Please try again later." } });
+const backupOperationLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false, store: backupOperationStore, message: { error: "Backup operations are temporarily rate-limited. Please try again later." } });
+const paymentWebhookLimiter = rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: true, legacyHeaders: false, store: paymentWebhookStore, message: { error: "Payment webhook rate limit exceeded. Please retry later." } });
+app.use("/api/storage/upload", expensiveOperationLimiter);
+app.use("/api/documents", expensiveOperationLimiter);
+app.use("/api/ai/assessment", expensiveOperationLimiter);
+app.use("/api/backup", backupOperationLimiter);
+app.use("/api/payments/webhooks", paymentWebhookLimiter);
 
 app.use("/api/auth", authRouter);
 app.use("/api/attendance", attendanceRouter);
