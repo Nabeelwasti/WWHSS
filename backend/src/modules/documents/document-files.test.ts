@@ -26,15 +26,15 @@ describe("document file renderers", () => {
       plus: "+SUM(1,1)",
       minus: "-2+3",
       at: "@SUM(1,1)",
-      leadingControl: "\\t=HYPERLINK(\\"https://attacker.invalid\\",\\"click\\")",
+      leadingControl: "\t=HYPERLINK(\"https://attacker.invalid\",\"click\")",
       numeric: -25,
     }).toString("utf8");
-    expect(csv).toContain("\\"'=1+1\\"");
-    expect(csv).toContain("\\"'+SUM(1,1)\\"");
-    expect(csv).toContain("\\"'-2+3\\"");
-    expect(csv).toContain("\\"'@SUM(1,1)\\"");
-    expect(csv).toContain("\\"'\\\\t=HYPERLINK");
-    expect(csv).toContain("\\"-25\\"");
+    expect(csv).toContain("\"'=1+1\"");
+    expect(csv).toContain("\"'+SUM(1,1)\"");
+    expect(csv).toContain("\"'-2+3\"");
+    expect(csv).toContain("\"'@SUM(1,1)\"");
+    expect(csv).toContain("\"'\\t=HYPERLINK");
+    expect(csv).toContain("\"-25\"");
   });
 
   it("generates a real XLSX ZIP package", () => {

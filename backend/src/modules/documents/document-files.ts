@@ -15,7 +15,8 @@ export function renderDocumentCsv(payload: unknown): Buffer {
     const text = String(value);
     // Spreadsheet programs execute formula-like cells. Prefix untrusted strings
     // beginning with a control/space and =, +, -, or @ with an apostrophe.
-    const safe = typeof value === "string" && /^[\\u0000-\\u0020]*[=+\\-@]/.test(value)
+    const firstNonWhitespace = text.trimStart()[0];
+    const safe = typeof value === "string" && ["=", "+", "-", "@"].includes(firstNonWhitespace ?? "")
       ? `'${text}`
       : text;
     return `"${safe.replace(/"/g, '""')}"`;
