@@ -127,12 +127,13 @@ describe("Finance Hardening and Validation", () => {
       [
         { amount: 300, status: "posted", adjustments: [] },
         { amount: 200, status: "reversed", adjustments: [] }, // Ignored because reversed
+        { amount: 100, status: "pending", adjustments: [] }, // Not settled; must not reduce the balance
         { amount: 400, status: "posted", adjustments: [{ amount: 100 }] }, // Net 300
       ],
       [{ amount: 200 }]
     );
 
-    // Billed: 1000. Paid: 300 + 300 = 600. Waived: 200. Remaining: 200.
+    // Billed: 1000. Posted: 300 + 300 = 600. Pending/reversed payments are ignored. Waived: 200. Remaining: 200.
     expect(result.amountDue.toNumber()).toBe(1000);
     expect(result.paidTotal.toNumber()).toBe(600);
     expect(result.waivedTotal.toNumber()).toBe(200);

@@ -151,6 +151,7 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
         billingPeriodStart: new Date("2026-09-01"),
         billingPeriodEnd: new Date("2026-09-30"),
         dueDate: new Date("2026-09-15"),
+        status: "issued",
       },
     });
 
@@ -220,6 +221,7 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
         billingPeriodStart: new Date("2026-09-01"),
         billingPeriodEnd: new Date("2026-09-30"),
         dueDate: new Date("2026-09-30"),
+        status: "issued",
       },
     });
 
@@ -678,7 +680,7 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
       },
       include: { feeWaivers: true },
     });
-    expect(invoice?.feeWaivers.filter((w) => w.reason.startsWith("Automatic Workers Welfare Funding Waiver (")).length).toBe(1);
+    expect(invoice?.feeWaivers.filter((w) => w.reason.startsWith("Automatic Funding Waiver [")).length).toBe(1);
     expect(invoice?.feeWaivers[0]?.amount.toString()).toBe("1000");
   });
 

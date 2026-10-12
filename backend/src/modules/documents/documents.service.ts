@@ -100,7 +100,7 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
   switch (docType) {
     case "result_card":
     case "report_card": {
-      const student = await prisma.studentProfile.findUnique({ where: { id: referenceId }, include: { user: { select: { fullName: true, email: true } }, class: true, section: true, fundingCategory: true, examResults: { include: { exam: true, subject: true } } } });
+      const student = await prisma.studentProfile.findUnique({ where: { id: referenceId }, include: { user: { select: { fullName: true, email: true } }, class: true, section: true, fundingCategory: true, examResults: { where: { exam: { status: { in: ["PUBLISHED", "LOCKED", "FINALIZED"] } } }, include: { exam: true, subject: true } } } });
       if (!student) throw new DocumentValidationError(`Student ${referenceId} not found`);
       return { docType, docNumber: await getOrCreateDocumentNumber(docType, referenceId), issueDate, header, title: "Official Student Performance Report Card / نتیجہ کارڈ", entity: { name: student.user.fullName, admissionNo: student.admissionNo, rollNumber: student.rollNumber || "N/A", className: student.class?.name || "N/A", sectionName: student.section?.name || "N/A", fundingCategory: student.fundingCategory?.name || "Standard" }, records: student.examResults.map((r) => ({ examName: r.exam.name, subjectName: r.subject.name, marksObtained: r.marksObtained.toNumber(), maxMarks: r.maxMarks.toNumber(), grade: r.grade || "N/A", remarks: r.remarks || "" })), signatures: [{ title: "Class Teacher", name: null, status: "PENDING_SIGNATURE" }, { title: "Principal / Headmaster", name: null, status: "PENDING_SIGNATURE" }] };
     }
@@ -141,7 +141,11 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
           user: { select: { fullName: true, email: true } },
           class: true,
           section: true,
-          examResults: { include: { exam: true, subject: true }, orderBy: { exam: { startDate: "asc" } } },
+          examResults: {
+            where: { exam: { status: { in: ["PUBLISHED", "LOCKED", "FINALIZED"] } } },
+            include: { exam: true, subject: true },
+            orderBy: { exam: { startDate: "asc" } },
+          },
         },
       });
       if (!student) throw new DocumentValidationError(`Student ${referenceId} not found`);
