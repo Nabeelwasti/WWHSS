@@ -242,12 +242,12 @@ export async function searchStudentProfiles(options: SearchStudentsOptions = {})
       { rollNumber: { contains: q, mode: "insensitive" } },
       { registrationNo: { contains: q, mode: "insensitive" } },
       ...(options.includeSensitive ? [
-        { fatherName: { contains: q, mode: "insensitive" } },
-        { motherName: { contains: q, mode: "insensitive" } },
-        { guardianName: { contains: q, mode: "insensitive" } },
-        { guardianPhone: { contains: q, mode: "insensitive" } },
-        { user: { phone: { contains: q, mode: "insensitive" } } },
-        { boardRegistrationNo: { contains: q, mode: "insensitive" } },
+        { fatherName: { contains: q, mode: Prisma.QueryMode.insensitive } },
+        { motherName: { contains: q, mode: Prisma.QueryMode.insensitive } },
+        { guardianName: { contains: q, mode: Prisma.QueryMode.insensitive } },
+        { guardianPhone: { contains: q, mode: Prisma.QueryMode.insensitive } },
+        { user: { phone: { contains: q, mode: Prisma.QueryMode.insensitive } } },
+        { boardRegistrationNo: { contains: q, mode: Prisma.QueryMode.insensitive } },
         { fundingCategory: { name: { contains: q, mode: Prisma.QueryMode.insensitive } } },
       ] : []),
     ];
@@ -364,8 +364,17 @@ export async function getStudentProfileById(studentProfileId: string, includeSen
     feeInvoices: _feeInvoices,
     ...safeProfile
   } = profile;
+  const { phone: _userPhone, ...safeUser } = profile.user;
+  const safeGuardians = profile.guardians.map((guardian) => {
+    const { parent, ...guardianFields } = guardian;
+    const { phone: _guardianPhone, ...safeParent } = parent;
+    return { ...guardianFields, parent: safeParent };
+  });
+
   return {
     ...safeProfile,
+    user: safeUser,
+    guardians: safeGuardians,
     ...(includeFinancial && _feeInvoices ? { feeInvoices: _feeInvoices } : {}),
     sensitiveFieldsRedacted: true,
     financialFieldsRedacted: !includeFinancial,
