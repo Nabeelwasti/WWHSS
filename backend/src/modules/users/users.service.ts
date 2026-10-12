@@ -91,12 +91,20 @@ export async function listUsers() {
   });
 }
 
-export async function createUser(input: { email: string; fullName: string; phone?: string; password?: string }) {
+export async function createUser(input: { email: string; fullName: string; phone?: string; password?: string; actorId?: string }) {
   const rawPassword = input.password ?? crypto.randomBytes(9).toString("base64url");
   const passwordHash = await argon2.hash(rawPassword);
 
-  const user = await prisma.user.create({
-    data: { email: input.email, fullName: input.fullName, phone: input.phone, passwordHash },
+  const user = await prisma.$transaction(async (tx) => {
+    const created = await tx.user.create({
+      data: { email: input.email, fullName: input.fullName, phone: input.phone, passwordHash },
+    });
+    if (input.actorId) {
+      await tx.auditLog.create({
+        data: { userId: input.actorId, action: "users:create", resource: `user:${created.id}` },
+      });
+    }
+    return created;
   });
 
   return { user, temporaryPassword: input.password ? undefined : rawPassword };
@@ -141,16 +149,29 @@ export async function assignRole(input: {
     if (!dept) throw new UserValidationError(`Department not found: ${input.departmentId}`);
   }
 
-  return prisma.userRole.create({
-    data: {
-      userId: input.userId,
-      roleId: role.id,
-      classId: input.classId,
-      sectionId: input.sectionId,
-      subjectId: input.subjectId,
-      departmentId: input.departmentId,
-    },
-    include: { role: true },
+  return prisma.$transaction(async (tx) => {
+    const assignment = await tx.userRole.create({
+      data: {
+        userId: input.userId,
+        roleId: role.id,
+        classId: input.classId,
+        sectionId: input.sectionId,
+        subjectId: input.subjectId,
+        departmentId: input.departmentId,
+      },
+      include: { role: true },
+    });
+    if (input.actorId) {
+      await tx.auditLog.create({
+        data: {
+          userId: input.actorId,
+          action: "users:assign_role",
+          resource: `user:${input.userId}`,
+          metadata: { roleKey: input.roleKey, classId: input.classId, sectionId: input.sectionId, subjectId: input.subjectId, departmentId: input.departmentId },
+        },
+      });
+    }
+    return assignment;
   });
 }
 
@@ -161,18 +182,32 @@ export async function removeRoleAssignment(userRoleId: string, actorId?: string)
   });
   if (!assignment) throw new UserValidationError(`Role assignment not found: ${userRoleId}`);
   if (actorId) await assertCanManageUser(actorId, assignment.userId);
-  return prisma.userRole.delete({ where: { id: userRoleId } });
+  return prisma.$transaction(async (tx) => {
+    const removed = await tx.userRole.delete({ where: { id: userRoleId } });
+    if (actorId) {
+      await tx.auditLog.create({
+        data: { userId: actorId, action: "users:remove_role", resource: `user_role:${userRoleId}`, metadata: { userId: assignment.userId } },
+      });
+    }
+    return removed;
+  });
 }
 
 export async function deactivateUser(userId: string, actorId?: string) {
   if (actorId) await assertCanManageUser(actorId, userId);
-  const user = await prisma.user.update({
-    where: { id: userId },
-    data: { isActive: false, tokenVersion: { increment: 1 } },
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.user.update({
+      where: { id: userId },
+      data: { isActive: false, tokenVersion: { increment: 1 } },
+    });
+    await tx.refreshToken.updateMany({ where: { userId, revoked: false }, data: { revoked: true } });
+    if (actorId) {
+      await tx.auditLog.create({
+        data: { userId: actorId, action: "users:deactivate", resource: `user:${user.id}` },
+      });
+    }
+    return user;
   });
-
-  await prisma.refreshToken.updateMany({ where: { userId, revoked: false }, data: { revoked: true } });
-  return user;
 }
 
 export async function listRoles() {
@@ -184,11 +219,18 @@ export async function resetPassword(userId: string, actorId?: string) {
   const temporaryPassword = crypto.randomBytes(9).toString("base64url");
   const passwordHash = await argon2.hash(temporaryPassword);
 
-  await prisma.user.update({
-    where: { id: userId },
-    data: { passwordHash, tokenVersion: { increment: 1 } },
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: userId },
+      data: { passwordHash, tokenVersion: { increment: 1 } },
+    });
+    await tx.refreshToken.updateMany({ where: { userId, revoked: false }, data: { revoked: true } });
+    if (actorId) {
+      await tx.auditLog.create({
+        data: { userId: actorId, action: "users:reset_password", resource: `user:${userId}` },
+      });
+    }
   });
-  await prisma.refreshToken.updateMany({ where: { userId, revoked: false }, data: { revoked: true } });
 
   return { temporaryPassword };
 }
