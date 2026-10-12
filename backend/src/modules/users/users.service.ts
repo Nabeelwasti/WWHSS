@@ -363,7 +363,7 @@ export async function searchStudentProfiles(options: SearchStudentsOptions = {})
   };
 }
 
-export async function getStudentProfileById(studentProfileId: string, includeSensitive = false, includeFinancial = false) {
+export async function getStudentProfileById(studentProfileId: string, includeSensitive = false, includeFinancial = false, includeDocuments = false) {
   const profile = await prisma.studentProfile.findUnique({
     where: { id: studentProfileId },
     include: {
@@ -375,7 +375,7 @@ export async function getStudentProfileById(studentProfileId: string, includeSen
         fundingRecords: { include: { fundingCategory: true }, orderBy: { createdAt: "desc" } },
       } : {}),
       guardians: { include: { parent: { select: { id: true, fullName: true, email: true, ...(includeSensitive ? { phone: true } : {}) } } } },
-      documentRecords: { orderBy: { createdAt: "desc" } },
+      ...(includeDocuments ? { documentRecords: { orderBy: { createdAt: "desc" } } } : {}),
       ...(includeFinancial ? { feeInvoices: { include: { feeStructure: true, payments: true }, orderBy: { dueDate: "desc" } } } : {}),
     },
   });
@@ -404,6 +404,7 @@ export async function getStudentProfileById(studentProfileId: string, includeSen
     fundingCategory: _fundingCategory,
     fundingRecords: _fundingRecords,
     feeInvoices: _feeInvoices,
+    documentRecords: _documentRecords,
     ...safeProfile
   } = profile;
   const { phone: _userPhone, ...safeUser } = profile.user;
@@ -418,6 +419,7 @@ export async function getStudentProfileById(studentProfileId: string, includeSen
     user: safeUser,
     guardians: safeGuardians,
     ...(includeFinancial && _feeInvoices ? { feeInvoices: _feeInvoices } : {}),
+    ...(includeDocuments && _documentRecords ? { documentRecords: _documentRecords } : {}),
     sensitiveFieldsRedacted: true,
     financialFieldsRedacted: !includeFinancial,
   };

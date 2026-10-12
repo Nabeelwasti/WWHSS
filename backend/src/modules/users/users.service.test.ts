@@ -131,12 +131,16 @@ describe("student privacy boundaries", () => {
       class: null, section: null, documentRecords: [],
     });
     const profile = await getStudentProfileById("student-1");
-    for (const field of ["guardianPhone", "emergencyContact", "address", "city", "bloodGroup", "medicalNotes", "fatherName", "motherName", "guardianName", "guardianRelation", "dateOfBirth", "fundingCategoryId", "fundingCategory", "fundingRecords", "feeInvoices"]) {
+    for (const field of ["guardianPhone", "emergencyContact", "address", "city", "bloodGroup", "medicalNotes", "fatherName", "motherName", "guardianName", "guardianRelation", "dateOfBirth", "fundingCategoryId", "fundingCategory", "fundingRecords", "feeInvoices", "documentRecords"]) {
       expect(profile).not.toHaveProperty(field);
     }
     expect(profile.user).not.toHaveProperty("phone");
     expect(profile.guardians[0].parent).not.toHaveProperty("phone");
     expect(profile).toHaveProperty("sensitiveFieldsRedacted", true);
     expect(profile).toHaveProperty("financialFieldsRedacted", true);
+    expect(mockedStudentFindUnique.mock.calls[0][0].include).not.toHaveProperty("documentRecords");
+
+    await getStudentProfileById("student-1", false, false, true);
+    expect(mockedStudentFindUnique.mock.calls[1][0].include).toHaveProperty("documentRecords");
   });
 });

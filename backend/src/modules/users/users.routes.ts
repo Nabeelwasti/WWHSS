@@ -141,13 +141,14 @@ usersRouter.get("/students/search", authorize("academics:view"), async (req, res
 
 usersRouter.get("/students/:studentProfileId", authorize("student:view:full_profile", (req) => ({ studentId: req.params.studentProfileId })), async (req, res) => {
   try {
-    const [includeSensitive, includeFinancial] = req.userId
+    const [includeSensitive, includeFinancial, includeDocuments] = req.userId
       ? await Promise.all([
           userHasPermission(req.userId, "student:view:sensitive", { studentId: req.params.studentProfileId }),
           userHasPermission(req.userId, "finance:view", { studentId: req.params.studentProfileId }),
+          userHasPermission(req.userId, "documents:view", { studentId: req.params.studentProfileId }),
         ])
-      : [false, false];
-    const profile = await getStudentProfileById(req.params.studentProfileId, includeSensitive, includeFinancial);
+      : [false, false, false];
+    const profile = await getStudentProfileById(req.params.studentProfileId, includeSensitive, includeFinancial, includeDocuments);
     res.json({ profile });
   } catch (e) {
     if (e instanceof UserValidationError) return res.status(404).json({ error: e.message });
