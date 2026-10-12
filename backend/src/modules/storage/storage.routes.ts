@@ -1,6 +1,7 @@
 import { Router, raw } from "express";
 import { authenticate } from "../../middleware/authenticate.js";
 import { authorize } from "../../middleware/authorize.js";
+import { prisma } from "../../db/client.js";
 import {
   savePrivateFile,
   getPrivateFileContent,
@@ -15,7 +16,24 @@ storageRouter.use(authenticate);
 
 storageRouter.post(
   "/upload",
-  authorize("storage:upload"),
+  authorize("storage:upload", async (req) => {
+    let classId = typeof req.headers["x-class-id"] === "string" ? req.headers["x-class-id"] : undefined;
+    let sectionId = typeof req.headers["x-section-id"] === "string" ? req.headers["x-section-id"] : undefined;
+    const subjectId = typeof req.headers["x-subject-id"] === "string" ? req.headers["x-subject-id"] : undefined;
+    const studentProfileId = typeof req.headers["x-student-profile-id"] === "string" ? req.headers["x-student-profile-id"] : undefined;
+    if (studentProfileId) {
+      const student = await prisma.studentProfile.findUnique({ where: { id: studentProfileId }, select: { classId: true, sectionId: true } });
+      if (student) {
+        classId = classId ?? student.classId ?? undefined;
+        sectionId = sectionId ?? student.sectionId ?? undefined;
+      }
+    }
+    if (sectionId && !classId) {
+      const section = await prisma.section.findUnique({ where: { id: sectionId }, select: { classId: true } });
+      classId = section?.classId;
+    }
+    return { classId, sectionId, subjectId };
+  }),
   raw({ type: () => true, limit: "10mb" }),
   async (req, res) => {
     if (!req.userId) return res.status(401).json({ error: "Unauthenticated" });

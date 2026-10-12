@@ -70,7 +70,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    await api.logout().catch(() => undefined);
+    setError(null);
+    try {
+      // Do not claim a secure logout while the server may still accept the
+      // HttpOnly refresh cookie. If the request fails, keep the session visible
+      // and let the user retry rather than silently creating a resumable session.
+      await api.logout();
+    } catch (e) {
+      setError(e instanceof Error
+        ? `Sign out could not be confirmed: ${e.message}. Check your connection and retry.`
+        : "Sign out could not be confirmed. Check your connection and retry.");
+      return;
+    }
     setAccessToken(null);
     setUser(null);
   }, []);

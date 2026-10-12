@@ -286,74 +286,74 @@ export async function exportDatabaseData() {
     ptmMeetings,
     assetAssignments,
     paymentIntents,
-  ] = await Promise.all([
-    prisma.user.findMany(),
-    prisma.role.findMany(),
-    prisma.permission.findMany(),
-    prisma.rolePermission.findMany(),
-    prisma.department.findMany(),
-    prisma.userRole.findMany(),
-    prisma.refreshToken.findMany(),
-    prisma.auditLog.findMany(),
-    prisma.academicYear.findMany(),
-    prisma.class.findMany(),
-    prisma.section.findMany(),
-    prisma.subject.findMany(),
-    prisma.studentProfile.findMany(),
-    prisma.studentEnrollmentHistory.findMany(),
-    prisma.staffProfile.findMany(),
-    prisma.parentStudentLink.findMany(),
-    prisma.fundingCategory.findMany(),
-    prisma.studentFundingRecord.findMany(),
-    prisma.feeStructure.findMany(),
-    prisma.feeInvoice.findMany(),
-    prisma.feeWaiver.findMany(),
-    prisma.payment.findMany(),
-    prisma.paymentAdjustment.findMany(),
-    prisma.attendanceRecord.findMany(),
-    prisma.course.findMany(),
-    prisma.courseTeacherAssignment.findMany(),
-    prisma.lesson.findMany(),
-    prisma.resource.findMany(),
-    prisma.assignment.findMany(),
-    prisma.submission.findMany(),
-    prisma.quiz.findMany(),
-    prisma.quizQuestion.findMany(),
-    prisma.quizAttempt.findMany(),
-    prisma.exam.findMany(),
-    prisma.examSubject.findMany(),
-    prisma.examResult.findMany(),
-    prisma.aiUsageRecord.findMany(),
-    prisma.aiAssessmentTest.findMany(),
-    prisma.aiAssessmentQuestion.findMany(),
-    prisma.aiAnswerSheet.findMany(),
-    prisma.documentRecord.findMany(),
-    prisma.room.findMany(),
-    prisma.timetableSlot.findMany(),
-    prisma.book.findMany(),
-    prisma.bookCopy.findMany(),
-    prisma.bookLoan.findMany(),
-    prisma.cmsPage.findMany(),
-    prisma.notice.findMany(),
-    prisma.eventItem.findMany(),
-    prisma.galleryItem.findMany(),
-    prisma.notification.findMany(),
-    prisma.schoolProfile.findMany(),
-    prisma.documentSequence.findMany(),
-    prisma.storageFile.findMany(),
-    prisma.leaveRequest.findMany(),
-    prisma.payrollPeriod.findMany(),
-    prisma.payrollRecord.findMany(),
-    prisma.admissionLead.findMany(),
-    prisma.transportVehicle.findMany(),
-    prisma.transportRoute.findMany(),
-    prisma.transportAssignment.findMany(),
-    prisma.inventoryItem.findMany(),
-    prisma.inventoryTransaction.findMany(),
-    prisma.ptmMeeting.findMany(),
-    prisma.assetAssignment.findMany(),
-    prisma.paymentIntent.findMany(),
-  ]);
+  ] = await prisma.$transaction(async (tx) => Promise.all([
+    tx.user.findMany(),
+    tx.role.findMany(),
+    tx.permission.findMany(),
+    tx.rolePermission.findMany(),
+    tx.department.findMany(),
+    tx.userRole.findMany(),
+    tx.refreshToken.findMany(),
+    tx.auditLog.findMany(),
+    tx.academicYear.findMany(),
+    tx.class.findMany(),
+    tx.section.findMany(),
+    tx.subject.findMany(),
+    tx.studentProfile.findMany(),
+    tx.studentEnrollmentHistory.findMany(),
+    tx.staffProfile.findMany(),
+    tx.parentStudentLink.findMany(),
+    tx.fundingCategory.findMany(),
+    tx.studentFundingRecord.findMany(),
+    tx.feeStructure.findMany(),
+    tx.feeInvoice.findMany(),
+    tx.feeWaiver.findMany(),
+    tx.payment.findMany(),
+    tx.paymentAdjustment.findMany(),
+    tx.attendanceRecord.findMany(),
+    tx.course.findMany(),
+    tx.courseTeacherAssignment.findMany(),
+    tx.lesson.findMany(),
+    tx.resource.findMany(),
+    tx.assignment.findMany(),
+    tx.submission.findMany(),
+    tx.quiz.findMany(),
+    tx.quizQuestion.findMany(),
+    tx.quizAttempt.findMany(),
+    tx.exam.findMany(),
+    tx.examSubject.findMany(),
+    tx.examResult.findMany(),
+    tx.aiUsageRecord.findMany(),
+    tx.aiAssessmentTest.findMany(),
+    tx.aiAssessmentQuestion.findMany(),
+    tx.aiAnswerSheet.findMany(),
+    tx.documentRecord.findMany(),
+    tx.room.findMany(),
+    tx.timetableSlot.findMany(),
+    tx.book.findMany(),
+    tx.bookCopy.findMany(),
+    tx.bookLoan.findMany(),
+    tx.cmsPage.findMany(),
+    tx.notice.findMany(),
+    tx.eventItem.findMany(),
+    tx.galleryItem.findMany(),
+    tx.notification.findMany(),
+    tx.schoolProfile.findMany(),
+    tx.documentSequence.findMany(),
+    tx.storageFile.findMany(),
+    tx.leaveRequest.findMany(),
+    tx.payrollPeriod.findMany(),
+    tx.payrollRecord.findMany(),
+    tx.admissionLead.findMany(),
+    tx.transportVehicle.findMany(),
+    tx.transportRoute.findMany(),
+    tx.transportAssignment.findMany(),
+    tx.inventoryItem.findMany(),
+    tx.inventoryTransaction.findMany(),
+    tx.ptmMeeting.findMany(),
+    tx.assetAssignment.findMany(),
+    tx.paymentIntent.findMany(),
+  ]), { isolationLevel: "RepeatableRead", maxWait: 10_000, timeout: 120_000 });
 
   const storageObjects: { storageKey: string; mimeType: string; originalName: string; size: number; dataBase64: string }[] = [];
   const storageProvider = getStorageProvider();
@@ -520,23 +520,65 @@ export async function verifyBackupRecovery(
   const provider = getBackupProvider();
   const rawPayload = await provider.getBackupPayload(filename);
 
-  const fileContent = JSON.parse(rawPayload);
+  let fileContent: any;
+  try {
+    fileContent = JSON.parse(rawPayload);
+  } catch {
+    throw new BackupError("Invalid backup envelope JSON");
+  }
   const secret = encryptionSecret || env.backupEncryptionKey;
-
-  if (!fileContent.encrypted || !fileContent.data) {
+  if (
+    !fileContent ||
+    fileContent.encrypted !== true ||
+    !fileContent.data ||
+    typeof fileContent.version !== "string" ||
+    !fileContent.tableCounts ||
+    typeof fileContent.tableCounts !== "object"
+  ) {
     throw new BackupError("Invalid backup format or unencrypted file");
   }
 
-  const decryptedJson = decryptData(fileContent.data, secret);
-  const parsed = JSON.parse(decryptedJson);
-
-  if (!parsed.meta || !parsed.tables) {
+  let parsed: any;
+  try {
+    parsed = JSON.parse(decryptData(fileContent.data, secret));
+  } catch {
+    throw new BackupError("Backup decryption or payload JSON validation failed");
+  }
+  if (!parsed.meta || !parsed.tables || typeof parsed.tables !== "object" || Array.isArray(parsed.tables)) {
     throw new BackupError("Decrypted backup payload is missing required schema sections");
   }
+  if (parsed.meta.version !== fileContent.version) {
+    throw new BackupError("Backup envelope and payload schema versions do not match");
+  }
 
-  const summary = Object.fromEntries(
-    Object.entries(parsed.tables).map(([k, v]) => [k, Array.isArray(v) ? v.length : typeof v === "number" ? v : 0])
-  );
+  const declaredTables = Object.keys(fileContent.tableCounts).sort();
+  const actualTables = Object.keys(parsed.tables).sort();
+  if (declaredTables.length === 0 || JSON.stringify(declaredTables) !== JSON.stringify(actualTables)) {
+    throw new BackupError("Backup table manifest does not match the encrypted payload");
+  }
+
+  const summary: Record<string, number> = {};
+  for (const tableName of declaredTables) {
+    const rows = parsed.tables[tableName];
+    const declaredCount = fileContent.tableCounts[tableName];
+    if (!Array.isArray(rows) || !Number.isSafeInteger(declaredCount) || declaredCount < 0 || rows.length !== declaredCount) {
+      throw new BackupError(`Backup table count or structure is invalid: ${tableName}`);
+    }
+    summary[tableName] = rows.length;
+  }
+
+  if (parsed.meta.storageObjectsIncluded === true) {
+    if (!Array.isArray(parsed.storageObjects)) throw new BackupError("Backup storage manifest is missing");
+    for (const object of parsed.storageObjects) {
+      if (!object || typeof object.storageKey !== "string" || path.basename(object.storageKey) !== object.storageKey || typeof object.dataBase64 !== "string" || !Number.isSafeInteger(object.size) || object.size < 0) {
+        throw new BackupError("Backup contains an invalid storage object");
+      }
+      const bytes = Buffer.from(object.dataBase64, "base64");
+      if (bytes.length !== object.size) throw new BackupError(`Backup storage object size mismatch: ${object.storageKey}`);
+    }
+  } else if (Array.isArray(parsed.storageObjects) && parsed.storageObjects.length > 0) {
+    throw new BackupError("Backup storage objects are present without the storage inclusion flag");
+  }
 
   return { valid: true, summary };
 }
@@ -649,7 +691,8 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
       if (!sequence.sequenceName) continue;
       const table = `"public"."${sequence.tableName.replace(/"/g, '""')}"`;
       const column = `"${sequence.columnName.replace(/"/g, '""')}"`;
-      await tx.$executeRawUnsafe(`SELECT setval(${JSON.stringify(sequence.sequenceName)}::regclass, COALESCE((SELECT MAX(${column}) FROM ${table}), 1), true)`);
+      const sequenceLiteral = `'${sequence.sequenceName.replace(/'/g, "''")}'`;
+      await tx.$executeRawUnsafe(`SELECT setval(${sequenceLiteral}::regclass, COALESCE((SELECT MAX(${column}) FROM ${table}), 1), true)`);
     }
 
     await tx.$executeRawUnsafe(`DELETE FROM "public"."refresh_tokens"`);

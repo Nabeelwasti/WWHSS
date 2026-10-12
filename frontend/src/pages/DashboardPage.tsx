@@ -14,7 +14,7 @@ import { useLanguage } from "../i18n";
 type ClassSummary = { id: string; name: string; sections: { id: string; name: string }[] };
 
 export function DashboardPage() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const { t } = useLanguage();
   const [classes, setClasses] = useState<ClassSummary[] | null>(null);
   const [schoolWide, setSchoolWide] = useState(false);
@@ -26,9 +26,11 @@ export function DashboardPage() {
     setLoading(true);
     api
       .myClasses()
-      .then((res) => {
+      .then(async (res) => {
         if (cancelled) return;
-        setClasses((res.classes as ClassSummary[] | null) ?? []);
+        const rows = res.scopeIsSchoolWide ? await api.listClasses() : res;
+        if (cancelled) return;
+        setClasses((rows.classes as ClassSummary[] | null) ?? []);
         setSchoolWide(res.scopeIsSchoolWide);
       })
       .catch((e) => {
@@ -44,81 +46,68 @@ export function DashboardPage() {
   if (!user) return null;
 
   return (
-    <main className="page">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 style={{ fontSize: 20, margin: 0 }}>
-            {t("dash.welcome")}, {user.fullName.split(" ")[0]}
-          </h1>
-          <p className="text-muted text-sm" style={{ margin: "2px 0 0" }}>
-            {user.userRoles.length > 0
-              ? user.userRoles.map((ur) => ur.role.name).join(", ")
-              : "No role assigned yet — contact your administrator."}
-          </p>
-        </div>
-        <div className="flex gap-2 items-center">
-          <NotificationsBell />
-          <button onClick={logout} className="btn btn-ghost btn-sm">
-            {t("common.signOut")}
-          </button>
-        </div>
-      </div>
-
-      <section className="card">
-        <h2 className="card-title">{t("dash.myClasses")}</h2>
-
-        {loading && (
-          <div className="flex-col gap-2">
-            <div className="skeleton" style={{ height: 16, width: "70%" }} />
-            <div className="skeleton" style={{ height: 16, width: "50%" }} />
+    <main className="page page-wide dashboard-page">
+      <section className="dashboard-welcome">
+        <div className="welcome-orbit" aria-hidden="true"><span /><span /><span /></div>
+        <div className="welcome-copy">
+          <span className="welcome-kicker">YOUR CAMPUS AT A GLANCE</span>
+          <h2>{t("dash.welcome")}, {user.fullName.split(" ")[0]}</h2>
+          <p>One connected place for your school day, learning and progress.</p>
+          <div className="welcome-tags">
+            {user.userRoles.map((assignment) => <span key={assignment.role.key}>{assignment.role.name}</span>)}
+            {!user.userRoles.length && <span>Role assignment pending</span>}
           </div>
-        )}
-
-        {!loading && error && (
-          <p role="alert" className="alert alert-danger">
-            {error}
-          </p>
-        )}
-
-        {!loading && !error && schoolWide && (
-          <p className="text-muted text-sm">
-            Your role has school-wide access. A full class directory view is not built yet — it will use
-            the same <code>/api/academics/classes</code> endpoint already live on the backend.
-          </p>
-        )}
-
-        {!loading && !error && !schoolWide && classes && classes.length === 0 && (
-          <p className="text-muted text-sm">
-            No classes are assigned to your account yet. This is a genuine empty state — nothing has
-            been entered for you, rather than a placeholder.
-          </p>
-        )}
-
-        {!loading && !error && !schoolWide && classes && classes.length > 0 && (
-          <ul style={{ margin: 0, paddingInlineStart: 18 }}>
-            {classes.map((c) => (
-              <li key={c.id} className="text-sm">
-                {c.name} {c.sections?.length ? `(${c.sections.map((s) => s.name).join(", ")})` : ""}
-              </li>
-            ))}
-          </ul>
-        )}
+        </div>
+        <div className="welcome-actions">
+          <NotificationsBell />
+        </div>
       </section>
 
-      {/* Only rendered for accounts that actually have a StudentProfile —
-          a teacher or parent account genuinely has nothing here, so
-          nothing is shown, rather than an empty assignments list implying
-          they should have one. */}
-      {user.studentProfile && <MyProgressSection studentProfileId={user.studentProfile.id} />}
-      {user.studentProfile && <AssignmentsSection studentProfileId={user.studentProfile.id} />}
-      {user.studentProfile && <ExamResultsSection studentProfileId={user.studentProfile.id} />}
-      {user.studentProfile && <FinanceSection studentProfileId={user.studentProfile.id} />}
+      <section className="dashboard-section">
+        <div className="section-heading">
+          <div><span className="section-eyebrow">ACADEMIC OVERVIEW</span><h2>{t("dash.myClasses")}</h2></div>
+          <span className="section-meta">{schoolWide ? "School-wide access" : "Your assigned scope"}</span>
+        </div>
+        <div className="dashboard-class-panel">
+          {loading && (
+            <div className="dashboard-class-grid" role="status" aria-label="Loading classes">
+              {[0, 1, 2].map((item) => <div className="dashboard-class-skeleton" key={item} />)}
+            </div>
+          )}
+          {!loading && error && <p role="alert" className="alert alert-danger">{error}</p>}
+          {!loading && !error && classes && classes.length === 0 && (
+            <div className="dashboard-empty"><span aria-hidden="true">◎</span><strong>No classes are assigned yet</strong><p>Your class and section access will appear here when the school administrator assigns it.</p></div>
+          )}
+          {!loading && !error && classes && classes.length > 0 && (
+            <div className="dashboard-class-grid">
+              {classes.map((item, index) => (
+                <article className="dashboard-class-card" key={item.id}>
+                  <div className={`class-card-symbol symbol-${index % 4}`} aria-hidden="true">{String(index + 1).padStart(2, "0")}</div>
+                  <div className="class-card-copy"><h3>{item.name}</h3><p>{item.sections?.length ?? 0} section{item.sections?.length === 1 ? "" : "s"}</p></div>
+                  <div className="class-card-sections">{item.sections?.length ? item.sections.map((section) => <span key={section.id}>{section.name}</span>) : <span>No sections yet</span>}</div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
 
-      <LibrarySection />
-      <AiChatWidget />
-      <ChangePasswordSection />
+      {user.studentProfile && <div className="dashboard-student-grid">
+        <MyProgressSection studentProfileId={user.studentProfile.id} />
+        <AssignmentsSection studentProfileId={user.studentProfile.id} />
+        <ExamResultsSection studentProfileId={user.studentProfile.id} />
+        <FinanceSection studentProfileId={user.studentProfile.id} />
+      </div>}
 
-
+      <div className="dashboard-resource-grid">
+        <LibrarySection />
+        <section className="dashboard-ai-panel">
+          <div className="ai-panel-heading"><span className="ai-panel-icon" aria-hidden="true">✧</span><div><span className="section-eyebrow">CAMPUS INTELLIGENCE</span><h2>Ask your Campus AI</h2></div></div>
+          <p>Get help with school processes, learning questions and the information your account is authorized to access.</p>
+          <AiChatWidget />
+        </section>
+        <ChangePasswordSection />
+      </div>
     </main>
   );
 }

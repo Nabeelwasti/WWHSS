@@ -11,11 +11,18 @@ import { LibraryManagementSection } from "../components/LibraryManagementSection
 import { StaffManagementSection } from "../components/StaffManagementSection";
 import { EnterpriseOperationsSection } from "../components/EnterpriseOperationsSection";
 
-type AdminTab = "users" | "staff" | "students" | "finance" | "library" | "assessment" | "documents" | "cms" | "backups" | "operations";
+export type AdminTab = "users" | "staff" | "students" | "finance" | "library" | "assessment" | "documents" | "cms" | "backups" | "operations";
 
-export function AdminPage() {
+const adminTabItems: [AdminTab, string][] = [
+  ["users", "Users & Roles"], ["staff", "Staff & Teachers"], ["operations", "Enterprise Operations"],
+  ["students", "Student Directory"], ["finance", "Finance & Funding"], ["library", "Library"],
+  ["assessment", "AI Assessment Studio"], ["documents", "Document Center"],
+  ["cms", "CMS & Announcements"], ["backups", "Backups & Recovery"],
+];
+
+export function AdminPage({ initialTab = "users", allowedTabs }: { initialTab?: AdminTab; allowedTabs?: AdminTab[] }) {
   const { t } = useLanguage();
-  const [tab, setTab] = useState<AdminTab>("users");
+  const [tab, setTab] = useState<AdminTab>(initialTab);
   const [users, setUsers] = useState<UserSummary[] | null>(null);
   const [roles, setRoles] = useState<RoleSummary[] | null>(null);
   const [classes, setClasses] = useState<ClassSummary[] | null>(null);
@@ -40,9 +47,11 @@ export function AdminPage() {
     }
   }
 
+  useEffect(() => setTab(initialTab), [initialTab]);
+
   useEffect(() => {
-    refresh();
-  }, []);
+    if (tab === "users") refresh();
+  }, [tab]);
 
   async function handleCreateUser(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -120,21 +129,16 @@ export function AdminPage() {
     </button>
   );
 
+  const pageTitle = allowedTabs?.length === 1
+    ? adminTabItems.find(([key]) => key === allowedTabs[0])?.[1] ?? t("admin.title")
+    : t("admin.title");
+
   return (
     <main className="page" style={{ maxWidth: 840, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 20, margin: "0 0 16px 0" }}>{t("admin.title")}</h1>
+      <h1 style={{ fontSize: 20, margin: "0 0 16px 0" }}>{pageTitle}</h1>
 
       <div className="flex gap-2 flex-wrap" style={{ marginBottom: 16 }}>
-        {tabBtn("users", "Users & Roles")}
-        {tabBtn("staff", "Staff & Teachers")}
-        {tabBtn("operations", "Enterprise Operations")}
-        {tabBtn("students", "Student Directory")}
-        {tabBtn("finance", "Finance & Funding")}
-        {tabBtn("library", "Library")}
-        {tabBtn("assessment", "AI Assessment Studio")}
-        {tabBtn("documents", "Document Center")}
-        {tabBtn("cms", "CMS & Announcements")}
-        {tabBtn("backups", "Backups & Recovery")}
+        {adminTabItems.filter(([key]) => !allowedTabs || allowedTabs.includes(key)).map(([key, label]) => tabBtn(key, label))}
       </div>
 
       {error && (
