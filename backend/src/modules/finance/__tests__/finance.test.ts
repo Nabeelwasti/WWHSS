@@ -6,6 +6,7 @@ vi.mock("../../../db/client.js", () => ({
     feeInvoice: { findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn(), upsert: vi.fn() },
     payment: { create: vi.fn(), findMany: vi.fn() },
     feeWaiver: { create: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
+    fundingCategory: { findMany: vi.fn() },
     auditLog: { create: vi.fn() },
     $transaction: vi.fn((cb: (tx: unknown) => unknown) =>
       cb({
@@ -20,7 +21,7 @@ vi.mock("../../../db/client.js", () => ({
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../../db/client.js";
-import { recordPayment, createFeeStructure, calculateOutstandingBalance, generateInvoicesForClass, FinanceValidationError } from "../finance.service.js";
+import { recordPayment, createFeeStructure, calculateOutstandingBalance, generateInvoicesForClass, getFinancialSummaryReport, FinanceValidationError } from "../finance.service.js";
 
 describe("Finance Hardening and Validation", () => {
   beforeEach(() => {
@@ -285,5 +286,31 @@ describe("Finance Hardening and Validation", () => {
     expect(mockWaiverDeleteMany).toHaveBeenCalledWith({
       where: { id: { in: ["w-duplicate"] } },
     });
+  });
+
+  it("counts only posted payments in the financial summary", async () => {
+    (prisma.feeInvoice.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      {
+        amountDue: new Prisma.Decimal(1000),
+        dueDate: new Date("2026-10-01T00:00:00.000Z"),
+        student: { fundingRecords: [] },
+      },
+    ]);
+    (prisma.payment.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { status: "posted", amount: new Prisma.Decimal(300), adjustments: [] },
+      { status: "pending", amount: new Prisma.Decimal(200), adjustments: [] },
+      { status: "reversed", amount: new Prisma.Decimal(100), adjustments: [] },
+    ]);
+    (prisma.feeWaiver.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { amount: new Prisma.Decimal(100) },
+    ]);
+    (prisma.fundingCategory.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+    const report = await getFinancialSummaryReport();
+
+    expect(report.overall.totalBilled).toBe(1000);
+    expect(report.overall.totalPaid).toBe(300);
+    expect(report.overall.totalWaived).toBe(100);
+    expect(report.overall.outstanding).toBe(600);
   });
 });

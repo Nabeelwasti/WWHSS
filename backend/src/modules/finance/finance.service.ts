@@ -749,7 +749,7 @@ export async function getFinancialSummaryReport() {
   }
 
   for (const p of payments) {
-    if (p.status === "reversed") continue;
+    if (p.status !== "posted") continue;
     const adjusted = p.adjustments.reduce((sum, a) => sum.add(a.amount), new Prisma.Decimal(0));
     totalPaid = totalPaid.add(p.amount.sub(adjusted));
   }
