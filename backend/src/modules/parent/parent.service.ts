@@ -24,7 +24,12 @@ export async function getParentChildDashboard(parentId: string, studentProfileId
   if (!student) throw new ParentPortalError("Student not found");
   const [attendance, exams, invoices, timetable, notices, assignments, loans, notifications, documents] = await Promise.all([
     prisma.attendanceRecord.findMany({ where: { studentProfileId }, orderBy: { date: "desc" }, take: 30 }),
-    prisma.examResult.findMany({ where: { studentProfileId }, include: { exam: true, subject: true }, orderBy: { exam: { startDate: "desc" } }, take: 50 }),
+    prisma.examResult.findMany({
+      where: { studentProfileId, exam: { status: { in: ["PUBLISHED", "LOCKED", "FINALIZED"] } } },
+      include: { exam: true, subject: true },
+      orderBy: { exam: { startDate: "desc" } },
+      take: 50,
+    }),
     prisma.feeInvoice.findMany({ where: { studentProfileId }, include: { feeStructure: true, payments: { include: { adjustments: true } }, feeWaivers: true }, orderBy: { dueDate: "desc" } }),
     prisma.timetableSlot.findMany({ where: { classId: student.classId ?? undefined, sectionId: student.sectionId ?? undefined }, include: { subject: true, teacher: { select: { fullName: true } }, room: true }, orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }] }),
     prisma.notice.findMany({ where: { audience: { in: ["public", "parents"] } }, orderBy: { publishedAt: "desc" }, take: 20 }),
