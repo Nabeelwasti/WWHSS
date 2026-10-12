@@ -191,7 +191,7 @@ paymentsRouter.post("/webhooks/:provider", async (req, res) => {
         }
 
         const paid = invoice.payments
-          .filter((payment) => payment.status !== "reversed")
+          .filter((payment) => payment.status === "posted")
           .reduce((sum, payment) => sum.add(payment.amount), new Prisma.Decimal(0));
         const waived = invoice.feeWaivers.reduce((sum, waiver) => sum.add(waiver.amount), new Prisma.Decimal(0));
         const remaining = new Prisma.Decimal(invoice.amountDue).sub(waived).sub(paid);

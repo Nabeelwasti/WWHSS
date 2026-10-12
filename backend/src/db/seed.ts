@@ -183,7 +183,7 @@ async function main() {
 
   if (
     !adminEmail ||
-    !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(adminEmail) ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail) ||
     (isProduction && (!configuredAdminEmail || adminEmail.toLowerCase() === "admin@wwhs.local")) ||
     !adminPassword ||
     (isProduction && adminPassword.length < 12)
