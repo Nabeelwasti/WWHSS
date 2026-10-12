@@ -33,7 +33,7 @@ describe("document file renderers", () => {
     expect(csv).toContain("\"'+SUM(1,1)\"");
     expect(csv).toContain("\"'-2+3\"");
     expect(csv).toContain("\"'@SUM(1,1)\"");
-    expect(csv).toContain("\"'\\t=HYPERLINK");
+    expect(csv).toContain("\"'\t=HYPERLINK");
     expect(csv).toContain("\"-25\"");
   });
 
