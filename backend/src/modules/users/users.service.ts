@@ -364,7 +364,12 @@ export async function getStudentProfileById(studentProfileId: string, includeSen
     feeInvoices: _feeInvoices,
     ...safeProfile
   } = profile;
-  return { ...safeProfile, sensitiveFieldsRedacted: true, financialFieldsRedacted: !includeFinancial };
+  return {
+    ...safeProfile,
+    ...(includeFinancial && _feeInvoices ? { feeInvoices: _feeInvoices } : {}),
+    sensitiveFieldsRedacted: true,
+    financialFieldsRedacted: !includeFinancial,
+  };
 }
 
 export async function updateStudentProfile(

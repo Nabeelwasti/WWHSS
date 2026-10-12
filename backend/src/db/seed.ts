@@ -177,12 +177,19 @@ async function main() {
   }
 
   const isProduction = process.env.NODE_ENV === "production";
-  const adminEmail = process.env.ADMIN_EMAIL || "admin@wwhs.local";
+  const configuredAdminEmail = process.env.ADMIN_EMAIL?.trim();
+  const adminEmail = configuredAdminEmail || (isProduction ? "" : "admin@wwhs.local");
   const adminPassword = process.env.ADMIN_PASSWORD || (isProduction ? "" : "ChangeMe!123");
 
-  if (!adminPassword || (isProduction && adminPassword.length < 12)) {
+  if (
+    !adminEmail ||
+    !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(adminEmail) ||
+    (isProduction && (!configuredAdminEmail || adminEmail.toLowerCase() === "admin@wwhs.local")) ||
+    !adminPassword ||
+    (isProduction && adminPassword.length < 12)
+  ) {
     throw new Error(
-      "Refusing to seed an admin in production: set ADMIN_PASSWORD (at least 12 characters) and ADMIN_EMAIL in backend/.env."
+      "Refusing to seed an admin: production requires an explicit non-default ADMIN_EMAIL and ADMIN_PASSWORD of at least 12 characters."
     );
   }
 
