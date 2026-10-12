@@ -240,6 +240,22 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
       });
 
     try {
+      // Draft invoices must never reserve money, even when the caller has the
+      // finance permission and knows the invoice identifier.
+      await prisma.feeInvoice.update({ where: { id: invoice.id }, data: { status: "draft" } });
+      const draftIntent = await post("/api/payments/intents", { invoiceId: invoice.id, provider: "OTHER", amount: 50 });
+      expect(draftIntent.status).toBe(400);
+      await prisma.feeInvoice.update({ where: { id: invoice.id }, data: { status: "issued" } });
+
+      // A frontend/CORS host is not implicitly a trusted checkout provider.
+      const untrustedCheckout = await post("/api/payments/intents", {
+        invoiceId: invoice.id,
+        provider: "OTHER",
+        amount: 50,
+        checkoutUrl: "https://untrusted-checkout.example.invalid/pay",
+      });
+      expect(untrustedCheckout.status).toBe(400);
+
       const intentResponses = await Promise.all([
         post("/api/payments/intents", { invoiceId: invoice.id, provider: "OTHER", amount: 200 }),
         post("/api/payments/intents", { invoiceId: invoice.id, provider: "OTHER", amount: 200 }),

@@ -31,15 +31,10 @@ const createSchema = z.object({
         .split(",")
         .map((h) => h.trim().toLowerCase())
         .filter(Boolean);
-      const corsHosts = (process.env.CORS_ORIGIN ?? "")
-        .split(",")
-        .map((origin) => {
-          try { return new URL(origin.trim()).hostname.toLowerCase(); } catch { return ""; }
-        })
-        .filter(Boolean);
+      // A frontend CORS origin is not a payment provider and must never be
+      // implicitly trusted as a checkout destination.
       const trustedSuffixes = [
         ...allowedHosts,
-        ...corsHosts,
         "stripe.com",
         "jazzcash.com.pk",
         "easypaisa.com.pk",
