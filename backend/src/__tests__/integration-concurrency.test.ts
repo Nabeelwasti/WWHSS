@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { PrismaClient, Prisma } from "@prisma/client";
+import { PostgresRateLimitStore } from "../middleware/rate-limit-store.js";
 
 function getIntegrationTestDbUrl(): string {
   const url = process.env.INTEGRATION_TEST_DB_URL;
@@ -60,6 +61,24 @@ describe("Real-PostgreSQL Integration & Concurrency Test Suite", () => {
   afterAll(async () => {
     if (prisma) {
       await prisma.$disconnect();
+    }
+  });
+
+  it("shares atomic rate-limit counters across independent store instances and namespaces", async () => {
+    const namespace = `integration-${Date.now()}`;
+    const first = new PostgresRateLimitStore(namespace);
+    const second = new PostgresRateLimitStore(namespace);
+    first.init({ windowMs: 60_000 } as any);
+    second.init({ windowMs: 60_000 } as any);
+    try {
+      expect((await first.increment("same-client")).totalHits).toBe(1);
+      expect((await second.increment("same-client")).totalHits).toBe(2);
+      await first.decrement("same-client");
+      expect((await second.increment("same-client")).totalHits).toBe(2);
+    } finally {
+      await first.resetAll();
+      await second.shutdown();
+      first.shutdown();
     }
   });
 

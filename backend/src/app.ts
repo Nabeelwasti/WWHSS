@@ -100,16 +100,23 @@ app.use((req, res, next) => {
   next();
 });
 
-import { SharedRateLimitStore } from "./middleware/rate-limit-store.js";
+import { PostgresRateLimitStore } from "./middleware/rate-limit-store.js";
 
-const sharedStore = new SharedRateLimitStore();
+const authLoginStore = new PostgresRateLimitStore("auth-login-ip");
+const authRefreshStore = new PostgresRateLimitStore("auth-refresh");
+const authAccountStore = new PostgresRateLimitStore("auth-login-account");
+const aiStore = new PostgresRateLimitStore("ai");
+const generalStore = new PostgresRateLimitStore("general-api");
+const expensiveOperationStore = new PostgresRateLimitStore("expensive-operation");
+const backupOperationStore = new PostgresRateLimitStore("backup-operation");
+const paymentWebhookStore = new PostgresRateLimitStore("payment-webhook");
 
 const authLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  store: sharedStore,
+  store: authLoginStore,
   message: { error: "Too many login attempts. Please try again later." },
 });
 
@@ -118,7 +125,7 @@ const authRefreshLimiter = rateLimit({
   limit: 60,
   standardHeaders: true,
   legacyHeaders: false,
-  store: sharedStore,
+  store: authRefreshStore,
   message: { error: "Too many token refresh attempts. Please try again later." },
 });
 
@@ -127,7 +134,7 @@ const authAccountLimiter = rateLimit({
   limit: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  store: sharedStore,
+  store: authAccountStore,
   keyGenerator: (req) => {
     const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
     const ip = req.ip || "unknown";
@@ -140,13 +147,13 @@ app.use("/api/auth/login", authLoginLimiter);
 app.use("/api/auth/login", authAccountLimiter);
 app.use("/api/auth/refresh", authRefreshLimiter);
 
-const aiLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false, store: sharedStore, message: { error: "You've asked a lot of questions this hour. Please try again later." } });
+const aiLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false, store: aiStore, message: { error: "You've asked a lot of questions this hour. Please try again later." } });
 app.use("/api/ai", aiLimiter);
-const generalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 600, standardHeaders: true, legacyHeaders: false, store: sharedStore, message: { error: "Too many requests. Please slow down and try again shortly." } });
+const generalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 600, standardHeaders: true, legacyHeaders: false, store: generalStore, message: { error: "Too many requests. Please slow down and try again shortly." } });
 app.use("/api", generalLimiter);
-const expensiveOperationLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 60, standardHeaders: true, legacyHeaders: false, store: sharedStore, message: { error: "This operation is temporarily rate-limited. Please try again later." } });
-const backupOperationLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false, store: sharedStore, message: { error: "Backup operations are temporarily rate-limited. Please try again later." } });
-const paymentWebhookLimiter = rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: true, legacyHeaders: false, store: sharedStore, message: { error: "Payment webhook rate limit exceeded. Please retry later." } });
+const expensiveOperationLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 60, standardHeaders: true, legacyHeaders: false, store: expensiveOperationStore, message: { error: "This operation is temporarily rate-limited. Please try again later." } });
+const backupOperationLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false, store: backupOperationStore, message: { error: "Backup operations are temporarily rate-limited. Please try again later." } });
+const paymentWebhookLimiter = rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: true, legacyHeaders: false, store: paymentWebhookStore, message: { error: "Payment webhook rate limit exceeded. Please retry later." } });
 app.use("/api/storage/upload", expensiveOperationLimiter);
 app.use("/api/documents", expensiveOperationLimiter);
 app.use("/api/ai/assessment", expensiveOperationLimiter);
