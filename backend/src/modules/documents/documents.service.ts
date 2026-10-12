@@ -89,7 +89,7 @@ async function getStudentOutstandingBalance(studentProfileId: string) {
     if (["cancelled", "void"].includes(invoice.status)) continue;
     billed += invoice.amountDue.toNumber();
     waived += invoice.feeWaivers.reduce((s, w) => s + w.amount.toNumber(), 0);
-    paid += invoice.payments.filter((p) => p.status !== "reversed").reduce((s, p) => s + Math.max(0, p.amount.toNumber() - p.adjustments.reduce((a, x) => a + x.amount.toNumber(), 0)), 0);
+    paid += invoice.payments.filter((p) => p.status === "posted").reduce((s, p) => s + Math.max(0, p.amount.toNumber() - p.adjustments.reduce((a, x) => a + x.amount.toNumber(), 0)), 0);
   }
   return { totalBilled: billed, totalPaid: paid, totalWaived: waived, outstanding: Math.max(0, billed - paid - waived) };
 }
@@ -119,7 +119,7 @@ export async function generatePrintableDocumentPayload(docType: string, referenc
     case "fee_statement": {
       const student = await prisma.studentProfile.findUnique({ where: { id: referenceId }, include: { user: { select: { fullName: true, email: true } }, class: true, section: true, fundingCategory: true, feeInvoices: { include: { feeStructure: true, payments: { include: { adjustments: true } }, feeWaivers: true } } } });
       if (!student) throw new DocumentValidationError(`Student ${referenceId} not found`);
-      return { docType, docNumber: await getOrCreateDocumentNumber(docType, student.id), issueDate, header, title: "Student Fee Account Statement / فيس والى تفصيل", entity: { name: student.user.fullName, admissionNo: student.admissionNo, className: student.class?.name || "N/A", fundingCategory: student.fundingCategory?.name || "Standard" }, records: student.feeInvoices.map((inv) => ({ invoiceName: inv.feeStructure.name, dueDate: inv.dueDate.toISOString().slice(0, 10), amountDue: inv.amountDue.toNumber(), paid: inv.payments.filter((p) => p.status !== "reversed").reduce((s, p) => s + p.amount.toNumber() - p.adjustments.reduce((a, x) => a + x.amount.toNumber(), 0), 0), waived: inv.feeWaivers.reduce((s, w) => s + w.amount.toNumber(), 0), status: inv.status.toUpperCase() })), signatures: [{ title: "Accounts Officer", name: null, status: "PENDING_SIGNATURE" }] };
+      return { docType, docNumber: await getOrCreateDocumentNumber(docType, student.id), issueDate, header, title: "Student Fee Account Statement / فيس والى تفصيل", entity: { name: student.user.fullName, admissionNo: student.admissionNo, className: student.class?.name || "N/A", fundingCategory: student.fundingCategory?.name || "Standard" }, records: student.feeInvoices.map((inv) => ({ invoiceName: inv.feeStructure.name, dueDate: inv.dueDate.toISOString().slice(0, 10), amountDue: inv.amountDue.toNumber(), paid: inv.payments.filter((p) => p.status === "posted").reduce((s, p) => s + p.amount.toNumber() - p.adjustments.reduce((a, x) => a + x.amount.toNumber(), 0), 0), waived: inv.feeWaivers.reduce((s, w) => s + w.amount.toNumber(), 0), status: inv.status.toUpperCase() })), signatures: [{ title: "Accounts Officer", name: null, status: "PENDING_SIGNATURE" }] };
     }
     case "timetable": {
       const student = await prisma.studentProfile.findUnique({ where: { id: referenceId }, include: { user: { select: { fullName: true } }, class: true, section: true } });

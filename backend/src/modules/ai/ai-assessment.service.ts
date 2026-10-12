@@ -282,6 +282,16 @@ export async function submitAiAnswerSheet(
   const suggestedScore = autoScore;
 
   return prisma.$transaction(async (tx) => {
+    // Serialize submissions against publishing/locking and validate the
+    // committed state after obtaining the row lock, not only before the tx.
+    const lockedTest = await tx.$queryRaw<Array<{ status: string }>>`
+      SELECT "status" FROM "ai_assessment_tests" WHERE "id" = ${input.testId} FOR UPDATE
+    `;
+    if (!lockedTest[0]) throw new AiAssessmentError("Assessment not found");
+    if (lockedTest[0].status !== "PUBLISHED") {
+      throw new AiAssessmentError("Only a published assessment can accept answer sheets.");
+    }
+
     const sheet = await tx.aiAnswerSheet.create({
       data: {
         testId: input.testId,

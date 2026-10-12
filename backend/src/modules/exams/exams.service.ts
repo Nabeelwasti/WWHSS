@@ -210,6 +210,16 @@ export async function recordExamResults(
   }
 
   return prisma.$transaction(async (tx) => {
+    // Lock and re-read the exam lifecycle in the same transaction as result
+    // writes so finalization cannot race a stale pre-transaction status check.
+    const lockedExam = await tx.$queryRaw<Array<{ status: string }>>`
+      SELECT "status" FROM "exams" WHERE "id" = ${input.examId} FOR UPDATE
+    `;
+    if (!lockedExam[0]) throw new ExamValidationError("Exam not found");
+    if (lockedExam[0].status === "LOCKED" || lockedExam[0].status === "FINALIZED") {
+      throw new ExamValidationError(`Cannot record or modify results for an exam in ${lockedExam[0].status} state`);
+    }
+
     const examSubject = await tx.examSubject.upsert({
       where: { examId_subjectId: { examId: input.examId, subjectId: input.subjectId } },
       update: { maxMarks: authoritativeMaxMarks },
