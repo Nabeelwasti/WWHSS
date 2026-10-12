@@ -3,7 +3,54 @@ import { Prisma } from "@prisma/client";
 
 export class FinanceValidationError extends Error {}
 
-async function runSerializableTransaction<T>(
+export interface InvoiceBalanceBreakdown {
+  amountDue: Prisma.Decimal;
+  paidTotal: Prisma.Decimal;
+  waivedTotal: Prisma.Decimal;
+  remainingBalance: Prisma.Decimal;
+  effectiveStatus: string;
+}
+
+export function calculateOutstandingBalance(
+  amountDue: Prisma.Decimal | number | string,
+  payments: Array<{ amount: Prisma.Decimal | number | string; status: string; adjustments?: Array<{ amount: Prisma.Decimal | number | string }> }> = [],
+  waivers: Array<{ amount: Prisma.Decimal | number | string }> = []
+): InvoiceBalanceBreakdown {
+  const decAmountDue = new Prisma.Decimal(amountDue).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+
+  const decPaid = payments
+    .filter((p) => p.status !== "reversed")
+    .reduce((sum, p) => {
+      const pAmount = new Prisma.Decimal(p.amount);
+      const adjTotal = (p.adjustments || []).reduce((aSum, a) => aSum.add(new Prisma.Decimal(a.amount)), new Prisma.Decimal(0));
+      return sum.add(pAmount.sub(adjTotal));
+    }, new Prisma.Decimal(0))
+    .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+
+  const decWaived = waivers
+    .reduce((sum, w) => sum.add(new Prisma.Decimal(w.amount)), new Prisma.Decimal(0))
+    .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+
+  const remaining = decAmountDue.sub(decPaid).sub(decWaived).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+  const remainingBalance = remaining.lt(0) ? new Prisma.Decimal(0) : remaining;
+
+  let effectiveStatus = "issued";
+  if (remainingBalance.lte(0)) {
+    effectiveStatus = decPaid.gt(0) ? "paid" : "waived";
+  } else if (decPaid.gt(0)) {
+    effectiveStatus = "partial";
+  }
+
+  return {
+    amountDue: decAmountDue,
+    paidTotal: decPaid,
+    waivedTotal: decWaived,
+    remainingBalance,
+    effectiveStatus,
+  };
+}
+
+export async function runSerializableTransaction<T>(
   fn: (tx: Prisma.TransactionClient) => Promise<T>,
   maxRetries = 5
 ): Promise<T> {
@@ -20,7 +67,7 @@ async function runSerializableTransaction<T>(
             (err as Error).message.includes("deadlock") ||
             (err as Error).message.includes("concurrent update")));
       if (isSerializationFailure && attempt < maxRetries) {
-        await new Promise((res) => setTimeout(res, Math.pow(2, attempt) * 10));
+        await new Promise((res) => setTimeout(res, Math.min(Math.pow(2, attempt) * 10, 1000)));
         continue;
       }
       throw err;
@@ -255,27 +302,19 @@ export async function generateInvoicesForClass(
   const baseAmount = feeStructure.amount;
 
   return runSerializableTransaction(async (tx) => {
+    const activeStudents = feeStructure.class.students.filter(
+      (s) => s.status === "ACTIVE"
+    );
+
     const invoices = await Promise.all(
-      feeStructure.class.students.map(async (student) => {
+      activeStudents.map(async (student) => {
         // Funding is effective for the invoice's actual billing/due date, not
         // merely because the funding record overlaps the academic year.
         const activeFunding = student.fundingRecords.find((r) =>
           r.startDate <= parsedDueDate && (!r.endDate || r.endDate >= parsedDueDate)
         );
         let calculatedAmountDue = baseAmount;
-        let initialStatus = "pending";
-
-        if (activeFunding) {
-          if (activeFunding.feePolicy === "FULLY_WAIVED") {
-            calculatedAmountDue = new Prisma.Decimal(0);
-            initialStatus = "waived";
-          } else if (activeFunding.feePolicy === "PARTIALLY_WAIVED" && activeFunding.waiverPercentage) {
-            const discountPct = new Prisma.Decimal(100).sub(activeFunding.waiverPercentage).div(100);
-            calculatedAmountDue = baseAmount.mul(discountPct);
-          } else if (activeFunding.feePolicy === "CUSTOM" && activeFunding.customFeeAmount) {
-            calculatedAmountDue = activeFunding.customFeeAmount;
-          }
-        }
+        let initialStatus = "issued";
 
         const existingInvoice = await tx.feeInvoice.findUnique({
           where: {
@@ -288,10 +327,29 @@ export async function generateInvoicesForClass(
           },
           include: { payments: true, feeWaivers: true },
         });
-        const hasManualWaiver = existingInvoice?.feeWaivers.some((w) => !w.reason.startsWith("Automatic Workers Welfare Funding Waiver (")) ?? false;
-        const canRecalculate = !existingInvoice || (existingInvoice.payments.length === 0 && !hasManualWaiver);
 
-        const invoiceNumber = `INV-${feeStructureId.slice(0, 8)}-${student.id.slice(0, 8)}-${billingPeriodStart.toISOString().slice(0, 10)}`;
+        // Unique invoice number scoped to structure, student, period start and period end
+        const invoiceNumber = `INV-${feeStructureId.slice(0, 8)}-${student.id.slice(0, 8)}-${billingPeriodStart.toISOString().slice(0, 10)}-${billingPeriodEnd.toISOString().slice(0, 10)}`;
+
+        let desiredWaivedAmount = new Prisma.Decimal(0);
+        let fundingReason = "";
+
+        if (activeFunding) {
+          fundingReason = `Automatic Funding Waiver [Category:${activeFunding.fundingCategoryId || "DEFAULT"}] (${activeFunding.feePolicy})`;
+          if (activeFunding.feePolicy === "FULLY_WAIVED") {
+            desiredWaivedAmount = baseAmount;
+            initialStatus = "waived";
+          } else if (activeFunding.feePolicy === "PARTIALLY_WAIVED" && activeFunding.waiverPercentage) {
+            desiredWaivedAmount = baseAmount.mul(activeFunding.waiverPercentage).div(100).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+          } else if (activeFunding.feePolicy === "CUSTOM" && activeFunding.customFeeAmount) {
+            desiredWaivedAmount = baseAmount.sub(activeFunding.customFeeAmount).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+            if (desiredWaivedAmount.lt(0)) desiredWaivedAmount = new Prisma.Decimal(0);
+          }
+        }
+
+        const automaticReasonPrefix = "Automatic Funding Waiver [";
+        const hasManualWaiver = existingInvoice?.feeWaivers.some((w) => !w.reason.startsWith(automaticReasonPrefix) && !w.reason.startsWith("Automatic Workers Welfare Funding Waiver (")) ?? false;
+        const canRecalculate = !existingInvoice || (existingInvoice.payments.length === 0 && !hasManualWaiver);
 
         const invoice = await tx.feeInvoice.upsert({
           where: {
@@ -302,12 +360,12 @@ export async function generateInvoicesForClass(
               billingPeriodEnd,
             },
           },
-          update: { dueDate: parsedDueDate, ...(canRecalculate ? { amountDue: calculatedAmountDue, status: initialStatus } : {}) },
+          update: { dueDate: parsedDueDate, ...(canRecalculate ? { amountDue: baseAmount, status: initialStatus } : {}) },
           create: {
             invoiceNumber,
             feeStructureId,
             studentProfileId: student.id,
-            amountDue: calculatedAmountDue,
+            amountDue: baseAmount,
             billingPeriodStart,
             billingPeriodEnd,
             dueDate: parsedDueDate,
@@ -315,19 +373,15 @@ export async function generateInvoicesForClass(
           },
         });
 
-        const automaticReasonPrefix = "Automatic Workers Welfare Funding Waiver (";
-        const desiredWaivedAmount = activeFunding &&
-          (activeFunding.feePolicy === "FULLY_WAIVED" || activeFunding.feePolicy === "PARTIALLY_WAIVED")
-          ? baseAmount.sub(calculatedAmountDue) : new Prisma.Decimal(0);
         const automaticWaivers = await tx.feeWaiver.findMany({ where: { invoiceId: invoice.id } })
-          .then((rows) => rows.filter((w) => w.reason.startsWith(automaticReasonPrefix)));
+          .then((rows) => rows.filter((w) => w.reason.startsWith(automaticReasonPrefix) || w.reason.startsWith("Automatic Workers Welfare Funding Waiver (")));
 
         if (desiredWaivedAmount.gt(0)) {
           if (automaticWaivers.length > 0) {
             const [first, ...duplicates] = automaticWaivers;
             await tx.feeWaiver.update({
               where: { id: first.id },
-              data: { amount: desiredWaivedAmount, reason: `${automaticReasonPrefix}${activeFunding!.feePolicy})` },
+              data: { amount: desiredWaivedAmount, reason: fundingReason },
             });
             if (duplicates.length > 0) await tx.feeWaiver.deleteMany({ where: { id: { in: duplicates.map((w) => w.id) } } });
           } else {
@@ -336,7 +390,7 @@ export async function generateInvoicesForClass(
                 invoiceId: invoice.id,
                 studentProfileId: student.id,
                 amount: desiredWaivedAmount,
-                reason: `${automaticReasonPrefix}${activeFunding!.feePolicy})`,
+                reason: fundingReason,
                 approvedByUserId: actorId,
               },
             });
@@ -375,29 +429,35 @@ export async function applyFeeWaiver(
   input: { invoiceId: string; studentProfileId: string; amount: number; reason: string },
   actorId?: string
 ) {
-  if (typeof input.amount !== "number" || input.amount <= 0) {
+  if (typeof input.amount !== "number" || Number.isNaN(input.amount) || input.amount <= 0) {
     throw new FinanceValidationError("Waiver amount must be greater than zero");
   }
 
-  const waiverAmount = new Prisma.Decimal(input.amount);
+  const waiverAmount = new Prisma.Decimal(input.amount).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+  if (waiverAmount.lte(0)) {
+    throw new FinanceValidationError("Waiver amount rounds to zero");
+  }
 
   return runSerializableTransaction(async (tx) => {
-    const invoice = await tx.feeInvoice.findUnique({ where: { id: input.invoiceId } });
+    const invoice = await tx.feeInvoice.findUnique({
+      where: { id: input.invoiceId },
+      include: { payments: { include: { adjustments: true } }, feeWaivers: true },
+    });
     if (!invoice) throw new FinanceValidationError("Invoice not found");
     if (invoice.studentProfileId !== input.studentProfileId) {
       throw new FinanceValidationError("Invoice does not belong to specified student");
     }
 
-    const previousPayments = await tx.payment.findMany({ where: { invoiceId: input.invoiceId } });
-    const paidTotal = previousPayments.reduce((sum, p) => sum.add(p.amount), new Prisma.Decimal(0));
-    const previousWaivers = await tx.feeWaiver.findMany({ where: { invoiceId: input.invoiceId } });
-    const waivedTotal = previousWaivers.reduce((sum, w) => sum.add(w.amount), new Prisma.Decimal(0));
+    const unpayableStatuses = ["draft", "cancelled", "void", "written_off"];
+    if (unpayableStatuses.includes(invoice.status)) {
+      throw new FinanceValidationError(`Cannot apply waiver to a ${invoice.status} invoice`);
+    }
 
-    const remainingToWaive = invoice.amountDue.sub(paidTotal).sub(waivedTotal);
+    const breakdown = calculateOutstandingBalance(invoice.amountDue, invoice.payments, invoice.feeWaivers);
 
-    if (waiverAmount.gt(remainingToWaive)) {
+    if (waiverAmount.gt(breakdown.remainingBalance)) {
       throw new FinanceValidationError(
-        `Waiver amount (${waiverAmount.toNumber()}) exceeds remaining un-waived balance (${remainingToWaive.toNumber()})`
+        `Waiver amount (${waiverAmount.toNumber()}) exceeds remaining un-waived balance (${breakdown.remainingBalance.toNumber()})`
       );
     }
 
@@ -411,11 +471,11 @@ export async function applyFeeWaiver(
       },
     });
 
-    const newWaivedTotal = waivedTotal.add(waiverAmount);
-    if (paidTotal.add(newWaivedTotal).gte(invoice.amountDue)) {
+    const newWaivedTotal = breakdown.waivedTotal.add(waiverAmount);
+    if (breakdown.paidTotal.add(newWaivedTotal).gte(invoice.amountDue)) {
       await tx.feeInvoice.update({
         where: { id: input.invoiceId },
-        data: { status: paidTotal.gt(0) ? "paid" : "waived" },
+        data: { status: breakdown.paidTotal.gt(0) ? "paid" : "waived" },
       });
     }
 
@@ -435,36 +495,32 @@ export async function applyFeeWaiver(
 }
 
 export async function recordPayment(input: { invoiceId: string; amount: number; method: string; receivedByUserId: string }) {
-  if (typeof input.amount !== "number" || input.amount <= 0) {
+  if (typeof input.amount !== "number" || Number.isNaN(input.amount) || input.amount <= 0) {
     throw new FinanceValidationError("Payment amount must be greater than zero");
   }
 
-  const paymentAmount = new Prisma.Decimal(input.amount);
+  const paymentAmount = new Prisma.Decimal(input.amount).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+  if (paymentAmount.lte(0)) {
+    throw new FinanceValidationError("Payment amount rounds to zero");
+  }
 
   return runSerializableTransaction(async (tx) => {
-    const invoice = await tx.feeInvoice.findUnique({ where: { id: input.invoiceId } });
+    const invoice = await tx.feeInvoice.findUnique({
+      where: { id: input.invoiceId },
+      include: { payments: { include: { adjustments: true } }, feeWaivers: true },
+    });
     if (!invoice) throw new FinanceValidationError("Invoice not found");
 
-    if (invoice.status === "waived") {
-      throw new FinanceValidationError("Cannot record payment for a waived invoice");
-    }
-    if (invoice.status === "paid") {
-      throw new FinanceValidationError("Cannot record payment for an invoice that is already fully paid");
+    const nonPayableStatuses = ["draft", "waived", "paid", "cancelled", "void", "written_off"];
+    if (nonPayableStatuses.includes(invoice.status)) {
+      throw new FinanceValidationError(`Cannot record payment for an invoice with status '${invoice.status}'`);
     }
 
-    const previousPayments = await tx.payment.findMany({ where: { invoiceId: input.invoiceId } });
-    const previousPaidTotal = previousPayments
-      .filter((p) => p.status !== "reversed")
-      .reduce((sum, p) => sum.add(new Prisma.Decimal(p.amount)), new Prisma.Decimal(0));
-    const waivers = await tx.feeWaiver.findMany({ where: { invoiceId: input.invoiceId } });
-    const waivedTotal = waivers.reduce((sum, w) => sum.add(new Prisma.Decimal(w.amount)), new Prisma.Decimal(0));
+    const breakdown = calculateOutstandingBalance(invoice.amountDue, invoice.payments, invoice.feeWaivers);
 
-    const effectiveAmountDue = new Prisma.Decimal(invoice.amountDue).sub(waivedTotal);
-    const remainingBalance = effectiveAmountDue.sub(previousPaidTotal);
-
-    if (paymentAmount.gt(remainingBalance)) {
+    if (paymentAmount.gt(breakdown.remainingBalance)) {
       throw new FinanceValidationError(
-        `Payment amount (${paymentAmount.toNumber()}) exceeds remaining balance (${remainingBalance.toNumber()})`
+        `Payment amount (${paymentAmount.toNumber()}) exceeds remaining balance (${breakdown.remainingBalance.toNumber()})`
       );
     }
 
@@ -477,7 +533,8 @@ export async function recordPayment(input: { invoiceId: string; amount: number; 
       },
     });
 
-    const newTotalPaid = previousPaidTotal.add(paymentAmount);
+    const newTotalPaid = breakdown.paidTotal.add(paymentAmount);
+    const effectiveAmountDue = new Prisma.Decimal(invoice.amountDue).sub(breakdown.waivedTotal);
 
     if (newTotalPaid.gte(effectiveAmountDue)) {
       await tx.feeInvoice.update({ where: { id: input.invoiceId }, data: { status: "paid" } });
@@ -505,14 +562,14 @@ export async function recordPayment(input: { invoiceId: string; amount: number; 
 export async function getStudentInvoices(studentProfileId: string) {
   const invoices = await prisma.feeInvoice.findMany({
     where: { studentProfileId },
-    include: { feeStructure: true, payments: true, feeWaivers: true },
+    include: { feeStructure: true, payments: { include: { adjustments: true } }, feeWaivers: true },
     orderBy: { dueDate: "desc" },
   });
 
   const now = new Date();
   return invoices.map((inv) => ({
     ...inv,
-    status: inv.status === "pending" && inv.dueDate < now ? "overdue" : inv.status,
+    status: (inv.status === "pending" || inv.status === "issued") && inv.dueDate < now ? "overdue" : inv.status,
   }));
 }
 
@@ -536,10 +593,9 @@ export async function getStudentFeeStatement(studentProfileId: string) {
 
   for (const inv of invoices) {
     totalBilled = totalBilled.add(inv.amountDue);
-    const paid = inv.payments.filter((p) => p.status !== "reversed").reduce((sum, p) => sum.add(p.amount), new Prisma.Decimal(0));
-    const waived = inv.feeWaivers.reduce((sum, w) => sum.add(w.amount), new Prisma.Decimal(0));
-    totalPaid = totalPaid.add(paid);
-    totalWaived = totalWaived.add(waived);
+    const breakdown = calculateOutstandingBalance(inv.amountDue, inv.payments, inv.feeWaivers);
+    totalPaid = totalPaid.add(breakdown.paidTotal);
+    totalWaived = totalWaived.add(breakdown.waivedTotal);
   }
 
   const outstandingBalance = totalBilled.sub(totalPaid).sub(totalWaived);
@@ -566,7 +622,8 @@ export async function adjustPayment(input: { paymentId: string; kind: "REFUND" |
     if (payment.status === "reversed") throw new FinanceValidationError("Cannot adjust a reversed payment");
     const adjusted = payment.adjustments.reduce((s, a) => s.add(a.amount), new Prisma.Decimal(0));
     const available = payment.amount.sub(adjusted);
-    const amount = new Prisma.Decimal(input.amount);
+    const amount = new Prisma.Decimal(input.amount).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+    if (amount.lte(0)) throw new FinanceValidationError("Adjustment amount rounds to zero");
     if (amount.gt(available)) throw new FinanceValidationError("Adjustment exceeds the remaining payment amount");
     if (input.kind === "REVERSAL" && adjusted.gt(0)) throw new FinanceValidationError("A payment with prior adjustments cannot be fully reversed");
     const row = await tx.paymentAdjustment.create({ data: { paymentId: payment.id, kind: input.kind, amount, reason: input.reason, reference: input.reference, adjustedByUserId: input.adjustedByUserId } });
@@ -580,11 +637,17 @@ export async function refreshInvoiceStatus(invoiceId: string, actorId?: string) 
   return runSerializableTransaction(async (tx) => {
     const invoice = await tx.feeInvoice.findUnique({ where: { id: invoiceId }, include: { payments: { include: { adjustments: true } }, feeWaivers: true } });
     if (!invoice) throw new FinanceValidationError("Invoice not found");
-    const paid = invoice.payments.filter(p => p.status !== "reversed").reduce((s,p)=>s.add(p.amount.sub(p.adjustments.reduce((a,x)=>a.add(x.amount),new Prisma.Decimal(0)))),new Prisma.Decimal(0));
-    const waived = invoice.feeWaivers.reduce((s,w)=>s.add(w.amount),new Prisma.Decimal(0));
-    const remaining = invoice.amountDue.sub(paid).sub(waived);
-    const status = remaining.lte(0) ? (paid.gt(0) ? "paid" : "waived") : paid.gt(0) ? "partial" : invoice.dueDate < new Date() ? "overdue" : "issued";
-    return tx.feeInvoice.update({ where: { id: invoiceId }, data: { status } });
+    // Terminal and non-open statuses must not be reopened by refresh operations
+    const terminalStatuses = ["cancelled", "void", "written_off"];
+    if (terminalStatuses.includes(invoice.status)) {
+      return invoice;
+    }
+    const breakdown = calculateOutstandingBalance(invoice.amountDue, invoice.payments, invoice.feeWaivers);
+    let nextStatus = breakdown.effectiveStatus;
+    if (nextStatus === "issued" && invoice.dueDate < new Date()) {
+      nextStatus = "overdue";
+    }
+    return tx.feeInvoice.update({ where: { id: invoiceId }, data: { status: nextStatus } });
   });
 }
 

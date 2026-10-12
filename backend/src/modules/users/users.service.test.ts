@@ -1,5 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("argon2", () => ({
+  default: {
+    hash: vi.fn().mockResolvedValue("mocked_hash"),
+    verify: vi.fn().mockResolvedValue(true),
+  },
+  hash: vi.fn().mockResolvedValue("mocked_hash"),
+  verify: vi.fn().mockResolvedValue(true),
+}));
+
 vi.mock("../../db/client.js", () => ({
   prisma: {
     userRole: { findMany: vi.fn() },

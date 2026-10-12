@@ -6,7 +6,6 @@ This document is the current operational source of truth for the production arch
 
 - Backend: Node.js 24, Express, TypeScript, Prisma 5, PostgreSQL 16, deployed as a stateless container on Cloud Run.
 - Frontend: React 18, TypeScript, Vite, hosted on Vercel as static assets. Hosted builds call the matching Cloud Run API directly using `VITE_API_BASE_URL`; Vercel is not an API proxy in the supported production topology.
-- Frontend: React 18, TypeScript, Vite.
 - Authentication: short-lived access JWT plus hashed, rotating refresh tokens in PostgreSQL, with explicit JWT issuer/audience validation.
 - Authorization: backend-enforced permission keys with class/section/subject/department/student scopes.
 - Durable files and backups: S3-compatible object storage (Cloudflare R2 is the free-first reference provider) in hosted preview/production.

@@ -100,28 +100,53 @@ app.use((req, res, next) => {
   next();
 });
 
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: true, legacyHeaders: false, message: { error: "Too many attempts. Please try again later." } });
-const authAccountLimiter = rateLimit({
+import { SharedRateLimitStore } from "./middleware/rate-limit-store.js";
+
+const sharedStore = new SharedRateLimitStore();
+
+const authLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 8,
+  limit: 20,
   standardHeaders: true,
   legacyHeaders: false,
+  store: sharedStore,
+  message: { error: "Too many login attempts. Please try again later." },
+});
+
+const authRefreshLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: sharedStore,
+  message: { error: "Too many token refresh attempts. Please try again later." },
+});
+
+const authAccountLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: sharedStore,
   keyGenerator: (req) => {
     const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
-    return email || req.ip || "unknown";
+    const ip = req.ip || "unknown";
+    return email ? `${email}:${ip}` : ip;
   },
-  message: { error: "Too many login attempts for this account. Please try again later." },
+  message: { error: "Too many login attempts for this account from your address. Please try again later." },
 });
-app.use("/api/auth/login", authLimiter);
+
+app.use("/api/auth/login", authLoginLimiter);
 app.use("/api/auth/login", authAccountLimiter);
-app.use("/api/auth/refresh", authLimiter);
-const aiLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false, message: { error: "You've asked a lot of questions this hour. Please try again later." } });
+app.use("/api/auth/refresh", authRefreshLimiter);
+
+const aiLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false, store: sharedStore, message: { error: "You've asked a lot of questions this hour. Please try again later." } });
 app.use("/api/ai", aiLimiter);
-const generalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 600, standardHeaders: true, legacyHeaders: false, message: { error: "Too many requests. Please slow down and try again shortly." } });
+const generalLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 600, standardHeaders: true, legacyHeaders: false, store: sharedStore, message: { error: "Too many requests. Please slow down and try again shortly." } });
 app.use("/api", generalLimiter);
-const expensiveOperationLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 60, standardHeaders: true, legacyHeaders: false, message: { error: "This operation is temporarily rate-limited. Please try again later." } });
-const backupOperationLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false, message: { error: "Backup operations are temporarily rate-limited. Please try again later." } });
-const paymentWebhookLimiter = rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: true, legacyHeaders: false, message: { error: "Payment webhook rate limit exceeded. Please retry later." } });
+const expensiveOperationLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 60, standardHeaders: true, legacyHeaders: false, store: sharedStore, message: { error: "This operation is temporarily rate-limited. Please try again later." } });
+const backupOperationLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false, store: sharedStore, message: { error: "Backup operations are temporarily rate-limited. Please try again later." } });
+const paymentWebhookLimiter = rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: true, legacyHeaders: false, store: sharedStore, message: { error: "Payment webhook rate limit exceeded. Please retry later." } });
 app.use("/api/storage/upload", expensiveOperationLimiter);
 app.use("/api/documents", expensiveOperationLimiter);
 app.use("/api/ai/assessment", expensiveOperationLimiter);

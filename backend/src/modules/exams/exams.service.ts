@@ -47,9 +47,17 @@ export async function configureExamSubject(input: { examId: string; subjectId: s
   if (!exam) throw new ExamValidationError(`Exam ${input.examId} not found`);
   if (!subject) throw new ExamValidationError(`Subject ${input.subjectId} not found`);
 
+  if (exam.status === "LOCKED" || exam.status === "FINALIZED") {
+    throw new ExamValidationError(`Cannot modify subject configuration for an exam in ${exam.status} state`);
+  }
+
   const maxMarksDec = new Prisma.Decimal(input.maxMarks);
 
   return prisma.$transaction(async (tx) => {
+    const existing = await tx.examSubject.findUnique({
+      where: { examId_subjectId: { examId: input.examId, subjectId: input.subjectId } },
+    });
+
     const examSubject = await tx.examSubject.upsert({
       where: { examId_subjectId: { examId: input.examId, subjectId: input.subjectId } },
       update: { maxMarks: maxMarksDec },
@@ -63,7 +71,10 @@ export async function configureExamSubject(input: { examId: string; subjectId: s
           userId: actorId,
           action: "exams:configure_subject",
           resource: `exam:${input.examId}:subject:${input.subjectId}`,
-          metadata: { maxMarks: input.maxMarks },
+          metadata: {
+            before: existing ? { maxMarks: existing.maxMarks.toNumber() } : null,
+            after: { maxMarks: input.maxMarks },
+          },
         },
       });
     }
@@ -97,6 +108,9 @@ export async function recordExamResults(
 
   const exam = await prisma.exam.findUnique({ where: { id: input.examId } });
   if (!exam) throw new ExamValidationError("Exam not found");
+  if (exam.status === "LOCKED" || exam.status === "FINALIZED") {
+    throw new ExamValidationError(`Cannot record or modify results for an exam in ${exam.status} state`);
+  }
 
   const subject = await prisma.subject.findUnique({ where: { id: input.subjectId } });
   if (!subject) throw new ExamValidationError("Subject not found");

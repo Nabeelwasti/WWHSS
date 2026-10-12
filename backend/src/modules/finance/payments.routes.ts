@@ -21,6 +21,42 @@ const createSchema = z.object({
   if (value.expiresAt && new Date(value.expiresAt).getTime() <= Date.now()) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["expiresAt"], message: "expiresAt must be in the future" });
   }
+  if (value.checkoutUrl) {
+    try {
+      const u = new URL(value.checkoutUrl);
+      if (u.protocol !== "https:") {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["checkoutUrl"], message: "checkoutUrl must use HTTPS scheme" });
+      }
+      const allowedHosts = (process.env.ALLOWED_CHECKOUT_HOSTS ?? "")
+        .split(",")
+        .map((h) => h.trim().toLowerCase())
+        .filter(Boolean);
+      const corsHosts = (process.env.CORS_ORIGIN ?? "")
+        .split(",")
+        .map((origin) => {
+          try { return new URL(origin.trim()).hostname.toLowerCase(); } catch { return ""; }
+        })
+        .filter(Boolean);
+      const trustedSuffixes = [
+        ...allowedHosts,
+        ...corsHosts,
+        "stripe.com",
+        "jazzcash.com.pk",
+        "easypaisa.com.pk",
+        "payfast.pk",
+        "1link.net.pk",
+        "checkout.com",
+        "paypal.com",
+      ];
+      const host = u.hostname.toLowerCase();
+      const isTrusted = trustedSuffixes.some((s) => host === s || host.endsWith(`.${s}`));
+      if (!isTrusted) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["checkoutUrl"], message: `checkoutUrl host '${host}' is not an explicitly permitted trusted payment host` });
+      }
+    } catch {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["checkoutUrl"], message: "Invalid checkoutUrl" });
+    }
+  }
 });
 
 const webhookSchema = z.object({
@@ -37,7 +73,12 @@ function verifySignature(raw: Buffer, signature: string, secret: string): boolea
 }
 
 function providerSecret(provider: string): string | undefined {
-  return process.env[`PAYMENT_WEBHOOK_SECRET_${provider}`] || process.env.PAYMENT_WEBHOOK_SECRET;
+  // Require provider-specific secret or centralized env.paymentWebhookSecret without silent/insecure fallbacks
+  const specific = process.env[`PAYMENT_WEBHOOK_SECRET_${provider}`];
+  if (specific && specific.trim().length > 0) return specific.trim();
+  const globalSec = process.env.PAYMENT_WEBHOOK_SECRET;
+  if (globalSec && globalSec.trim().length > 0) return globalSec.trim();
+  return undefined;
 }
 
 paymentsRouter.post("/intents", authenticate, authorize("finance:manage"), async (req, res) => {
@@ -119,7 +160,9 @@ paymentsRouter.post("/webhooks/:provider", async (req, res) => {
       if (!current) return null;
       if (current.status !== "PENDING") return current;
 
-      if (current.expiresAt && current.expiresAt.getTime() < Date.now()) {
+      const isExpired = current.expiresAt && current.expiresAt.getTime() < Date.now();
+      // If payment SUCCEEDED even though intent expired, reconcile the payment rather than cancelling it!
+      if (isExpired && parsed.data.status !== "SUCCEEDED") {
         const cancelled = await tx.paymentIntent.update({
           where: { id: current.id },
           data: { status: "CANCELLED" },

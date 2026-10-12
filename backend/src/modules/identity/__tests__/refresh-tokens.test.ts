@@ -19,11 +19,12 @@ vi.mock("../../../config/env.js", () => ({
   },
 }));
 
-const { mockFindFirst, mockUpdateMany, mockCreate, mockUserFindUnique } = vi.hoisted(() => ({
+const { mockFindFirst, mockUpdateMany, mockCreate, mockUserFindUnique, mockAuditLogCreate } = vi.hoisted(() => ({
   mockFindFirst: vi.fn(),
   mockUpdateMany: vi.fn(),
   mockCreate: vi.fn(),
   mockUserFindUnique: vi.fn(),
+  mockAuditLogCreate: vi.fn(),
 }));
 
 vi.mock("../../../db/client.js", () => ({
@@ -38,6 +39,9 @@ vi.mock("../../../db/client.js", () => ({
         user: {
           findUnique: mockUserFindUnique,
         },
+        auditLog: {
+          create: mockAuditLogCreate,
+        },
       })
     ),
     refreshToken: {
@@ -47,6 +51,9 @@ vi.mock("../../../db/client.js", () => ({
     },
     user: {
       findUnique: mockUserFindUnique,
+    },
+    auditLog: {
+      create: mockAuditLogCreate,
     },
   },
 }));
@@ -106,5 +113,33 @@ describe("Refresh Token Rotation Security", () => {
     mockUserFindUnique.mockResolvedValue({ id: "u-1", email: "user@school.edu", isActive: false });
 
     await expect(refresh("token-for-deactivated-user")).rejects.toThrow(AuthError);
+  });
+
+  it("commits token-family revocation and security audit event when replaying a revoked token", async () => {
+    mockFindFirst.mockResolvedValue({
+      id: "rt-compromised",
+      userId: "u-victim",
+      revoked: true,
+      expiresAt: new Date(Date.now() + 86400000),
+    });
+    mockUpdateMany.mockResolvedValue({ count: 2 });
+    mockAuditLogCreate.mockResolvedValue({});
+
+    await expect(refresh("replayed-revoked-token")).rejects.toThrow(AuthError);
+
+    // Verify token family revocation was invoked inside transaction
+    expect(mockUpdateMany).toHaveBeenCalledWith({
+      where: { userId: "u-victim", revoked: false },
+      data: { revoked: true },
+    });
+
+    // Verify audit log creation was invoked inside transaction
+    expect(mockAuditLogCreate).toHaveBeenCalledWith({
+      data: {
+        userId: "u-victim",
+        action: "auth:refresh_reuse_detected",
+        metadata: { refreshTokenId: "rt-compromised" },
+      },
+    });
   });
 });

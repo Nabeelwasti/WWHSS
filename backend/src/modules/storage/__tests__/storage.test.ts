@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   StorageValidationError,
@@ -29,12 +32,18 @@ describe("Storage providers", () => {
   });
 
   it("keeps local storage as a real filesystem provider", async () => {
-    const dir = `/tmp/wwhss-storage-test-${Date.now()}`;
+    const dir = path.join(os.tmpdir(), `wwhss-storage-test-${Date.now()}`);
     const local = new LocalStorageProvider(dir);
-    await local.saveFile("note.txt", Buffer.from("local"), "text/plain");
-    expect(await local.exists("note.txt")).toBe(true);
-    expect((await local.getFile("note.txt")).filePath).toContain("note.txt");
-    await local.deleteFile("note.txt");
+    try {
+      await local.saveFile("note.txt", Buffer.from("local"), "text/plain");
+      expect(await local.exists("note.txt")).toBe(true);
+      expect((await local.getFile("note.txt")).filePath).toContain("note.txt");
+      await local.deleteFile("note.txt");
+    } finally {
+      if (fs.existsSync(dir)) {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    }
   });
 
   it("exposes the S3 provider without falling back to process memory", () => {

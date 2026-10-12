@@ -5,3 +5,6 @@ dist
 !.env.example
 *.log
 .git
+storage_private
+backups
+uploads

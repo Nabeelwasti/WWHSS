@@ -5,6 +5,16 @@ import { Prisma } from "@prisma/client";
 
 export class UserValidationError extends Error {}
 
+export const publicUserSelect = {
+  id: true,
+  email: true,
+  fullName: true,
+  phone: true,
+  photoUrl: true,
+  isActive: true,
+  createdAt: true,
+} as const;
+
 const ROLE_LEVELS: Record<string, number> = {
   super_admin: 100,
   principal: 80,
@@ -356,7 +366,7 @@ export async function updateStudentProfile(
         fundingCategoryId: input.fundingCategoryId,
         rollNumber: input.rollNumber,
       },
-      include: { user: true, class: true, section: true, fundingCategory: true },
+      include: { user: { select: publicUserSelect }, class: true, section: true, fundingCategory: true },
     });
 
     if (actorId) {
@@ -379,7 +389,7 @@ export async function updateStudentProfile(
 export async function listStaffProfiles() {
   return prisma.staffProfile.findMany({
     include: {
-      user: { select: { id: true, email: true, fullName: true, phone: true, photoUrl: true, isActive: true } },
+      user: { select: publicUserSelect },
       department: true,
     },
     orderBy: { createdAt: "desc" },
@@ -390,7 +400,7 @@ export async function getStaffProfileById(staffProfileId: string) {
   const staff = await prisma.staffProfile.findUnique({
     where: { id: staffProfileId },
     include: {
-      user: { select: { id: true, email: true, fullName: true, phone: true, photoUrl: true, isActive: true } },
+      user: { select: publicUserSelect },
       department: true,
       documentRecords: { orderBy: { createdAt: "desc" } },
     },
@@ -430,7 +440,7 @@ export async function createStaffProfile(
         status: input.status || "ACTIVE",
         emergencyContact: input.emergencyContact,
       },
-      include: { user: true, department: true },
+      include: { user: { select: publicUserSelect }, department: true },
     });
 
     if (actorId) {
@@ -474,7 +484,7 @@ export async function updateStaffProfile(
         status: input.status,
         emergencyContact: input.emergencyContact,
       },
-      include: { user: true, department: true },
+      include: { user: { select: publicUserSelect }, department: true },
     });
 
     if (actorId) {

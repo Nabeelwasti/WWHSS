@@ -35,7 +35,7 @@ export async function refresh(presentedToken: string) {
   const hash = hashRefreshToken(presentedToken);
   const now = new Date();
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const record = await tx.refreshToken.findFirst({ where: { tokenHash: hash } });
 
     if (!record || record.expiresAt < now) {
@@ -43,9 +43,11 @@ export async function refresh(presentedToken: string) {
     }
 
     if (record.revoked) {
+      // Replay detected: revoke all remaining valid refresh tokens for this user
+      // and log security audit event. We return a sentinel so the transaction COMMITS.
       await tx.refreshToken.updateMany({ where: { userId: record.userId, revoked: false }, data: { revoked: true } });
       await tx.auditLog.create({ data: { userId: record.userId, action: "auth:refresh_reuse_detected", metadata: { refreshTokenId: record.id } } });
-      throw new AuthError("Invalid or expired refresh token");
+      return { replayDetected: true as const };
     }
 
     // Atomic conditional update: exactly one concurrent request can flip revoked: false -> true
@@ -70,8 +72,14 @@ export async function refresh(presentedToken: string) {
     const expiresAt = new Date(Date.now() + env.refreshTokenTtlDays * 24 * 60 * 60 * 1000);
     await tx.refreshToken.create({ data: { userId: user.id, tokenHash: newHash, expiresAt } });
 
-    return { accessToken, refreshToken: newRefresh };
+    return { replayDetected: false as const, tokens: { accessToken, refreshToken: newRefresh } };
   });
+
+  if (result.replayDetected) {
+    throw new AuthError("Invalid or expired refresh token");
+  }
+
+  return result.tokens;
 }
 
 

@@ -4,4 +4,8 @@ dist/
 *.log
 .DS_Store
 *.tsbuildinfo
-
+.vercel/
+.env*
+storage_private/
+backups/
+uploads/
