@@ -88,6 +88,21 @@ describe("OpenAPI Contract Validation Test Suite", () => {
     const { doc } = readOpenApiDoc(); const raw = JSON.stringify(doc); const refRegex = /"\$ref":\s*"#\/components\/(schemas|responses|securitySchemes)\/([A-Za-z0-9_]+)"/g; let match;
     while ((match = refRegex.exec(raw)) !== null) { const type = match[1] as "schemas" | "responses" | "securitySchemes"; const key = match[2]; expect(doc.components?.[type]?.[key], `$ref '#/components/${type}/${key}' must exist`).toBeDefined(); }
   });
+  it("documents incomplete restore recovery and bounded checkpoint inspection", () => {
+    const { doc } = readOpenApiDoc();
+    const restore = doc.paths["/api/backup/restore/{filename}"]?.post as { responses?: Record<string, unknown> } | undefined;
+    const checkpointList = doc.paths["/api/backup/restore/checkpoints"]?.get as {
+      parameters?: Array<{ name: string; schema?: { minimum?: number; maximum?: number; default?: number } }>;
+      responses?: Record<string, unknown>;
+    } | undefined;
+    expect(restore?.responses).toHaveProperty("503");
+    expect(checkpointList?.responses).toHaveProperty("200");
+    const limit = checkpointList?.parameters?.find((parameter) => parameter.name === "limit");
+    expect(limit?.schema?.minimum).toBe(1);
+    expect(limit?.schema?.maximum).toBe(100);
+    expect(limit?.schema?.default).toBe(25);
+  });
+
   it("asserts EXACT equality between implemented Express route operations and documented OpenAPI operations", () => {
     const { doc } = readOpenApiDoc(); const implementedSet = new Set(getImplementedExpressRoutes().map((r) => `${r.method.toUpperCase()} ${r.path}`)); const openApiSet = new Set<string>(); const validMethods = new Set(["get", "post", "put", "delete", "patch", "options", "head"]);
     for (const [pathKey, pathObj] of Object.entries(doc.paths)) for (const method of Object.keys(pathObj as Record<string, unknown>)) if (validMethods.has(method.toLowerCase())) openApiSet.add(`${method.toUpperCase()} ${pathKey}`);

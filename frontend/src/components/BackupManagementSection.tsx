@@ -1,10 +1,15 @@
 import { useEffect, useState } from "react";
-import { api, ApiError } from "../api";
+import { api, ApiError, type RestoreCheckpointSummary } from "../api";
+import { useLanguage } from "../i18n";
 
 type RestoreMode = "DRY_RUN" | "MERGE" | "REPLACE";
 
 export function BackupManagementSection() {
+  const { t } = useLanguage();
   const [backups, setBackups] = useState<any[]>([]);
+  const [checkpoints, setCheckpoints] = useState<RestoreCheckpointSummary[]>([]);
+  const [checkpointsLoaded, setCheckpointsLoaded] = useState(false);
+  const [checkpointError, setCheckpointError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -19,6 +24,16 @@ export function BackupManagementSection() {
       setError(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Could not load backups list.");
+    }
+
+    try {
+      const result = await api.listRestoreCheckpoints(25);
+      setCheckpoints(result.checkpoints);
+      setCheckpointError(null);
+    } catch (e) {
+      setCheckpointError(e instanceof ApiError ? e.message : t("backup.checkpoints.error"));
+    } finally {
+      setCheckpointsLoaded(true);
     }
   }
 
@@ -96,7 +111,12 @@ export function BackupManagementSection() {
       setSelectedRestoreFilename("");
       await refreshBackups();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : (e instanceof Error ? e.message : "Backup restore failed."));
+      if (e instanceof ApiError && e.code === "BACKUP_RESTORE_INCOMPLETE") {
+        await refreshBackups();
+        setError(`${t("backup.restoreIncomplete")} ${t("backup.restoreCheckpointId")} ${e.checkpointId ?? "unavailable"}`);
+      } else {
+        setError(e instanceof ApiError ? e.message : (e instanceof Error ? e.message : "Backup restore failed."));
+      }
     } finally {
       setLoading(false);
     }
@@ -126,6 +146,34 @@ export function BackupManagementSection() {
           </tr>)}
         </tbody></table></div>
       )}
+      <section className="backup-checkpoints-panel" aria-labelledby="backup-checkpoints-title">
+        <h3 id="backup-checkpoints-title">{t("backup.checkpoints.title")}</h3>
+        <p className="text-sm text-muted">{t("backup.checkpoints.description")}</p>
+        {checkpointError ? <p role="alert" className="alert alert-danger">{checkpointError}</p>
+          : !checkpointsLoaded ? <p role="status" className="text-sm text-muted">{t("backup.checkpoints.loading")}</p>
+          : checkpoints.length === 0 ? <p className="text-sm text-muted">{t("backup.checkpoints.none")}</p>
+          : <div className="finance-table-wrap"><table className="finance-table">
+            <thead><tr>
+              <th scope="col">{t("backup.checkpoints.id")}</th>
+              <th scope="col">{t("backup.checkpoints.backup")}</th>
+              <th scope="col">{t("backup.checkpoints.mode")}</th>
+              <th scope="col">{t("backup.checkpoints.status")}</th>
+              <th scope="col">{t("backup.checkpoints.started")}</th>
+              <th scope="col">{t("backup.checkpoints.completed")}</th>
+              <th scope="col">{t("backup.checkpoints.diagnostics")}</th>
+            </tr></thead>
+            <tbody>{checkpoints.map((checkpoint) => <tr key={checkpoint.id}>
+              <td><code>{checkpoint.id}</code></td>
+              <td><code>{checkpoint.backupId}</code></td>
+              <td>{checkpoint.mode}</td>
+              <td><span className="badge">{checkpoint.status}</span></td>
+              <td>{new Date(checkpoint.startedAt).toLocaleString()}</td>
+              <td>{checkpoint.completedAt ? new Date(checkpoint.completedAt).toLocaleString() : "—"}</td>
+              <td>{checkpoint.hasError ? t("backup.checkpoints.errorRetained") : t("backup.checkpoints.noError")}</td>
+            </tr>)}</tbody>
+          </table></div>}
+      </section>
+
 
       {selectedRestoreFilename && <section className="backup-restore-panel" aria-labelledby="backup-restore-title">
         <div className="flex justify-between gap-3">

@@ -102,14 +102,27 @@ async function request<T>(path: string, options: RequestInit = {}, isRetry = fal
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new ApiError(res.status, describeError(body, res.status));
+    const errorDetails = body && typeof body === "object" ? body as Record<string, unknown> : {};
+    throw new ApiError(
+      res.status,
+      describeError(body, res.status),
+      typeof errorDetails.code === "string" ? errorDetails.code : undefined,
+      typeof errorDetails.checkpointId === "string" ? errorDetails.checkpointId : undefined,
+      errorDetails.databaseCommitted === true,
+    );
   }
   if (res.status === 204) return undefined as T;
   return res.json();
 }
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(
+    public status: number,
+    message: string,
+    public code?: string,
+    public checkpointId?: string,
+    public databaseCommitted = false,
+  ) {
     super(message);
   }
 }
@@ -208,6 +221,16 @@ export type InvoiceSummary = {
   status: string;
   feeStructure: { name: string };
   payments: { amount: number; method: string; paidAt: string }[];
+};
+
+export type RestoreCheckpointSummary = {
+  id: string;
+  backupId: string;
+  mode: string;
+  status: string;
+  startedAt: string;
+  completedAt: string | null;
+  hasError: boolean;
 };
 
 export const api = {
@@ -631,6 +654,8 @@ export const api = {
 
   // ---- Backups ----
   listBackups: () => request<{ backups: unknown[] }>("/backup"),
+  listRestoreCheckpoints: (limit = 25) =>
+    request<{ checkpoints: RestoreCheckpointSummary[] }>(`/backup/restore/checkpoints?limit=${encodeURIComponent(String(limit))}`),
 
   createBackup: () => request<{ backup: unknown }>("/backup/create", { method: "POST" }),
 

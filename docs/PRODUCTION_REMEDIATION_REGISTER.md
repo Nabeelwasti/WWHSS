@@ -2,7 +2,7 @@
 
 **Baseline audited:** `main@7fc9513b0bcb9014b434b5d2861212da4aa3fa07`  
 **Merged hardening:** `main@5e579a3f4006e192bb24b10d631b11dbb16d69da`  
-**Follow-up branch:** `fix/backup-checkpoint-observability-2026-10`  
+**Follow-up branch:** `feat/backup-checkpoint-status-ui-2026-10`  
 **Last updated:** 2026-10-13  
 **Purpose:** track code changes separately from release evidence and school policy decisions. A green CI run is not a blanket production-readiness certificate.
 
@@ -19,6 +19,7 @@
 - [x] Added section- and department-scope permission regression tests alongside existing class, subject, student-self and guardian checks.
 - [x] Made post-commit backup-restore failures return HTTP 503 with the restore checkpoint ID and an explicit incomplete-recovery signal; this improves observability but does not replace a recovery drill.
 - [x] Added a permission-protected restore-checkpoint summary endpoint so backup operators can inspect recent restore state without exposing retained raw error text.
+- [x] Added an admin backup-management panel for recent restore checkpoints and surfaced the checkpoint ID when an incomplete restore returns HTTP 503.
 - [x] Routed the main authenticated campus shell's navigation, group headings, workspace descriptions, search labels, role labels and loading text through paired English/Urdu translation keys; broader component-level localization remains outstanding.
 
 ## Required before production can be certified
