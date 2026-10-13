@@ -1,22 +1,6 @@
 import "dotenv/config";
 import { z } from "zod";
-
-function isValidPublicHttpsOrigin(value: string): boolean {
-  try {
-    const parsed = new URL(value);
-    const hostname = parsed.hostname.toLowerCase();
-    return parsed.protocol === "https:"
-      && parsed.origin === value
-      && !parsed.username
-      && !parsed.password
-      && hostname !== "localhost"
-      && hostname !== "127.0.0.1"
-      && hostname !== "::1"
-      && hostname !== "[::1]";
-  } catch {
-    return false;
-  }
-}
+import { isValidPublicHttpsOrigin } from "./origins.js";
 
 const isVercelPreview = process.env.VERCEL_ENV === "preview";
 const isVercelProduction = process.env.VERCEL_ENV === "production";
