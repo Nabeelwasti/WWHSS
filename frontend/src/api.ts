@@ -102,12 +102,13 @@ async function request<T>(path: string, options: RequestInit = {}, isRetry = fal
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
+    const errorDetails = body && typeof body === "object" ? body as Record<string, unknown> : {};
     throw new ApiError(
       res.status,
       describeError(body, res.status),
-      typeof body.code === "string" ? body.code : undefined,
-      typeof body.checkpointId === "string" ? body.checkpointId : undefined,
-      body.databaseCommitted === true,
+      typeof errorDetails.code === "string" ? errorDetails.code : undefined,
+      typeof errorDetails.checkpointId === "string" ? errorDetails.checkpointId : undefined,
+      errorDetails.databaseCommitted === true,
     );
   }
   if (res.status === 204) return undefined as T;
