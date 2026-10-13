@@ -26,7 +26,7 @@
 ## Audit notes for this pass
 
 - The Vercel backend project is not the documented production topology. The supported topology is static Vercel frontend calling Cloud Run directly; production API origin, database migration owner, and live deployment state must be confirmed before release. The backend build must remain compile-only and must not apply migrations.
-- Account-specific login throttling previously keyed custom IP values without IPv6 subnet normalization. The audit branch corrects this and adds a regression test.
+- Account-specific login throttling previously keyed custom IP values without IPv6 subnet normalization. The audit branch corrects this with a local normalizer backed by the explicitly declared `ipaddr.js` dependency and adds a regression test.
 - CORS origin validation previously checked only an HTTPS prefix and had a malformed loopback regex in the `PUBLIC_APP_ORIGIN` check. The audit branch now requires canonical origins and rejects loopback hosts.
 - No CI result is claimed for this audit branch until its checks complete.
 
