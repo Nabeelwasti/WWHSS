@@ -1,0 +1,49 @@
+# WWHSS Digital Campus — Production Remediation Register
+
+**Baseline audited:** `main@7fc9513b0bcb9014b434b5d2861212da4aa3fa07`  
+**Remediation branch:** `fix/production-readiness-hardening-2026-10`  
+**Last updated:** 2026-10-13  
+**Purpose:** track code changes separately from release evidence and school policy decisions. A green CI run is not a blanket production-readiness certificate.
+
+## Implemented in this change
+
+- [x] Removed `prisma migrate deploy` from `backend/vercel.json` build command. A deployment build now compiles the application only.
+- [x] Added a CI invariant that fails if the Vercel backend build is changed to run migrations, and verifies that the governed Cloud Run release workflow remains the migration owner.
+- [x] Added a CI check that decodes the bundled Noto Naskh Arabic font and validates the TrueType signature.
+- [x] Clarified migration ownership in the release runbook and production-readiness guide.
+- [x] Made data-retention approval an explicit governance gate rather than implying the technical team can choose legal retention durations.
+
+## Required before production can be certified
+
+These items require real environment access, school-owner decisions, or dedicated test fixtures; repository edits alone cannot truthfully mark them complete.
+
+| Priority | Gate | Evidence required | State |
+|---|---|---|---|
+| P0 | Confirm actual production API topology | Record the live frontend API origin and backend provider; confirm Vercel is not independently migrating a shared production DB | Pending operator verification |
+| P1 | Exact-commit release | Successful protected release workflow on the chosen commit; record image digest, Cloud Run revision and traffic promotion | Pending release execution |
+| P1 | Preview/production isolation | Verify database, storage bucket, credentials and AI/provider settings are distinct | Pending environment evidence |
+| P1 | Migration rehearsal | Apply all pending migrations to a sanitized production-like clone; record locks, duration, rollback/forward plan | Pending disposable clone |
+| P1 | Authorization matrix | Generate a route inventory and exercise allow/deny cases for every role and object scope, including unrelated students/guardians and cross-class/section/subject/department access | Partial existing tests; full matrix pending |
+| P1 | Disaster recovery | Restore a real encrypted backup to disposable PostgreSQL and isolated object storage; validate FKs, business invariants, object references, interruption and post-commit storage failure | Pending isolated environment |
+| P1 | Autonomous jobs | Implement persisted jobs with idempotency, leases, retry/backoff, concurrency controls, dead-letter state, audit events, operator retry/cancel and alerts; approval-gate high-impact work | Not implemented / not certified |
+| P1 | Private storage | Exercise cross-scope upload/download, malformed/signature-mismatched files, size boundaries, storage outage and orphan reconciliation on the target runtime | Existing unit tests; live matrix pending |
+| P1 | Finance | Exercise duplicate/out-of-order webhooks, signature/replay, refund/reversal, concurrent posting, rounding and approval/reconciliation against a test gateway | Partial tests; gateway certification pending |
+| P2 | Localization and accessibility | Complete user-visible English/Urdu translation audit; desktop/mobile keyboard, screen-reader, focus, error and RTL browser journeys | Partial localization; full coverage pending |
+| P2 | Supply-chain assurance | Add and triage secret scanning, SAST, SBOM/provenance, license policy and reviewed/pinned actions; retain results for exact release commit | Pending |
+| P2 | Load/soak and resilience | Measure DB pool saturation, rate-limit store outage, login/refresh, AI quotas, uploads and backup/restore under expected peak load | Pending |
+| P2 | Governance | Name policy owners; approve retention/deletion, backup expiry, audit access, AI consent/minimization, incident/breach response and staff offboarding | School management approval pending |
+| P2 | Independent review | Independent security review/penetration test and remediation evidence | Pending |
+
+## Safety invariants
+
+1. Never run production migrations from a build hook, application startup, or more than one release owner.
+2. Never claim backup recoverability based only on envelope validation or a dry run.
+3. Never allow AI to bypass backend identity, permission or object-scope checks.
+4. AI-generated assessments remain drafts until an authorized teacher reviews and approves them.
+5. Finance posting, payroll, final grade publication, destructive restore, privilege changes and public publishing require explicit authorization/approval; autonomous jobs must not silently perform these actions.
+6. Never automate permanent deletion of protected student, safeguarding, finance, academic or audit records until the retention schedule is formally approved.
+7. Keep credentials, real student records and production dumps out of source control, CI logs, frontend bundles and test artifacts.
+
+## Release decision
+
+**Current decision: NOT CERTIFIED for unrestricted production use.** The latest recorded baseline CI run was green, but release, recovery, complete route-scope assurance, durable job automation, governance and independent security evidence remain unproven. Re-evaluate each row against artifacts from the exact release commit; do not change a state to complete based on configuration presence alone.
