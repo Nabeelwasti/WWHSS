@@ -152,7 +152,7 @@ jobs:
           grep -q 'npx prisma migrate deploy' .github/workflows/deploy-cloud-run.yml
       - name: Validate bundled Urdu font asset
         run: |
-          node --input-type=module -e 'import fs from "node:fs"; const p="backend/assets/fonts/NotoNaskhArabic-Regular.ttf.b64"; const raw=fs.readFileSync(p,"utf8").replace(/\\s/g,""); const font=Buffer.from(raw,"base64"); if(raw.length===0 || font.length<10000 || font.subarray(0,4).toString("hex")!=="00010000") { console.error("Bundled Noto Naskh Arabic asset is not a valid TrueType font"); process.exit(1); } console.log("Urdu/Arabic font payload decodes to a TrueType font ("+font.length+" bytes).");'
+          node --input-type=module -e 'import fs from "node:fs"; const p="backend/assets/fonts/NotoNaskhArabic-Regular.ttf.b64"; const raw=fs.readFileSync(p,"utf8").replace(/\s/g,""); const font=Buffer.from(raw,"base64"); if(raw.length===0 || font.length<10000 || font.subarray(0,4).toString("hex")!=="00010000") { console.error("Bundled Noto Naskh Arabic asset is not a valid TrueType font"); process.exit(1); } console.log("Urdu/Arabic font payload decodes to a TrueType font ("+font.length+" bytes).");'
       - name: Validate Vercel release configuration
         run: |
           test -f vercel.json
