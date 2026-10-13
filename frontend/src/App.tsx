@@ -115,29 +115,35 @@ export default function App() {
   const isLibrarian = roleKeys.includes("librarian");
 
   const allItems: NavigationItem[] = [
-    { key: "dashboard", label: t("nav.dashboard"), icon: "⌂", group: "Workspace", description: "Your personal overview" },
-    ...(isTeacher ? [{ key: "teacher" as const, label: "Teacher workspace", icon: "▤", group: "Teaching & learning" as const, description: "Classes, coursework and assessment" }] : []),
-    { key: "timetable", label: t("nav.timetable"), icon: "▦", group: "Teaching & learning", description: "Weekly classes and periods" },
-    ...(canAttendance ? [{ key: "attendance" as const, label: t("nav.attendance"), icon: "✓", group: "Teaching & learning" as const, description: "Record and review attendance" }] : []),
-    ...(isStudent ? [{ key: "quizzes" as const, label: t("nav.quizzes"), icon: "✎", group: "Teaching & learning" as const, description: "Quizzes and assessments" }] : []),
-    ...(isParent ? [{ key: "parent" as const, label: t("nav.parent"), icon: "♧", group: "Teaching & learning" as const, description: "Linked child progress and school updates" }] : []),
+    { key: "dashboard", label: t("nav.dashboard"), icon: "⌂", group: "Workspace", description: t("app.desc.dashboard") },
+    ...(isTeacher ? [{ key: "teacher" as const, label: t("app.nav.teacher"), icon: "▤", group: "Teaching & learning" as const, description: t("app.desc.teacher") }] : []),
+    { key: "timetable", label: t("nav.timetable"), icon: "▦", group: "Teaching & learning", description: t("app.desc.timetable") },
+    ...(canAttendance ? [{ key: "attendance" as const, label: t("nav.attendance"), icon: "✓", group: "Teaching & learning" as const, description: t("app.desc.attendance") }] : []),
+    ...(isStudent ? [{ key: "quizzes" as const, label: t("nav.quizzes"), icon: "✎", group: "Teaching & learning" as const, description: t("app.desc.quizzes") }] : []),
+    ...(isParent ? [{ key: "parent" as const, label: t("nav.parent"), icon: "♧", group: "Teaching & learning" as const, description: t("app.desc.parent") }] : []),
     ...(isAdmin ? [
-      { key: "students" as const, label: "Students & academics", icon: "◎", group: "School operations" as const, description: "Student directory and academic records" },
-      { key: "staff" as const, label: "Staff & HR", icon: "♙", group: "School operations" as const, description: "Staff profiles and HR workflows" },
-      { key: "operations" as const, label: "Operations center", icon: "⌘", group: "School operations" as const, description: "Admissions, transport, inventory and assets" },
-      { key: "assessment" as const, label: "AI assessment studio", icon: "✧", group: "Administration" as const, description: "Generate, review and publish assessments" },
-      { key: "documents" as const, label: "Document center", icon: "▧", group: "Administration" as const, description: "Official school documents and records" },
-      { key: "cms" as const, label: "Website & announcements", icon: "▤", group: "Administration" as const, description: "Pages, notices and events" },
-      { key: "backups" as const, label: "Backup & recovery", icon: "⟳", group: "Administration" as const, description: "Backup verification and recovery controls" },
-      { key: "admin" as const, label: "Users & access", icon: "⚙", group: "Administration" as const, description: "Users, roles and academic structure" },
+      { key: "students" as const, label: t("app.nav.students"), icon: "◎", group: "School operations" as const, description: t("app.desc.students") },
+      { key: "staff" as const, label: t("app.nav.staff"), icon: "♙", group: "School operations" as const, description: t("app.desc.staff") },
+      { key: "operations" as const, label: t("app.nav.operations"), icon: "⌘", group: "School operations" as const, description: t("app.desc.operations") },
+      { key: "assessment" as const, label: t("app.nav.assessment"), icon: "✧", group: "Administration" as const, description: t("app.desc.assessment") },
+      { key: "documents" as const, label: t("app.nav.documents"), icon: "▧", group: "Administration" as const, description: t("app.desc.documents") },
+      { key: "cms" as const, label: t("app.nav.cms"), icon: "▤", group: "Administration" as const, description: t("app.desc.cms") },
+      { key: "backups" as const, label: t("app.nav.backups"), icon: "⟳", group: "Administration" as const, description: t("app.desc.backups") },
+      { key: "admin" as const, label: t("app.nav.users"), icon: "⚙", group: "Administration" as const, description: t("app.desc.users") },
     ] : []),
     ...((isAdmin || isAccountant) ? [
-      { key: "finance" as const, label: "Finance & funding", icon: "¤", group: "School operations" as const, description: "Fees, funding, invoices and payments" },
+      { key: "finance" as const, label: t("app.nav.finance"), icon: "¤", group: "School operations" as const, description: t("app.desc.finance") },
     ] : []),
     ...((isAdmin || isLibrarian) ? [
-      { key: "library" as const, label: "Library", icon: "▥", group: "School operations" as const, description: "Catalog, copies, issues and returns" },
+      { key: "library" as const, label: t("app.nav.library"), icon: "▥", group: "School operations" as const, description: t("app.desc.library") },
     ] : []),
   ];
+  const groupLabels: Record<NavigationItem["group"], string> = {
+    Workspace: t("app.group.workspace"),
+    "Teaching & learning": t("app.group.teaching"),
+    "School operations": t("app.group.operations"),
+    Administration: t("app.group.admin"),
+  };;
 
   const query = search.trim().toLowerCase();
   const visibleItems = query
@@ -167,16 +173,16 @@ export default function App() {
     <div className="campus-app">
       {error && <p className="auth-error" role="alert">{error}</p>}
       <header className="campus-topbar">
-        <button className="campus-brand" onClick={() => navigate("dashboard")} aria-label="WWHSS Digital Campus home">
+        <button className="campus-brand" onClick={() => navigate("dashboard")} aria-label={t("app.brandHome")}>
           <span className="campus-brand-mark">W</span>
           <span className="campus-brand-copy">
             <strong>WWHSS</strong>
-            <small>Digital Campus</small>
+            <small>{t("app.digitalCampus")}</small>
           </span>
         </button>
 
         <div className="topbar-context">
-          <span className="topbar-eyebrow">YOUR SCHOOL, CONNECTED</span>
+          <span className="topbar-eyebrow">{t("app.topbarEyebrow")}</span>
           <strong>{currentItem.label}</strong>
         </div>
 
@@ -186,8 +192,8 @@ export default function App() {
             ref={searchRef}
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Find a tool or workspace…"
-            aria-label="Search available workspaces"
+            placeholder={t("app.searchPlaceholder")}
+            aria-label={t("app.searchLabel")}
           />
           <kbd>Ctrl K</kbd>
         </label>
@@ -200,25 +206,25 @@ export default function App() {
       </header>
 
       <div className="campus-layout">
-        <aside className="campus-sidebar" aria-label="Main navigation">
+        <aside className="campus-sidebar" aria-label={t("app.navLabel")}>
           <div className="sidebar-user">
             <div className="sidebar-avatar">{initials || "U"}</div>
             <div className="sidebar-user-copy">
               <strong>{user.fullName}</strong>
-              <span>{user.userRoles.length ? user.userRoles.map((assignment) => assignment.role.name).join(" · ") : "Account pending role"}</span>
+              <span>{user.userRoles.length ? user.userRoles.map((assignment) => assignment.role.name).join(" · ")  : t("app.role.pending")}</span>
             </div>
-            <span className="session-indicator" title="Signed-in session" />
+            <span className="session-indicator" title={t("app.sessionSignedIn")} />
           </div>
 
-          {search.trim() && <p className="search-result-count">{visibleItems.length} matching workspace{visibleItems.length === 1 ? "" : "s"}</p>}
+          {search.trim() && <p className="search-result-count">{visibleItems.length} {t(visibleItems.length === 1 ? "app.search.resultsSingular" : "app.search.resultsPlural")}</p>}
 
-          <nav className="workspace-nav" aria-label="School workspaces">
+          <nav className="workspace-nav" aria-label={t("app.workspacesLabel")}>
             {groups.map((group) => {
               const items = visibleItems.filter((item) => item.group === group);
               if (!items.length) return null;
               return (
                 <section className="nav-group" key={group}>
-                  <h2>{group}</h2>
+                  <h2>{groupLabels[group]}</h2>
                   {items.map((item) => (
                     <button
                       key={item.key}
@@ -237,26 +243,26 @@ export default function App() {
             })}
             {search.trim() && visibleItems.length === 0 && (
               <div className="nav-empty">
-                <strong>No matching tool</strong>
-                <span>Try “fees”, “students”, “attendance” or “backup”.</span>
+                <strong>{t("app.search.noMatchTitle")}</strong>
+                <span>{t("app.search.suggestions")}</span>
               </div>
             )}
           </nav>
 
           <div className="sidebar-footer">
             <span className="footer-status-dot" />
-            <div><strong>Secure workspace</strong><small>Access follows your school role</small></div>
+            <div><strong>{t("app.secureWorkspace")}</strong><small>{t("app.accessFollowsRole")}</small></div>
           </div>
         </aside>
 
         <div className="campus-main">
-          <section className="page-context" aria-label="Current workspace">
+          <section className="page-context" aria-label={t("app.currentWorkspace")}>
             <div>
-              <p className="page-breadcrumb">Digital Campus <span>/</span> {currentItem.group}</p>
+              <p className="page-breadcrumb">{t("app.digitalCampus")} <span>/</span> {groupLabels[currentItem.group]}</p>
               <h1>{currentItem.label}</h1>
               <p>{currentItem.description}</p>
             </div>
-            <span className="workspace-role-pill">{isAdmin ? "Administrator access" : isAccountant ? "Finance workspace" : isLibrarian ? "Library workspace" : isTeacher ? "Teaching workspace" : isParent ? "Family workspace" : isStudent ? "Student workspace" : "School account"}</span>
+            <span className="workspace-role-pill">{isAdmin ? t("app.role.admin") : isAccountant ? t("app.role.finance") : isLibrarian ? t("app.role.library") : isTeacher ? t("app.role.teacher") : isParent ? t("app.role.family") : isStudent ? t("app.role.student") : t("app.role.school")}</span>
           </section>
 
           <div className="workspace-content">
