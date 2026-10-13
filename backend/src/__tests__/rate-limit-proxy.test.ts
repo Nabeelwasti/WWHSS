@@ -1,10 +1,14 @@
 import { describe, it, expect } from "vitest";
 import http from "node:http";
 import express from "express";
-import { rateLimit } from "express-rate-limit";
+import { ipKeyGenerator, rateLimit } from "express-rate-limit";
 import { SharedRateLimitStore } from "../middleware/rate-limit-store.js";
 
 describe("Rate Limiting, Proxy Trust & Forwarded-IP Isolation", () => {
+  it("normalizes IPv6 clients to a stable subnet key for account rate limits", () => {
+    expect(ipKeyGenerator("2001:db8:abcd:1200::1")).toBe(ipKeyGenerator("2001:db8:abcd:12ff::1"));
+    expect(ipKeyGenerator("2001:db8:abcd:1200::1")).not.toBe(ipKeyGenerator("2001:db8:abce:1200::1"));
+  });
   it("isolates client IPs and rejects spoofed headers when proxy is not blindly trusting multi-hop headers", async () => {
     const app = express();
     app.set("trust proxy", 1); // Only trust single immediate hop (reverse proxy)
@@ -16,7 +20,7 @@ describe("Rate Limiting, Proxy Trust & Forwarded-IP Isolation", () => {
       store,
       keyGenerator: (req) => {
         const email = typeof req.query.email === "string" ? req.query.email.trim().toLowerCase() : "";
-        const ip = req.ip || "unknown";
+        const ip = req.ip ? ipKeyGenerator(req.ip) : "unknown";
         return email ? `${email}:${ip}` : ip;
       },
       message: { error: "rate limit exceeded" },
