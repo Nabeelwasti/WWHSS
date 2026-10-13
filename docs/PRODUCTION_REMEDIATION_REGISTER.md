@@ -1,9 +1,8 @@
 # WWHSS Digital Campus — Production Remediation Register
 
-**Baseline audited:** `main@7fc9513b0bcb9014b434b5d2861212da4aa3fa07`  
-**Merged hardening:** `main@5e579a3f4006e192bb24b10d631b11dbb16d69da`  
-**Follow-up branch:** `feat/backup-checkpoint-status-ui-2026-10`  
-**Last updated:** 2026-10-13  
+**Baseline audited:** `main@f7576007f18441858b339fb4f3cd805e30b61434`  
+**Audit branch:** `audit/production-readiness-2026-10-14`  
+**Last updated:** 2026-10-14  
 **Purpose:** track code changes separately from release evidence and school policy decisions. A green CI run is not a blanket production-readiness certificate.
 
 ## Implemented in this change
@@ -21,6 +20,15 @@
 - [x] Added a permission-protected restore-checkpoint summary endpoint so backup operators can inspect recent restore state without exposing retained raw error text.
 - [x] Added an admin backup-management panel for recent restore checkpoints and surfaced the checkpoint ID when an incomplete restore returns HTTP 503.
 - [x] Routed the main authenticated campus shell's navigation, group headings, workspace descriptions, search labels, role labels and loading text through paired English/Urdu translation keys; broader component-level localization remains outstanding.
+- [x] Normalized IPv6 client addresses in the account-specific login rate-limit key so address rotation within a subnet does not trivially bypass the per-account limiter.
+- [x] Validated configured CORS/public-app origins as canonical HTTPS origins (not URLs with paths, embedded credentials, or loopback hosts), preventing configurations that pass startup validation but cannot match browser Origin headers.
+
+## Audit notes for this pass
+
+- The Vercel backend project is not the documented production topology. The supported topology is static Vercel frontend calling Cloud Run directly; production API origin, database migration owner, and live deployment state must be confirmed before release. The backend build must remain compile-only and must not apply migrations.
+- Account-specific login throttling previously keyed custom IP values without IPv6 subnet normalization. The audit branch corrects this and adds a regression test.
+- CORS origin validation previously checked only an HTTPS prefix and had a malformed loopback regex in the `PUBLIC_APP_ORIGIN` check. The audit branch now requires canonical origins and rejects loopback hosts.
+- No CI result is claimed for this audit branch until its checks complete.
 
 ## Required before production can be certified
 
