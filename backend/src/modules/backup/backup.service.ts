@@ -523,6 +523,33 @@ export async function listBackups(): Promise<BackupMetadata[]> {
   return provider.listBackups();
 }
 
+export interface RestoreCheckpointSummary {
+  id: string;
+  backupId: string;
+  mode: string;
+  status: string;
+  startedAt: Date;
+  completedAt: Date | null;
+  hasError: boolean;
+}
+
+/**
+ * Return bounded, non-sensitive restore status for authorized operators.
+ * The retained error text is deliberately not exposed through this summary.
+ */
+export async function listRestoreCheckpoints(limit = 25): Promise<RestoreCheckpointSummary[]> {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw new BackupError("Restore checkpoint limit must be an integer between 1 and 100");
+  }
+  return prisma.$queryRaw<RestoreCheckpointSummary[]>`
+    SELECT "id", "backupId", "mode", "status", "startedAt", "completedAt",
+      ("error" IS NOT NULL) AS "hasError"
+    FROM "backup_restore_checkpoints"
+    ORDER BY "startedAt" DESC
+    LIMIT ${limit}
+  `;
+}
+
 export async function verifyBackupRecovery(
   filename: string,
   encryptionSecret?: string
