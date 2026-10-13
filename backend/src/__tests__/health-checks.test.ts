@@ -43,6 +43,29 @@ describe("health and readiness endpoints", () => {
     expect(body.database).toBe("connected");
   });
 
+  it("allows same-origin credentialed requests and CORS preflight", async () => {
+    const origin = baseUrl;
+
+    const response = await fetch(`${baseUrl}/api/health`, {
+      headers: { Origin: origin },
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe(origin);
+    expect(response.headers.get("access-control-allow-credentials")).toBe("true");
+
+    const preflight = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: origin,
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type",
+      },
+    });
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("access-control-allow-origin")).toBe(origin);
+    expect(preflight.headers.get("access-control-allow-credentials")).toBe("true");
+  });
+
   it("returns degraded health instead of an unhandled 500 when the database health query fails", async () => {
     vi.mocked(prisma.$queryRaw).mockRejectedValueOnce(new Error("database unavailable"));
 
