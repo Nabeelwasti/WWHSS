@@ -65,6 +65,19 @@ describe("Frontend Localization & Accessibility Hardening Verification Suite", (
     expect(operationsSource).toContain('t("ops.noOptions.ptm")');
   });
 
+  it("surfaces backup restore checkpoints and incomplete-recovery IDs in the admin UI", () => {
+    const apiSource = fs.readFileSync(path.resolve(frontendSrcDir, "api.ts"), "utf-8");
+    const backupUiSource = fs.readFileSync(path.resolve(frontendSrcDir, "components/BackupManagementSection.tsx"), "utf-8");
+
+    expect(apiSource).toContain('public code?: string');
+    expect(apiSource).toContain('public checkpointId?: string');
+    expect(apiSource).toContain('listRestoreCheckpoints: (limit = 25)');
+    expect(backupUiSource).toContain('api.listRestoreCheckpoints(25)');
+    expect(backupUiSource).toContain('e.code === "BACKUP_RESTORE_INCOMPLETE"');
+    expect(backupUiSource).toContain('t("backup.restoreCheckpointId")');
+    expect(backupUiSource).toContain('checkpoint.hasError ? t("backup.checkpoints.errorRetained")');
+  });
+
   it("verifies accessible ARIA roles, live regions, and semantic table headers across major component files", () => {
     const filesToInspect = [
       "components/UpdateToast.tsx",
