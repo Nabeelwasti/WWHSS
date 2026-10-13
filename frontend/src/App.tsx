@@ -143,7 +143,7 @@ export default function App() {
     "Teaching & learning": t("app.group.teaching"),
     "School operations": t("app.group.operations"),
     Administration: t("app.group.admin"),
-  };;
+  };
 
   const query = search.trim().toLowerCase();
   const visibleItems = query
