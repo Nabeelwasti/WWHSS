@@ -34,7 +34,7 @@ Losing the encryption key makes encrypted backups unrecoverable.
 PostgreSQL and object storage do not share a transaction. If the database commit succeeds but post-commit reconciliation or checkpoint finalization fails, the restore API returns HTTP 503 with code `BACKUP_RESTORE_INCOMPLETE`, `databaseCommitted: true`, and a `checkpointId`. This is a partial-recovery alarm, not a successful restore.
 
 1. Stop treating the environment as recovered; do not promote it to normal use based on the database health endpoint alone.
-2. Use the authenticated backup API endpoint `GET /restore/checkpoints?limit=25` (requires `backup:view`) to inspect the checkpoint ID, backup ID, mode, status, timestamps and error-presence flag. The API intentionally omits raw error text; inspect the retained database row through the authorized operational procedure when detailed diagnostics are needed.
+2. Use the authenticated backup API endpoint `GET /restore/checkpoints?limit=25` (requires `backup:view`) to inspect the checkpoint ID, backup ID, mode, status, timestamps and error-presence flag. The admin backup screen shows the same safe summary. The API intentionally omits raw error text; inspect the retained database row through the authorized operational procedure when detailed diagnostics are needed.
 3. Verify object-storage availability and permissions, and preserve logs/checkpoint evidence.
 4. After correcting the underlying fault, retry the same restore operation only under the authorized restore procedure; verify storage keys and representative records again.
 5. Record the retry and validation outcome. A 503/checkpoint signal is observability, not an automatic rollback or a substitute for an isolated recovery drill.
