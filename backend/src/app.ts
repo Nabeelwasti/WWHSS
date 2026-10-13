@@ -166,24 +166,27 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-app.get("/ready", async (_req, res) => {
+const readinessHandler = async (_req: express.Request, res: express.Response) => {
   try {
-    await prisma.$queryRaw`SELECT 1`;
+    // Database connectivity alone is insufficient: all API routes use the
+    // PostgreSQL rate-limit store, so readiness must verify its table exists.
+    const rows = await prisma.$queryRaw<Array<{ rateLimitTable: string | null }>>`
+      SELECT to_regclass('rate_limit_buckets')::text AS "rateLimitTable"
+    `;
+    if (!rows[0]?.rateLimitTable) {
+      res.status(503).json({ status: "not_ready" });
+      return;
+    }
     res.json({ status: "ready", database: "connected" });
   } catch {
     res.status(503).json({ status: "not_ready" });
   }
-});
+};
+
+app.get("/ready", readinessHandler);
 
 app.get("/api/health", healthHandler);
-app.get("/api/ready", async (_req, res) => {
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    res.json({ status: "ready", database: "connected" });
-  } catch {
-    res.status(503).json({ status: "not_ready" });
-  }
-});
+app.get("/api/ready", readinessHandler);
 
 app.use("/api/auth/login", authLoginLimiter);
 app.use("/api/auth/login", authAccountLimiter);
