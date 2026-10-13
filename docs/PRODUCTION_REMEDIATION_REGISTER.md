@@ -22,6 +22,7 @@
 - [x] Routed the main authenticated campus shell's navigation, group headings, workspace descriptions, search labels, role labels and loading text through paired English/Urdu translation keys; broader component-level localization remains outstanding.
 - [x] Normalized IPv6 client addresses in the account-specific login rate-limit key so address rotation within a subnet does not trivially bypass the per-account limiter.
 - [x] Validated configured CORS/public-app origins as canonical HTTPS origins (not URLs with paths, embedded credentials, or loopback hosts), preventing configurations that pass startup validation but cannot match browser Origin headers.
+- [x] Made API readiness verify the PostgreSQL rate-limit table exists, so a database with reachable PostgreSQL but an incomplete migration state is not incorrectly reported as ready; added a missing-table regression test.
 
 ## Audit notes for this pass
 
