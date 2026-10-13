@@ -51,29 +51,32 @@ app.set(
 
 app.use(helmet());
 
-function isConfiguredCorsOriginAllowed(origin: string | undefined): boolean {
+function isCorsOriginAllowed(origin: string | undefined, sameOrigin: string): boolean {
   if (!origin) return true;
-  return env.corsOrigins.includes(origin);
+  return origin === sameOrigin || env.corsOrigins.includes(origin);
 }
 
-app.use((req, _res, next) => {
+// Keep the allowlist check and the CORS response policy identical. In particular,
+// same-origin requests are valid even when CORS_ORIGIN only lists remote browser
+// origins; rejecting them in the second middleware breaks JSON POST/preflight calls.
+app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (!origin) return next();
   const sameOrigin = `${req.protocol}://${req.get("host")}`;
-  if (origin === sameOrigin || isConfiguredCorsOriginAllowed(origin)) return next();
-  const error = new Error("CORS origin is not allowed") as Error & { status?: number; code?: string };
-  error.status = 403;
-  error.code = "CORS_ORIGIN_DENIED";
-  return next(error);
-});
+  if (!isCorsOriginAllowed(origin, sameOrigin)) {
+    const error = new Error("CORS origin is not allowed") as Error & { status?: number; code?: string };
+    error.status = 403;
+    error.code = "CORS_ORIGIN_DENIED";
+    return next(error);
+  }
 
-app.use(cors({
-  credentials: true,
-  origin(origin, callback) {
-    if (isConfiguredCorsOriginAllowed(origin)) return callback(null, true);
-    callback(new Error("CORS origin is not allowed"));
-  },
-}));
+  return cors({
+    credentials: true,
+    origin(requestOrigin, callback) {
+      if (isCorsOriginAllowed(requestOrigin, sameOrigin)) return callback(null, true);
+      callback(new Error("CORS origin is not allowed"));
+    },
+  })(req, res, next);
+});
 app.use(express.json({
   limit: "1mb",
   verify: (req, _res, buf) => {
