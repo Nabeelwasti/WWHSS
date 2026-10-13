@@ -541,13 +541,13 @@ export async function listRestoreCheckpoints(limit = 25): Promise<RestoreCheckpo
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
     throw new BackupError("Restore checkpoint limit must be an integer between 1 and 100");
   }
-  return prisma.$queryRaw<RestoreCheckpointSummary[]>\`
+  return prisma.$queryRaw<RestoreCheckpointSummary[]>`
     SELECT "id", "backupId", "mode", "status", "startedAt", "completedAt",
       ("error" IS NOT NULL) AS "hasError"
     FROM "backup_restore_checkpoints"
     ORDER BY "startedAt" DESC
     LIMIT ${limit}
-  \`;
+  `;
 }
 
 export async function verifyBackupRecovery(
