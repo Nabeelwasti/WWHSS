@@ -50,6 +50,21 @@ describe("Frontend Localization & Accessibility Hardening Verification Suite", (
     expect(languageToggleSource).toContain('aria-label={t("app.changeLanguage")}');
   });
 
+  it("localizes enterprise operations navigation and key feedback messages", () => {
+    const i18nSource = fs.readFileSync(path.resolve(frontendSrcDir, "i18n.tsx"), "utf-8");
+    const operationsSource = fs.readFileSync(path.resolve(frontendSrcDir, "components/EnterpriseOperationsSection.tsx"), "utf-8");
+
+    expect(i18nSource).toContain('"ops.tab.hr": "HR & Leave"');
+    expect(i18nSource).toContain('"ops.tab.hr": "عملہ اور رخصت"');
+    expect(i18nSource).toContain('"ops.notice.saved": "Saved successfully."');
+    expect(i18nSource).toContain('"ops.notice.saved": "کامیابی سے محفوظ ہو گیا۔"');
+    expect(operationsSource).toContain('const { t } = useLanguage();');
+    expect(operationsSource).toContain('hr: t("ops.tab.hr")');
+    expect(operationsSource).toContain('t("ops.records.columnDetails")');
+    expect(operationsSource).toContain('t("ops.confirm.payPayroll")');
+    expect(operationsSource).toContain('t("ops.noOptions.ptm")');
+  });
+
   it("verifies accessible ARIA roles, live regions, and semantic table headers across major component files", () => {
     const filesToInspect = [
       "components/UpdateToast.tsx",
