@@ -380,7 +380,7 @@ export function EnterpriseOperationsSection() {
     : tab === "payroll" ? t("ops.noOptions.payroll")
     : tab === "transport" ? t("ops.noOptions.transport")
     : tab === "inventory" ? t("ops.noOptions.inventory")
-    : "Student profiles are required to schedule a parent meeting.";
+    : t("ops.noOptions.ptm");
 
   return (
     <section className="operations-workspace" aria-label={t("ops.aria.workspace")}>
