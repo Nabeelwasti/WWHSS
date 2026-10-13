@@ -8,6 +8,7 @@ import {
   encryptData,
   decryptData,
   BackupRestoreIncompleteError,
+  listRestoreCheckpoints,
 } from "../backup.service.js";
 
 describe("Backup & Recovery Service", () => {
@@ -65,6 +66,11 @@ describe("Backup & Recovery Service", () => {
     expect(error.checkpointId).toBe("checkpoint-123");
     expect(error.databaseCommitted).toBe(true);
     expect(error.message).toContain("database restore committed");
+  });
+
+  it("rejects unbounded restore checkpoint list limits", async () => {
+    await expect(listRestoreCheckpoints(0)).rejects.toThrow("between 1 and 100");
+    await expect(listRestoreCheckpoints(101)).rejects.toThrow("between 1 and 100");
   });
 
 });
