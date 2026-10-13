@@ -2,6 +2,8 @@
 
 **Audit date:** 2026-10-09  
 **Audited baseline:** `main` at `d3414372fc667c1e3e3847343866e0ff577d1a1e`  
+> **Historical snapshot:** this document describes the 2026-10-09 baseline and is retained for traceability. The newer 2026-10-13 audit baseline is `main@7fc9513b0bcb9014b434b5d2861212da4aa3fa07`. See [`PRODUCTION_REMEDIATION_REGISTER.md`](./PRODUCTION_REMEDIATION_REGISTER.md) for changes made after that audit and the remaining evidence gates. Do not treat this older audit as the current release decision.
+
 **Method:** recursive Git tree inventory, source/configuration review, targeted repository searches, architecture/production-readiness documentation review, and latest GitHub Actions status. This is a source-level engineering audit; it is not a claim that every production workflow has been exercised against live school data.
 
 ## Executive verdict

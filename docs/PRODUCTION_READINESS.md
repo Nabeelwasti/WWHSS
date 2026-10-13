@@ -40,7 +40,7 @@ Preview and production must provide real values for:
 
 Do not commit real credentials. Preview and production should point at separate PostgreSQL databases. Refresh cookies are Secure/HttpOnly on hosted deployments. For a cross-origin Vercel-to-Cloud Run browser session, configure `AUTH_COOKIE_CROSS_SITE=true`, `SameSite=None; Secure`, exact `CORS_ORIGIN`, and credentialed CORS; validate the real browser cookie flow before release.
 
-## Verification
+## Migration ownership (release invariant)\n\nDatabase migrations are not an application-build side effect. `backend/vercel.json` must run only `npm run build`. The only supported production migration path is the manually dispatched, protected `Deploy Backend to Cloud Run` workflow, which verifies exact-commit CI, serializes production releases, runs `prisma migrate deploy` against the explicitly supplied production migration URL, and deploys a no-traffic revision before smoke tests. Never configure Vercel build hooks, application startup, or multiple runtime instances to run migrations. A release is blocked until the actual production topology and the protected GitHub environment configuration are confirmed.\n\n## Verification
 
 From `backend/`:
 
