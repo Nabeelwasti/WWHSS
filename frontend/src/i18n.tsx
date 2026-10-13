@@ -124,6 +124,10 @@ const dictionary = {
     "app.role.school": "School account",
     "app.role.pending": "Account pending role",
     "app.sessionSignedIn": "Signed-in session",
+    "app.loadingWorkspace": "Loading your school workspace",
+    "app.preparingWorkspace": "Preparing your secure workspace…",
+    "app.signedInAs": "Signed in as",
+    "app.changeLanguage": "Change language",
     "lang.switchTo": "اردو",
 
     // Comprehensive extended keys
@@ -343,6 +347,10 @@ const dictionary = {
     "app.role.school": "اسکول اکاؤنٹ",
     "app.role.pending": "اکاؤنٹ کا کردار ابھی مقرر نہیں",
     "app.sessionSignedIn": "لاگ اِن سیشن",
+    "app.loadingWorkspace": "آپ کا اسکول ورک اسپیس لوڈ ہو رہا ہے",
+    "app.preparingWorkspace": "آپ کا محفوظ ورک اسپیس تیار کیا جا رہا ہے…",
+    "app.signedInAs": "لاگ اِن صارف",
+    "app.changeLanguage": "زبان تبدیل کریں",
     "lang.switchTo": "English",
 
     // Comprehensive extended keys
@@ -491,7 +499,7 @@ export function useLanguage() {
 export function LanguageToggle() {
   const { lang, setLang, t } = useLanguage();
   return (
-    <button onClick={() => setLang(lang === "en" ? "ur" : "en")} aria-label="Change language">
+    <button onClick={() => setLang(lang === "en" ? "ur" : "en")} aria-label={t("app.changeLanguage")}>
       {t("lang.switchTo")}
     </button>
   );
