@@ -9,6 +9,16 @@ import { getStorageProvider } from "../storage/storage.service.js";
 export class BackupError extends Error {}
 export class BackupNotFoundError extends BackupError {}
 
+export class BackupRestoreIncompleteError extends BackupError {
+  constructor(
+    public readonly checkpointId: string,
+    public readonly databaseCommitted: true,
+  ) {
+    super("The database restore committed, but post-commit completion did not finish. The restore is not certified complete.");
+    this.name = "BackupRestoreIncompleteError";
+  }
+}
+
 const BACKUP_DIR = path.resolve(process.cwd(), "backups");
 const BACKUP_PREFIX = "backups/";
 const BACKUP_SUFFIX = ".enc.json";
@@ -721,6 +731,12 @@ export async function restoreFromBackup(filename: string, encryptionSecret?: str
     if (!databaseCommitted) {
       await Promise.allSettled(newlyCreatedStorageObjects.map((key) => storageProvider.deleteFile(key)));
       await Promise.allSettled([...replacedStorageSnapshots.entries()].map(([key, snapshot]) => storageProvider.saveFile(key, snapshot.buffer, snapshot.mimeType)));
+    }
+    if (databaseCommitted) {
+      // PostgreSQL cannot atomically commit with object storage. Preserve the
+      // checkpoint ID and explicitly signal partial completion so operators
+      // do not mistake a committed database for a complete recovery.
+      throw new BackupRestoreIncompleteError(checkpointId, true);
     }
     throw error;
   }

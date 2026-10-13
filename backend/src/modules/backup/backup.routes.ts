@@ -9,6 +9,7 @@ import {
   exportDatabaseData,
   getBackupProvider,
   BackupError,
+  BackupRestoreIncompleteError,
   type BackupRestoreMode,
 } from "./backup.service.js";
 
@@ -106,6 +107,14 @@ backupRouter.post("/restore/:filename", authorize("backup:restore"), async (req,
     const result = await restoreFromBackup(req.params.filename, undefined, req.userId!, mode);
     res.json({ restore: result });
   } catch (e) {
+    if (e instanceof BackupRestoreIncompleteError) {
+      return res.status(503).json({
+        error: "The database restore committed, but post-commit completion failed. Recovery is incomplete; inspect the restore checkpoint and retry the same restore after resolving the underlying issue.",
+        code: "BACKUP_RESTORE_INCOMPLETE",
+        checkpointId: e.checkpointId,
+        databaseCommitted: e.databaseCommitted,
+      });
+    }
     if (e instanceof BackupError) return res.status(400).json({ error: e.message });
     res.status(500).json({ error: "Backup restore failed" });
   }

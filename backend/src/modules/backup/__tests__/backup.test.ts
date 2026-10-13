@@ -7,6 +7,7 @@ import {
   MemoryBackupProvider,
   encryptData,
   decryptData,
+  BackupRestoreIncompleteError,
 } from "../backup.service.js";
 
 describe("Backup & Recovery Service", () => {
@@ -58,4 +59,12 @@ describe("Backup & Recovery Service", () => {
   it("requires a privileged user before any restore is attempted", async () => {
     await expect(restoreFromBackup("missing.enc.json", secret)).rejects.toThrow("privileged restoring user");
   });
+  it("clearly identifies a restore whose database commit succeeded but completion failed", () => {
+    const error = new BackupRestoreIncompleteError("checkpoint-123", true);
+    expect(error.name).toBe("BackupRestoreIncompleteError");
+    expect(error.checkpointId).toBe("checkpoint-123");
+    expect(error.databaseCommitted).toBe(true);
+    expect(error.message).toContain("database restore committed");
+  });
+
 });

@@ -29,6 +29,16 @@ Losing the encryption key makes encrypted backups unrecoverable.
 7. Reconcile R2 objects and verify every restored storage key.
 8. Record the drill and retain the recovery evidence.
 
+## Partial completion and operator recovery
+
+PostgreSQL and object storage do not share a transaction. If the database commit succeeds but post-commit reconciliation or checkpoint finalization fails, the restore API returns HTTP 503 with code `BACKUP_RESTORE_INCOMPLETE`, `databaseCommitted: true`, and a `checkpointId`. This is a partial-recovery alarm, not a successful restore.
+
+1. Stop treating the environment as recovered; do not promote it to normal use based on the database health endpoint alone.
+2. Inspect the named `backup_restore_checkpoints` row and its retained error.
+3. Verify object-storage availability and permissions, and preserve logs/checkpoint evidence.
+4. After correcting the underlying fault, retry the same restore operation only under the authorized restore procedure; verify storage keys and representative records again.
+5. Record the retry and validation outcome. A 503/checkpoint signal is observability, not an automatic rollback or a substitute for an isolated recovery drill.
+
 ## Safety requirements
 
 - Never test REPLACE against the only live database.
