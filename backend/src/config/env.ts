@@ -27,7 +27,7 @@ const envSchema = z.object({
   S3_ENDPOINT: z.string().optional(),
   ACCESS_TOKEN_TTL_MIN: z.coerce.number().int().min(1).max(1440).default(15),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
-  CORS_ORIGIN: z.string().default("http://localhost:5173"),
+  CORS_ORIGIN: z.string().optional(),
   PUBLIC_APP_ORIGIN: z.string().url().optional(),
   AUTH_COOKIE_CROSS_SITE: z.preprocess((value) => value === undefined ? false : value === true || value === "true" || value === "1", z.boolean()),
   LIBRARY_FINE_PER_DAY: z.coerce.number().min(0).default(5),
@@ -61,15 +61,15 @@ const envSchema = z.object({
     issue("BACKUP_PROVIDER", "hosted production/preview requires durable backups");
   }
   if (durablePersistenceRequired && !data.S3_BUCKET) issue("S3_BUCKET", "is required when hosted durable storage/backups are enabled");
-  if (data.AUTH_COOKIE_CROSS_SITE && [...data.CORS_ORIGIN.split(","), data.PUBLIC_APP_ORIGIN ?? ""].some((origin) => origin.trim() && !/^https:\/\//i.test(origin.trim()))) issue("CORS_ORIGIN", "must contain only HTTPS origins when AUTH_COOKIE_CROSS_SITE=true");
+  if (data.AUTH_COOKIE_CROSS_SITE && [...(data.CORS_ORIGIN ?? "").split(","), data.PUBLIC_APP_ORIGIN ?? ""].some((origin) => origin.trim() && !/^https:\/\//i.test(origin.trim()))) issue("CORS_ORIGIN", "must contain only HTTPS origins when AUTH_COOKIE_CROSS_SITE=true");
   if (data.PUBLIC_APP_ORIGIN && (!/^https:\/\//i.test(data.PUBLIC_APP_ORIGIN) || /localhost|127\\.0\\.0\\.1/i.test(data.PUBLIC_APP_ORIGIN))) issue("PUBLIC_APP_ORIGIN", "must be a public HTTPS origin in production/preview");
   if (!!data.S3_ACCESS_KEY_ID !== !!data.S3_SECRET_ACCESS_KEY) {
     issue("S3_ACCESS_KEY_ID", "and S3_SECRET_ACCESS_KEY must be configured together");
     issue("S3_SECRET_ACCESS_KEY", "and S3_ACCESS_KEY_ID must be configured together");
   }
   if (data.S3_ENDPOINT && !/^https:\/\//i.test(data.S3_ENDPOINT)) issue("S3_ENDPOINT", "must use HTTPS in production/preview");
-  const origins = [...data.CORS_ORIGIN.split(","), data.PUBLIC_APP_ORIGIN ?? ""].map((value) => value.trim()).filter(Boolean);
-  if (origins.length === 0) issue("CORS_ORIGIN", "must contain at least one HTTPS origin");
+  const origins = [...(data.CORS_ORIGIN ?? "").split(","), data.PUBLIC_APP_ORIGIN ?? ""].map((value) => value.trim()).filter(Boolean);
+  if (origins.length === 0) issue("CORS_ORIGIN", "must contain at least one HTTPS origin via CORS_ORIGIN or PUBLIC_APP_ORIGIN");
   else if (origins.some((origin) => !/^https:\/\//i.test(origin) || /localhost|127\.0\.0\.1/i.test(origin))) issue("CORS_ORIGIN", "must contain only non-local HTTPS origins in production/preview");
   if (!["true", "1"].includes(data.TRUST_PROXY)) issue("TRUST_PROXY", "must be true or 1 behind Vercel/another trusted proxy");
   if (data.WEB_RESEARCH_ENABLED && !data.WEB_RESEARCH_API_KEY) issue("WEB_RESEARCH_API_KEY", "is required when WEB_RESEARCH_ENABLED=true");
@@ -103,10 +103,10 @@ export const env = {
   s3Endpoint: rawEnv.S3_ENDPOINT,
   accessTokenTtlMin: rawEnv.ACCESS_TOKEN_TTL_MIN,
   refreshTokenTtlDays: rawEnv.REFRESH_TOKEN_TTL_DAYS,
-  corsOrigin: rawEnv.CORS_ORIGIN,
+  corsOrigin: rawEnv.CORS_ORIGIN ?? "",
   publicAppOrigin: rawEnv.PUBLIC_APP_ORIGIN,
   authCookieCrossSite: rawEnv.AUTH_COOKIE_CROSS_SITE,
-  corsOrigins: [...rawEnv.CORS_ORIGIN.split(","), rawEnv.PUBLIC_APP_ORIGIN ?? ""].map((value) => value.trim()).filter(Boolean),
+  corsOrigins: [...(rawEnv.CORS_ORIGIN ?? "").split(","), rawEnv.PUBLIC_APP_ORIGIN ?? ""].map((value) => value.trim()).filter(Boolean),
   libraryFinePerDay: rawEnv.LIBRARY_FINE_PER_DAY,
   trustProxy: rawEnv.TRUST_PROXY,
   maxDailyAiRequests: rawEnv.MAX_DAILY_AI_REQUESTS,
