@@ -30,7 +30,7 @@ describe("health and readiness endpoints", () => {
 
   beforeEach(() => {
     vi.mocked(prisma.$queryRaw).mockClear();
-    vi.mocked(prisma.$queryRaw).mockResolvedValue([{ result: 1 }] as never);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([{ result: 1, rateLimitTable: "rate_limit_buckets" }] as never);
   });
 
   it.each(["/api/health", "/api/ready"])("%s bypasses the PostgreSQL rate-limit table", async (path) => {
@@ -64,6 +64,15 @@ describe("health and readiness endpoints", () => {
     expect(preflight.status).toBe(204);
     expect(preflight.headers.get("access-control-allow-origin")).toBe(origin);
     expect(preflight.headers.get("access-control-allow-credentials")).toBe("true");
+  });
+
+  it("reports not-ready when the required rate-limit table is missing", async () => {
+    vi.mocked(prisma.$queryRaw).mockResolvedValueOnce([{ rateLimitTable: null }] as never);
+
+    const response = await fetch(`${baseUrl}/api/ready`);
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({ status: "not_ready" });
   });
 
   it("returns degraded health instead of an unhandled 500 when the database health query fails", async () => {

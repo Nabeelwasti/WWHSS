@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { z } from "zod";
+import { isValidPublicHttpsOrigin } from "./origins.js";
 
 const isVercelPreview = process.env.VERCEL_ENV === "preview";
 const isVercelProduction = process.env.VERCEL_ENV === "production";
@@ -61,8 +62,7 @@ const envSchema = z.object({
     issue("BACKUP_PROVIDER", "hosted production/preview requires durable backups");
   }
   if (durablePersistenceRequired && !data.S3_BUCKET) issue("S3_BUCKET", "is required when hosted durable storage/backups are enabled");
-  if (data.AUTH_COOKIE_CROSS_SITE && [...(data.CORS_ORIGIN ?? "").split(","), data.PUBLIC_APP_ORIGIN ?? ""].some((origin) => origin.trim() && !/^https:\/\//i.test(origin.trim()))) issue("CORS_ORIGIN", "must contain only HTTPS origins when AUTH_COOKIE_CROSS_SITE=true");
-  if (data.PUBLIC_APP_ORIGIN && (!/^https:\/\//i.test(data.PUBLIC_APP_ORIGIN) || /localhost|127\\.0\\.0\\.1/i.test(data.PUBLIC_APP_ORIGIN))) issue("PUBLIC_APP_ORIGIN", "must be a public HTTPS origin in production/preview");
+  if (data.PUBLIC_APP_ORIGIN && !isValidPublicHttpsOrigin(data.PUBLIC_APP_ORIGIN)) issue("PUBLIC_APP_ORIGIN", "must be a canonical public HTTPS origin without a path, credentials, or localhost address");
   if (!!data.S3_ACCESS_KEY_ID !== !!data.S3_SECRET_ACCESS_KEY) {
     issue("S3_ACCESS_KEY_ID", "and S3_SECRET_ACCESS_KEY must be configured together");
     issue("S3_SECRET_ACCESS_KEY", "and S3_ACCESS_KEY_ID must be configured together");
