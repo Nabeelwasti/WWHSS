@@ -27,6 +27,29 @@ describe("Frontend Localization & Accessibility Hardening Verification Suite", (
     expect(enKeys.size).toBeGreaterThan(40);
   });
 
+  it("routes the campus shell's user-visible navigation through translated English/Urdu keys", () => {
+    const i18nPath = path.resolve(frontendSrcDir, "i18n.tsx");
+    const appPath = path.resolve(frontendSrcDir, "App.tsx");
+    const languageToggleSource = fs.readFileSync(i18nPath, "utf-8");
+    const appSource = fs.readFileSync(appPath, "utf-8");
+
+    for (const pair of [
+      ['"app.digitalCampus": "Digital Campus"', '"app.digitalCampus": "ڈیجیٹل کیمپس"'],
+      ['"app.nav.teacher": "Teacher workspace"', '"app.nav.teacher": "اساتذہ کا ورک اسپیس"'],
+      ['"app.group.workspace": "Workspace"', '"app.group.workspace": "ورک اسپیس"'],
+      ['"app.searchPlaceholder": "Find a tool or workspace…"', '"app.searchPlaceholder": "ٹول یا ورک اسپیس تلاش کریں…"'],
+    ]) {
+      expect(languageToggleSource).toContain(pair[0]);
+      expect(languageToggleSource).toContain(pair[1]);
+    }
+
+    expect(appSource).toContain('label: t("app.nav.teacher")');
+    expect(appSource).toContain('description: t("app.desc.operations")');
+    expect(appSource).toContain('<h2>{groupLabels[group]}</h2>');
+    expect(appSource).toContain('aria-label={t("app.navLabel")}');
+    expect(languageToggleSource).toContain('aria-label={t("app.changeLanguage")}');
+  });
+
   it("verifies accessible ARIA roles, live regions, and semantic table headers across major component files", () => {
     const filesToInspect = [
       "components/UpdateToast.tsx",
