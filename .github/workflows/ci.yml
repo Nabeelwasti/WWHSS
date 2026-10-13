@@ -145,6 +145,14 @@ jobs:
           docker inspect --format='status={{.State.Status}} exitCode={{.State.ExitCode}} error={{.State.Error}}' wwhs-backend-smoke || true
           docker rm -f wwhs-backend-smoke || true
           exit 1
+      - name: Prevent database migrations during application builds
+        run: |
+          node -e 'const fs=require("fs"); const c=JSON.parse(fs.readFileSync("backend/vercel.json","utf8")); if(c.buildCommand!=="npm run build") { console.error("Vercel build must not mutate production database; migrations belong to the governed release workflow."); process.exit(1); }'
+          ! grep -E 'prisma(:deploy| migrate deploy)' backend/vercel.json
+          grep -q 'npx prisma migrate deploy' .github/workflows/deploy-cloud-run.yml
+      - name: Validate bundled Urdu font asset
+        run: |
+          node --input-type=module -e 'import fs from "node:fs"; const p="backend/assets/fonts/NotoNaskhArabic-Regular.ttf.b64"; const raw=fs.readFileSync(p,"utf8").replace(/\\s/g,""); const font=Buffer.from(raw,"base64"); if(raw.length===0 || font.length<10000 || font.subarray(0,4).toString("hex")!=="00010000") { console.error("Bundled Noto Naskh Arabic asset is not a valid TrueType font"); process.exit(1); } console.log("Urdu/Arabic font payload decodes to a TrueType font ("+font.length+" bytes).");'
       - name: Validate Vercel release configuration
         run: |
           test -f vercel.json
