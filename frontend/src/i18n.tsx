@@ -201,6 +201,10 @@ const dictionary = {
     "ops.noOptions.transport": "Student profiles and at least one active transport route are required for an assignment.",
     "ops.noOptions.inventory": "Register an inventory item before recording a stock movement.",
     "ops.noOptions.ptm": "Student profiles are required to schedule a parent meeting.",
+    "ops.aria.workspace": "Enterprise operations",
+    "ops.aria.modules": "Operations modules",
+    "ops.aria.reorderAlerts": "Automatic inventory reorder alerts",
+    "ops.status.notSet": "Not set",
     "lang.switchTo": "اردو",
 
     // Comprehensive extended keys
@@ -497,6 +501,10 @@ const dictionary = {
     "ops.noOptions.transport": "مختص کرنے کے لیے طالب علم کی پروفائل اور کم از کم ایک فعال ٹرانسپورٹ روٹ درکار ہے۔",
     "ops.noOptions.inventory": "ذخیرے کی نقل و حرکت درج کرنے سے پہلے ایک شے رجسٹر کریں۔",
     "ops.noOptions.ptm": "والدین کی ملاقات طے کرنے کے لیے طالب علم کی پروفائل درکار ہے۔",
+    "ops.aria.workspace": "اسکول کے انتظامی امور",
+    "ops.aria.modules": "انتظامی ماڈیولز",
+    "ops.aria.reorderAlerts": "ذخیرے کو دوبارہ منگوانے کے خودکار الرٹس",
+    "ops.status.notSet": "درج نہیں",
     "lang.switchTo": "English",
 
     // Comprehensive extended keys
