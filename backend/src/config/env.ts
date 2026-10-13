@@ -11,7 +11,8 @@ function isValidPublicHttpsOrigin(value: string): boolean {
       && !parsed.password
       && hostname !== "localhost"
       && hostname !== "127.0.0.1"
-      && hostname !== "::1";
+      && hostname !== "::1"
+      && hostname !== "[::1]";
   } catch {
     return false;
   }
