@@ -14,7 +14,8 @@
 - [x] Clarified migration ownership in the release runbook and production-readiness guide.
 - [x] Made data-retention approval an explicit governance gate rather than implying the technical team can choose legal retention durations.
 - [x] Added scheduled CodeQL JavaScript/TypeScript security analysis (`.github/workflows/codeql.yml`).
-- [x] Added automated Dependabot update PRs for backend/frontend npm dependencies and GitHub Actions, plus a pull-request dependency review gate.
+- [x] Added automated Dependabot update PRs for backend/frontend npm dependencies and GitHub Actions.
+- [x] Attempted a pull-request dependency review gate; the exact PR run confirmed GitHub dependency review is unavailable because the repository dependency graph is disabled. Removed the always-failing workflow rather than masking that limitation.
 - [x] Added section- and department-scope permission regression tests alongside existing class, subject, student-self and guardian checks.
 - [x] Made post-commit backup-restore failures return HTTP 503 with the restore checkpoint ID and an explicit incomplete-recovery signal; this improves observability but does not replace a recovery drill.
 
@@ -34,7 +35,7 @@ These items require real environment access, school-owner decisions, or dedicate
 | P1 | Private storage | Exercise cross-scope upload/download, malformed/signature-mismatched files, size boundaries, storage outage and orphan reconciliation on the target runtime | Existing unit tests; live matrix pending |
 | P1 | Finance | Exercise duplicate/out-of-order webhooks, signature/replay, refund/reversal, concurrent posting, rounding and approval/reconciliation against a test gateway | Partial tests; gateway certification pending |
 | P2 | Localization and accessibility | Complete user-visible English/Urdu translation audit; desktop/mobile keyboard, screen-reader, focus, error and RTL browser journeys | Partial localization; full coverage pending |
-| P2 | Supply-chain assurance | Add and triage secret scanning, SAST, SBOM/provenance, license policy and reviewed/pinned actions; retain results for exact release commit | Partial: CodeQL, Dependabot and dependency-review gate added; secret scanning, SBOM/provenance, license policy, action pinning and alert triage pending |
+| P2 | Supply-chain assurance | Add and triage secret scanning, SAST, SBOM/provenance, license policy and reviewed/pinned actions; retain results for exact release commit | Partial: CodeQL and Dependabot added; dependency review blocked until GitHub dependency graph is enabled in repository settings; secret scanning, SBOM/provenance, license policy, action pinning and alert triage pending |
 | P2 | Load/soak and resilience | Measure DB pool saturation, rate-limit store outage, login/refresh, AI quotas, uploads and backup/restore under expected peak load | Pending |
 | P2 | Governance | Name policy owners; approve retention/deletion, backup expiry, audit access, AI consent/minimization, incident/breach response and staff offboarding | School management approval pending |
 | P2 | Independent review | Independent security review/penetration test and remediation evidence | Pending |
