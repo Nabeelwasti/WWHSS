@@ -102,14 +102,26 @@ async function request<T>(path: string, options: RequestInit = {}, isRetry = fal
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new ApiError(res.status, describeError(body, res.status));
+    throw new ApiError(
+      res.status,
+      describeError(body, res.status),
+      typeof body.code === "string" ? body.code : undefined,
+      typeof body.checkpointId === "string" ? body.checkpointId : undefined,
+      body.databaseCommitted === true,
+    );
   }
   if (res.status === 204) return undefined as T;
   return res.json();
 }
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(
+    public status: number,
+    message: string,
+    public code?: string,
+    public checkpointId?: string,
+    public databaseCommitted = false,
+  ) {
     super(message);
   }
 }
@@ -629,8 +641,20 @@ export const api = {
   updatePtmMeeting: (id: string, input: Record<string, unknown>) => request("/operations/ptm/" + id, { method: "PATCH", body: JSON.stringify(input) }),
   createPaymentIntent: (input: Record<string, unknown>) => request("/payments/intents", { method: "POST", body: JSON.stringify(input) }),
 
+export type RestoreCheckpointSummary = {
+  id: string;
+  backupId: string;
+  mode: string;
+  status: string;
+  startedAt: string;
+  completedAt: string | null;
+  hasError: boolean;
+};
+
   // ---- Backups ----
   listBackups: () => request<{ backups: unknown[] }>("/backup"),
+  listRestoreCheckpoints: (limit = 25) =>
+    request<{ checkpoints: RestoreCheckpointSummary[] }>(`/backup/restore/checkpoints?limit=${encodeURIComponent(String(limit))}`),
 
   createBackup: () => request<{ backup: unknown }>("/backup/create", { method: "POST" }),
 
