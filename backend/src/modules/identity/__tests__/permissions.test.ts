@@ -319,4 +319,71 @@ describe("userHasPermission", () => {
     await expect(userHasPermission("scoped-teacher", "documents:view:scoped", { classId: "grade-11" })).resolves.toBe(false);
   });
 
+
+  it("denies a section-scoped teacher access to a different section in the same class", async () => {
+    mockedFindMany.mockResolvedValue([
+      {
+        classId: "grade-10",
+        sectionId: "section-a",
+        subjectId: null,
+        departmentId: null,
+        role: { rolePermissions: [{ permission: { key: "attendance:mark" } }] },
+      },
+    ]);
+
+    await expect(userHasPermission("teacher-a", "attendance:mark", {
+      classId: "grade-10",
+      sectionId: "section-b",
+    })).resolves.toBe(false);
+  });
+
+  it("grants a section-scoped teacher access only to the assigned section", async () => {
+    mockedFindMany.mockResolvedValue([
+      {
+        classId: "grade-10",
+        sectionId: "section-a",
+        subjectId: null,
+        departmentId: null,
+        role: { rolePermissions: [{ permission: { key: "attendance:mark" } }] },
+      },
+    ]);
+
+    await expect(userHasPermission("teacher-a", "attendance:mark", {
+      classId: "grade-10",
+      sectionId: "section-a",
+    })).resolves.toBe(true);
+  });
+
+  it("denies a department-scoped role from accessing another department", async () => {
+    mockedFindMany.mockResolvedValue([
+      {
+        classId: null,
+        sectionId: null,
+        subjectId: null,
+        departmentId: "science",
+        role: { rolePermissions: [{ permission: { key: "staff:view:department" } }] },
+      },
+    ]);
+
+    await expect(userHasPermission("science-staff", "staff:view:department", {
+      departmentId: "administration",
+    })).resolves.toBe(false);
+  });
+
+  it("grants a department-scoped role only within its assigned department", async () => {
+    mockedFindMany.mockResolvedValue([
+      {
+        classId: null,
+        sectionId: null,
+        subjectId: null,
+        departmentId: "science",
+        role: { rolePermissions: [{ permission: { key: "staff:view:department" } }] },
+      },
+    ]);
+
+    await expect(userHasPermission("science-staff", "staff:view:department", {
+      departmentId: "science",
+    })).resolves.toBe(true);
+  });
+
 });
