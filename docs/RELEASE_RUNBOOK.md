@@ -8,7 +8,7 @@ Preview and Production must use isolated databases, storage locations and secret
 
 ## Release order
 
-1. Require green GitHub CI on the exact release commit.
+1. Require green GitHub CI on the exact release commit. Application builds, including Vercel builds, must never run database migrations. The only supported production migration owner is the gated `Deploy Backend to Cloud Run` workflow; do not enable a second migration path.
 2. Build the immutable backend image.
 3. Run `npx prisma migrate deploy` exactly once against the target database.
 4. Deploy the immutable Cloud Run revision with the injected `PORT`.
@@ -18,11 +18,11 @@ Preview and Production must use isolated databases, storage locations and secret
 8. Verify backup integrity and complete the isolated disaster-recovery drill before asserting recovery readiness.
 9. Shift production traffic only after readiness and smoke checks pass.
 
-The application container must start with `node dist/server.js`; it must never run database migrations as part of normal startup.
+The application container must start with `node dist/server.js`; it must never run database migrations as part of normal startup or any provider's build command.
 
 ## Vercel
 
-Automatic Git deployment is intentionally disabled in repository configuration. The supported Vercel configurations are `vercel.json` for a repo-root project and `frontend/vercel.ts` for a `frontend/` Root Directory project. Both provide SPA fallback only. Hosted production uses `VITE_API_BASE_URL` for the direct Cloud Run API origin; Docker/self-hosting can continue to use same-origin `/api`. Do not put secrets or credentials into frontend source or Vite environment variables.
+Frontend Git deployment is intentionally disabled in root `vercel.json`; `frontend/vercel.ts` supports a `frontend/` Root Directory project. Both provide SPA fallback only. The legacy `backend/vercel.json` build compiles the API only and must never mutate a database. Production schema changes are owned by the gated Cloud Run release workflow. Hosted production uses `VITE_API_BASE_URL` for the direct Cloud Run API origin; Docker/self-hosting can continue to use same-origin `/api`. Do not put secrets or credentials into frontend source or Vite environment variables.
 
 ## Database
 
