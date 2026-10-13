@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { api, ApiError, type StaffSummary, type UserSummary } from "../api";
+import { useLanguage } from "../i18n";
 
 type Row = Record<string, any>;
 type Tab = "hr" | "payroll" | "admissions" | "transport" | "inventory" | "assets" | "ptm";
@@ -7,23 +8,30 @@ type PayrollAction = "period" | "record";
 type TransportAction = "vehicle" | "route" | "assignment";
 type InventoryAction = "item" | "transaction";
 
-const tabs: [Tab, string][] = [
-  ["hr", "HR & Leave"], ["payroll", "Payroll"], ["admissions", "Admissions"],
-  ["transport", "Transport"], ["inventory", "Inventory"], ["assets", "Assets"], ["ptm", "Parent Meetings"],
-];
+const tabs: Tab[] = ["hr", "payroll", "admissions", "transport", "inventory", "assets", "ptm"];
 
-const recordLabel = (row: Row) =>
+const recordLabel = (row: Row, fallback: string) =>
   row.user?.fullName || row.student?.user?.fullName || row.label || row.applicantName ||
-  row.name || row.leaveType || row.registrationNo || row.assetTag || "School record";
+  row.name || row.leaveType || row.registrationNo || row.assetTag || fallback;
 
-const personLabel = (row: Row) =>
-  row.user?.fullName || row.fullName || row.name || row.admissionNo || "Unnamed person";
+const personLabel = (row: Row, fallback: string) =>
+  row.user?.fullName || row.fullName || row.name || row.admissionNo || fallback;
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className="ops-field"><span>{label}</span>{children}</label>;
 }
 
 export function EnterpriseOperationsSection() {
+  const { t } = useLanguage();
+  const tabLabels: Record<Tab, string> = {
+    hr: t("ops.tab.hr"),
+    payroll: t("ops.tab.payroll"),
+    admissions: t("ops.tab.admissions"),
+    transport: t("ops.tab.transport"),
+    inventory: t("ops.tab.inventory"),
+    assets: t("ops.tab.assets"),
+    ptm: t("ops.tab.ptm"),
+  };
   const [tab, setTab] = useState<Tab>("hr");
   const loadSequence = useRef(0);
   const [rows, setRows] = useState<Row[]>([]);
@@ -87,7 +95,7 @@ export function EnterpriseOperationsSection() {
         setLowStockItems(lowStock.items as Row[]);
       }
     } catch (e) {
-      if (sequence === loadSequence.current) setError(e instanceof ApiError ? e.message : "Could not load operations data.");
+      if (sequence === loadSequence.current) setError(e instanceof ApiError ? e.message : t("ops.error.load"));
     } finally {
       if (sequence === loadSequence.current) setLoading(false);
     }
@@ -110,7 +118,7 @@ export function EnterpriseOperationsSection() {
       if (tab === "hr") {
         const startDate = new Date(String(f.get("startDate")));
         const endDate = new Date(String(f.get("endDate")));
-        if (endDate < startDate) throw new Error("Leave end date cannot be before its start date.");
+        if (endDate < startDate) throw new Error(t("ops.validation.leaveDates"));
         await api.createLeaveRequest({
           staffProfileId: String(f.get("staffProfileId")), leaveType: String(f.get("leaveType")),
           startDate: startDate.toISOString(), endDate: endDate.toISOString(),
@@ -120,7 +128,7 @@ export function EnterpriseOperationsSection() {
         if (payrollAction === "period") {
           const startDate = new Date(String(f.get("startDate")));
           const endDate = new Date(String(f.get("endDate")));
-          if (endDate < startDate) throw new Error("Payroll period end date cannot be before its start date.");
+          if (endDate < startDate) throw new Error(t("ops.validation.payrollDates"));
           await api.createPayrollPeriod({
             label: String(f.get("label")), startDate: startDate.toISOString(), endDate: endDate.toISOString(),
           });
@@ -158,7 +166,7 @@ export function EnterpriseOperationsSection() {
           const startDate = new Date(String(f.get("assignmentStartDate")));
           const rawEndDate = String(f.get("assignmentEndDate") || "");
           const endDate = rawEndDate ? new Date(rawEndDate) : undefined;
-          if (endDate && endDate < startDate) throw new Error("Assignment end date cannot be before its start date.");
+          if (endDate && endDate < startDate) throw new Error(t("ops.validation.assignmentDates"));
           await api.assignTransport({
             studentProfileId: String(f.get("studentProfileId")),
             routeId: String(f.get("routeId")),
@@ -201,67 +209,67 @@ export function EnterpriseOperationsSection() {
           mode: String(f.get("mode") || "IN_PERSON"), agenda: String(f.get("agenda") || "") || undefined,
         });
       }
-      setNotice("Saved successfully.");
+      setNotice(t("ops.notice.saved"));
       formElement.reset();
       if (tab === "payroll") setPayrollAction("period");
       if (tab === "transport") setTransportAction("vehicle");
       if (tab === "inventory") setInventoryAction("item");
       await load();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Could not save.");
+      setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : t("ops.error.save"));
     } finally {
       setSaving(false);
     }
   }
 
   async function decideLeave(id: string, status: "APPROVED" | "REJECTED") {
-    if (!window.confirm(`${status === "APPROVED" ? "Approve" : "Reject"} this leave request?`)) return;
+    if (!window.confirm(t(status === "APPROVED" ? "ops.confirm.approveLeave" : "ops.confirm.rejectLeave"))) return;
     try {
       setSaving(true); setError(null); setNotice(null);
       await api.decideLeaveRequest(id, { status });
-      setNotice("Leave " + status.toLowerCase() + "."); await load();
-    } catch (e) { setError(e instanceof ApiError ? e.message : "Could not update leave."); }
+      setNotice(t(status === "APPROVED" ? "ops.notice.leaveApproved" : "ops.notice.leaveRejected")); await load();
+    } catch (e) { setError(e instanceof ApiError ? e.message : t("ops.error.updateLeave")); }
     finally { setSaving(false); }
   }
 
   async function payrollActionFor(id: string, action: "approve" | "pay") {
-    if (action === "approve" && !window.confirm("Approve this payroll period? Review the payroll records before continuing.")) return;
-    if (action === "pay" && !window.confirm("Confirm that payment has been made and mark this payroll period as paid?")) return;
+    if (action === "approve" && !window.confirm(t("ops.confirm.approvePayroll"))) return;
+    if (action === "pay" && !window.confirm(t("ops.confirm.payPayroll"))) return;
     try {
       setSaving(true); setError(null); setNotice(null);
       if (action === "approve") await api.approvePayrollPeriod(id);
       else {
-        const enteredReference = window.prompt("Payment reference (optional):");
+        const enteredReference = window.prompt(t("ops.prompt.paymentReference"));
         if (enteredReference === null) return;
         const reference = enteredReference.trim() || undefined;
         await api.payPayrollPeriod(id, reference ? { paymentReference: reference } : {});
       }
-      setNotice(action === "approve" ? "Payroll period approved." : "Payroll period paid."); await load();
-    } catch (e) { setError(e instanceof ApiError ? e.message : "Could not update payroll."); }
+      setNotice(t(action === "approve" ? "ops.notice.payrollApproved" : "ops.notice.payrollPaid")); await load();
+    } catch (e) { setError(e instanceof ApiError ? e.message : t("ops.error.updatePayroll")); }
     finally { setSaving(false); }
   }
 
   async function convertLead(row: Row) {
-    if (!window.confirm(`Convert ${row.applicantName || "this admission lead"} into a student account?`)) return;
-    const email = window.prompt("Student email", row.email || "");
-    const admissionNo = window.prompt("Admission number");
+    if (!window.confirm(t("ops.confirm.convertLead"))) return;
+    const email = window.prompt(t("ops.prompt.studentEmail"), row.email || "");
+    const admissionNo = window.prompt(t("ops.prompt.admissionNumber"));
     if (!email || !admissionNo) return;
     try {
       setSaving(true); setError(null); setNotice(null);
       const result: any = await api.convertAdmissionLead(row.id, { email, admissionNo });
-      setNotice("Student account created. Deliver the one-time password securely to the student/guardian."); 
-      if (result.temp) window.alert("One-time password (shown once): " + result.temp);
+      setNotice(t("ops.notice.studentCreated")); 
+      if (result.temp) window.alert(t("ops.prompt.oneTimePassword") + " " + result.temp);
       await load();
-    } catch (e) { setError(e instanceof ApiError ? e.message : "Could not convert admission."); }
+    } catch (e) { setError(e instanceof ApiError ? e.message : t("ops.error.convertAdmission")); }
     finally { setSaving(false); }
   }
 
   async function returnAsset(id: string) {
-    if (!window.confirm("Mark this assigned asset as returned?")) return;
+    if (!window.confirm(t("ops.confirm.returnAsset"))) return;
     try {
       setSaving(true); setError(null); setNotice(null);
-      await api.returnAsset(id); setNotice("Asset returned."); await load();
-    } catch (e) { setError(e instanceof ApiError ? e.message : "Could not return asset."); }
+      await api.returnAsset(id); setNotice(t("ops.notice.assetReturned")); await load();
+    } catch (e) { setError(e instanceof ApiError ? e.message : t("ops.error.returnAsset")); }
     finally { setSaving(false); }
   }
 
@@ -314,7 +322,7 @@ export function EnterpriseOperationsSection() {
         <Field label="Monthly fee (PKR)"><input className="input" name="monthlyFee" type="number" min="0" step="0.01" defaultValue="0" /></Field>
         <Field label="Assigned vehicle (optional)"><select className="input" name="vehicleId">{selectPlaceholder("No vehicle assigned")}{vehicles.map(v => <option key={v.id} value={v.id}>{v.registrationNo} — capacity {v.capacity}</option>)}</select></Field>
       </> : <>
-        <Field label="Student"><select className="input" name="studentProfileId" required>{selectPlaceholder("Choose student…")}{students.map(s => <option key={s.id} value={s.id}>{s.admissionNo || s.rollNumber || s.id} — {personLabel(s)}</option>)}</select></Field>
+        <Field label="Student"><select className="input" name="studentProfileId" required>{selectPlaceholder("Choose student…")}{students.map(s => <option key={s.id} value={s.id}>{s.admissionNo || s.rollNumber || s.id} — {personLabel(s, t("ops.person.fallback"))}</option>)}</select></Field>
         <Field label="Active route"><select className="input" name="routeId" required>{selectPlaceholder("Choose route…")}{rows.filter(r => r.status === "ACTIVE").map(r => <option key={r.id} value={r.id}>{r.name}</option>)}</select></Field>
         <Field label="Pickup point (optional)"><input className="input" name="pickupPoint" placeholder="Student pickup point" /></Field>
         <Field label="Assignment start date"><input className="input" name="assignmentStartDate" type="date" required /></Field>
@@ -346,12 +354,12 @@ export function EnterpriseOperationsSection() {
       <Field label="Asset type"><input className="input" name="assetType" required placeholder="e.g. Laptop, projector" /></Field>
       <Field label="Condition"><select className="input" name="condition" defaultValue="GOOD"><option value="GOOD">Good</option><option value="FAIR">Fair</option><option value="POOR">Needs repair</option></select></Field>
       <Field label="Assign to staff (optional)"><select className="input" name="staffProfileId">{selectPlaceholder("Unassigned")}{staff.map(s => <option key={s.id} value={s.id}>{s.employeeId} — {s.user.fullName}</option>)}</select></Field>
-      <Field label="Assign to student (optional)"><select className="input" name="studentProfileId">{selectPlaceholder("Unassigned")}{students.map(s => <option key={s.id} value={s.id}>{s.admissionNo || s.rollNumber || s.id} — {personLabel(s)}</option>)}</select></Field>
+      <Field label="Assign to student (optional)"><select className="input" name="studentProfileId">{selectPlaceholder("Unassigned")}{students.map(s => <option key={s.id} value={s.id}>{s.admissionNo || s.rollNumber || s.id} — {personLabel(s, t("ops.person.fallback"))}</option>)}</select></Field>
       <Field label="Notes"><input className="input" name="notes" placeholder="Optional custody notes" /></Field>
     </>
   ) : (
     <>
-      <Field label="Student"><select className="input" name="studentProfileId" required>{selectPlaceholder("Choose student…")}{students.map(s => <option key={s.id} value={s.id}>{s.admissionNo || s.rollNumber || s.id} — {personLabel(s)}</option>)}</select></Field>
+      <Field label="Student"><select className="input" name="studentProfileId" required>{selectPlaceholder("Choose student…")}{students.map(s => <option key={s.id} value={s.id}>{s.admissionNo || s.rollNumber || s.id} — {personLabel(s, t("ops.person.fallback"))}</option>)}</select></Field>
       <Field label="Teacher"><select className="input" name="teacherUserId" defaultValue="">{selectPlaceholder("Choose teacher (optional)")}{users.filter(u => u.userRoles.some(r => ["teacher", "class_teacher"].includes(r.role.key))).map(u => <option key={u.id} value={u.id}>{u.fullName}</option>)}</select></Field>
       <Field label="Parent / guardian"><select className="input" name="parentUserId" defaultValue="">{selectPlaceholder("Choose guardian (optional)")}{users.filter(u => u.userRoles.some(r => ["parent", "guardian"].includes(r.role.key))).map(u => <option key={u.id} value={u.id}>{u.fullName}</option>)}</select></Field>
       <Field label="Meeting date and time"><input className="input" name="scheduledAt" type="datetime-local" required /></Field>
@@ -362,67 +370,67 @@ export function EnterpriseOperationsSection() {
   );
 
   const attentionCount = tab === "inventory" ? lowStockItems.length : rows.filter(r => ["PENDING", "DRAFT"].includes(String(r.status || "").toUpperCase())).length;
-  const currentLabel = tabs.find(x => x[0] === tab)?.[1] ?? "Operations";
+  const currentLabel = tabLabels[tab];
   const hasNoOptions =
     ((tab === "hr" || (tab === "payroll" && payrollAction === "record")) && staff.length === 0) ||
     (tab === "transport" && transportAction === "assignment" && (students.length === 0 || !rows.some(r => r.status === "ACTIVE"))) ||
     (tab === "inventory" && inventoryAction === "transaction" && inventoryItems.length === 0) ||
     (tab === "ptm" && students.length === 0);
-  const noOptionsMessage = tab === "hr" ? "Add staff profiles before submitting a leave request."
-    : tab === "payroll" ? "Add staff profiles before creating a payroll record."
-    : tab === "transport" ? "Student profiles and at least one active transport route are required for an assignment."
-    : tab === "inventory" ? "Register an inventory item before recording a stock movement."
+  const noOptionsMessage = tab === "hr" ? t("ops.noOptions.hr")
+    : tab === "payroll" ? t("ops.noOptions.payroll")
+    : tab === "transport" ? t("ops.noOptions.transport")
+    : tab === "inventory" ? t("ops.noOptions.inventory")
     : "Student profiles are required to schedule a parent meeting.";
 
   return (
-    <section className="operations-workspace" aria-label="Enterprise operations">
-      <div className="ops-tab-strip" role="group" aria-label="Operations modules">
-        {tabs.map(([key, label]) => <button type="button" aria-pressed={tab === key} key={key} className={"btn " + (tab === key ? "btn-primary" : "btn-ghost")} onClick={() => setTab(key)}>{label}</button>)}
+    <section className="operations-workspace" aria-label={t("ops.aria.workspace")}>
+      <div className="ops-tab-strip" role="group" aria-label={t("ops.aria.modules")}>
+        {tabs.map((key) => <button type="button" aria-pressed={tab === key} key={key} className={"btn " + (tab === key ? "btn-primary" : "btn-ghost")} onClick={() => setTab(key)}>{tabLabels[key]}</button>)}
       </div>
 
       <div className="ops-overview-grid">
-        <article className="ops-overview-card"><span className="ops-overview-icon">▦</span><div><span>Active module</span><strong>{currentLabel}</strong></div></article>
-        <article className="ops-overview-card"><span className="ops-overview-icon">◎</span><div><span>Records loaded</span><strong>{loading ? "…" : rows.length}</strong></div></article>
-        <article className="ops-overview-card"><span className="ops-overview-icon">◷</span><div><span>Needs attention</span><strong>{loading ? "…" : attentionCount}</strong></div></article>
+        <article className="ops-overview-card"><span className="ops-overview-icon">▦</span><div><span>{t("ops.overview.activeModule")}</span><strong>{currentLabel}</strong></div></article>
+        <article className="ops-overview-card"><span className="ops-overview-icon">◎</span><div><span>{t("ops.overview.recordsLoaded")}</span><strong>{loading ? "…" : rows.length}</strong></div></article>
+        <article className="ops-overview-card"><span className="ops-overview-icon">◷</span><div><span>{t("ops.overview.needsAttention")}</span><strong>{loading ? "…" : attentionCount}</strong></div></article>
       </div>
 
       {error && <p role="alert" className="alert alert-danger">{error}</p>}
       {notice && <p role="status" className="alert alert-success">{notice}</p>}
 
       <section className="card ops-form-card">
-        <div className="ops-section-heading"><div><span className="section-eyebrow">WORKFLOW</span><h2>{currentLabel}</h2><p>Enter validated details and save them to the school record.</p></div><span className="ops-live-indicator"><span /> Live data</span></div>
+        <div className="ops-section-heading"><div><span className="section-eyebrow">{t("ops.section.workflow")}</span><h2>{currentLabel}</h2><p>{t("ops.section.workflowDescription")}</p></div><span className="ops-live-indicator"><span /> {t("ops.section.liveData")}</span></div>
         {hasNoOptions && !loading && !error && <p role="status" className="alert alert-info">{noOptionsMessage}</p>}
         <form onSubmit={submit} className="ops-form-grid">
           {form}
-          <div className="ops-form-actions"><button className="btn btn-primary" type="submit" disabled={saving || loading || hasNoOptions}>{saving ? "Saving…" : loading ? "Loading…" : "Save record"}</button><span>Changes are recorded by the school system.</span></div>
+          <div className="ops-form-actions"><button className="btn btn-primary" type="submit" disabled={saving || loading || hasNoOptions}>{saving ? t("ops.button.saving") : loading ? t("ops.button.loading") : t("ops.button.save")}</button><span>{t("ops.section.changesRecorded")}</span></div>
         </form>
       </section>
 
-      {tab === "inventory" && <section className="card ops-alert-card" aria-label="Automatic inventory reorder alerts">
-        <div className="ops-section-heading"><div><span className="section-eyebrow">STOCK MONITOR</span><h2>Reorder watch</h2><p>Items reported by the backend as at or below their configured reorder threshold.</p></div><span className="ops-alert-count">{loading ? "…" : lowStockItems.length + " alerts"}</span></div>
-        {loading ? <div className="ops-loading" role="status"><span className="ops-spinner" /> Checking stock thresholds…</div>
-          : lowStockItems.length === 0 ? <p className="ops-stock-clear" role="status">No low-stock alerts are currently reported.</p>
+      {tab === "inventory" && <section className="card ops-alert-card" aria-label={t("ops.aria.reorderAlerts")}>
+        <div className="ops-section-heading"><div><span className="section-eyebrow">{t("ops.stock.monitor")}</span><h2>{t("ops.stock.reorderWatch")}</h2><p>{t("ops.stock.description")}</p></div><span className="ops-alert-count">{loading ? "…" : lowStockItems.length + " " + t("ops.stock.alerts")}</span></div>
+        {loading ? <div className="ops-loading" role="status"><span className="ops-spinner" /> {t("ops.stock.checking")}</div>
+          : lowStockItems.length === 0 ? <p className="ops-stock-clear" role="status">{t("ops.stock.none")}</p>
           : <div className="ops-low-stock-list">{lowStockItems.map(item => <div className="ops-low-stock-row" key={item.id}><span className="ops-stock-warning">!</span><div><strong>{item.name}</strong><small>{item.sku} · Reorder at {item.reorderLevel} {item.unit || ""}</small></div><span className="ops-stock-quantity">{item.quantity} {item.unit || "units"} left</span></div>)}</div>}
       </section>}
 
       <section className="card ops-records-card">
-        <div className="ops-section-heading"><div><span className="section-eyebrow">REGISTER</span><h2>Current records</h2><p>Live records for {currentLabel.toLowerCase()}.</p></div><button className="btn btn-secondary btn-sm" type="button" onClick={() => void load()} disabled={loading || saving}>{loading ? "Refreshing…" : "Refresh records"}</button></div>
-        {loading ? <div className="ops-loading" role="status"><span className="ops-spinner" /> Loading records and available references…</div> :
-          rows.length === 0 ? <div className="ops-empty"><span aria-hidden="true">◎</span><strong>No records found</strong><p>Records created through this workflow will appear here.</p></div> :
+        <div className="ops-section-heading"><div><span className="section-eyebrow">{t("ops.records.register")}</span><h2>{t("ops.records.current")}</h2><p>{t("ops.records.liveFor")} {currentLabel}.</p></div><button className="btn btn-secondary btn-sm" type="button" onClick={() => void load()} disabled={loading || saving}>{loading ? t("ops.records.refreshing") : t("ops.records.refresh")}</button></div>
+        {loading ? <div className="ops-loading" role="status"><span className="ops-spinner" /> {t("ops.records.loading")}</div> :
+          rows.length === 0 ? <div className="ops-empty"><span aria-hidden="true">◎</span><strong>{t("ops.records.emptyTitle")}</strong><p>{t("ops.records.emptyDescription")}</p></div> :
           <div className="ops-table-wrap"><table className="ops-table">
-            <thead><tr><th scope="col">Record</th><th scope="col">Status</th><th scope="col">Details and actions</th></tr></thead>
+            <thead><tr><th scope="col">{t("ops.records.columnRecord")}</th><th scope="col">{t("ops.records.columnStatus")}</th><th scope="col">{t("ops.records.columnDetails")}</th></tr></thead>
             <tbody>{rows.map(row => (
               <tr key={row.id}>
-                <td><div className="ops-record-name">{recordLabel(row)}</div><small>{row.employeeId || row.admissionNo || (row.id ? String(row.id).slice(0, 8) : "—")}</small></td>
-                <td><span className={"ops-status-chip status-" + String(row.status || "unknown").toLowerCase().replace(/[^a-z0-9-]/g, "-")}>{row.status || "Not set"}</span></td>
+                <td><div className="ops-record-name">{recordLabel(row, t("ops.record.fallback"))}</div><small>{row.employeeId || row.admissionNo || (row.id ? String(row.id).slice(0, 8) : "—")}</small></td>
+                <td><span className={"ops-status-chip status-" + String(row.status || "unknown").toLowerCase().replace(/[^a-z0-9-]/g, "-")}>{row.status || t("ops.status.notSet")}</span></td>
                 <td>
                   <div className="ops-record-details">{row.leaveType || row.registrationNo || row.assetTag || row.desiredClass || row.startDate?.slice?.(0, 10) || row.scheduledAt?.slice?.(0, 16).replace("T", " ") || row.category || "—"}</div>
                   <div className="ops-row-actions">
-                    {tab === "hr" && row.status === "PENDING" && <><button type="button" className="btn btn-ghost btn-sm" disabled={saving} onClick={() => void decideLeave(row.id, "APPROVED")}>Approve</button><button type="button" className="btn btn-ghost btn-sm" disabled={saving} onClick={() => void decideLeave(row.id, "REJECTED")}>Reject</button></>}
-                    {tab === "payroll" && row.status === "DRAFT" && <button type="button" className="btn btn-ghost btn-sm" disabled={saving} onClick={() => void payrollActionFor(row.id, "approve")}>Approve period</button>}
-                    {tab === "payroll" && row.status === "APPROVED" && <button type="button" className="btn btn-ghost btn-sm" disabled={saving} onClick={() => void payrollActionFor(row.id, "pay")}>Mark paid…</button>}
-                    {tab === "admissions" && !row.convertedStudentId && <button type="button" className="btn btn-ghost btn-sm" disabled={saving} onClick={() => void convertLead(row)}>Convert to student…</button>}
-                    {tab === "assets" && row.status !== "RETURNED" && <button type="button" className="btn btn-ghost btn-sm" disabled={saving} onClick={() => void returnAsset(row.id)}>Mark returned…</button>}
+                    {tab === "hr" && row.status === "PENDING" && <><button type="button" className="btn btn-ghost btn-sm" disabled={saving} onClick={() => void decideLeave(row.id, "APPROVED")}>{t("ops.action.approve")}</button><button type="button" className="btn btn-ghost btn-sm" disabled={saving} onClick={() => void decideLeave(row.id, "REJECTED")}>{t("ops.action.reject")}</button></>}
+                    {tab === "payroll" && row.status === "DRAFT" && <button type="button" className="btn btn-ghost btn-sm" disabled={saving} onClick={() => void payrollActionFor(row.id, "approve")}>{t("ops.action.approvePeriod")}</button>}
+                    {tab === "payroll" && row.status === "APPROVED" && <button type="button" className="btn btn-ghost btn-sm" disabled={saving} onClick={() => void payrollActionFor(row.id, "pay")}>{t("ops.action.markPaid")}</button>}
+                    {tab === "admissions" && !row.convertedStudentId && <button type="button" className="btn btn-ghost btn-sm" disabled={saving} onClick={() => void convertLead(row)}>{t("ops.action.convertStudent")}</button>}
+                    {tab === "assets" && row.status !== "RETURNED" && <button type="button" className="btn btn-ghost btn-sm" disabled={saving} onClick={() => void returnAsset(row.id)}>{t("ops.action.markReturned")}</button>}
                   </div>
                 </td>
               </tr>
