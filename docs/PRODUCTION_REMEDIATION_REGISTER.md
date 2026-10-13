@@ -2,7 +2,7 @@
 
 **Baseline audited:** `main@7fc9513b0bcb9014b434b5d2861212da4aa3fa07`  
 **Merged hardening:** `main@5e579a3f4006e192bb24b10d631b11dbb16d69da`  
-**Follow-up branch:** `fix/production-readiness-followup-2026-10`  
+**Follow-up branch:** `fix/urdu-shell-localization-2026-10`  
 **Last updated:** 2026-10-13  
 **Purpose:** track code changes separately from release evidence and school policy decisions. A green CI run is not a blanket production-readiness certificate.
 
@@ -18,6 +18,7 @@
 - [x] Attempted a pull-request dependency review gate; the exact PR run confirmed GitHub dependency review is unavailable because the repository dependency graph is disabled. Removed the always-failing workflow rather than masking that limitation.
 - [x] Added section- and department-scope permission regression tests alongside existing class, subject, student-self and guardian checks.
 - [x] Made post-commit backup-restore failures return HTTP 503 with the restore checkpoint ID and an explicit incomplete-recovery signal; this improves observability but does not replace a recovery drill.
+- [x] Routed the main authenticated campus shell's navigation, group headings, workspace descriptions, search labels, role labels and loading text through paired English/Urdu translation keys; broader component-level localization remains outstanding.
 
 ## Required before production can be certified
 
@@ -34,7 +35,7 @@ These items require real environment access, school-owner decisions, or dedicate
 | P1 | Autonomous jobs | Implement persisted jobs with idempotency, leases, retry/backoff, concurrency controls, dead-letter state, audit events, operator retry/cancel and alerts; approval-gate high-impact work | Not implemented / not certified |
 | P1 | Private storage | Exercise cross-scope upload/download, malformed/signature-mismatched files, size boundaries, storage outage and orphan reconciliation on the target runtime | Existing unit tests; live matrix pending |
 | P1 | Finance | Exercise duplicate/out-of-order webhooks, signature/replay, refund/reversal, concurrent posting, rounding and approval/reconciliation against a test gateway | Partial tests; gateway certification pending |
-| P2 | Localization and accessibility | Complete user-visible English/Urdu translation audit; desktop/mobile keyboard, screen-reader, focus, error and RTL browser journeys | Partial localization; full coverage pending |
+| P2 | Localization and accessibility | Complete user-visible English/Urdu translation audit; desktop/mobile keyboard, screen-reader, focus, error and RTL browser journeys | Main campus shell localized and dictionary parity enforced; EnterpriseOperationsSection and other component-level strings plus full RTL/accessibility journeys remain pending |
 | P2 | Supply-chain assurance | Add and triage secret scanning, SAST, SBOM/provenance, license policy and reviewed/pinned actions; retain results for exact release commit | Partial: CodeQL and Dependabot added; dependency review blocked until GitHub dependency graph is enabled in repository settings; secret scanning, SBOM/provenance, license policy, action pinning and alert triage pending |
 | P2 | Load/soak and resilience | Measure DB pool saturation, rate-limit store outage, login/refresh, AI quotas, uploads and backup/restore under expected peak load | Pending |
 | P2 | Governance | Name policy owners; approve retention/deletion, backup expiry, audit access, AI consent/minimization, incident/breach response and staff offboarding | School management approval pending |
