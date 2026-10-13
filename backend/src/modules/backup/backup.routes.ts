@@ -4,6 +4,7 @@ import { authorize } from "../../middleware/authorize.js";
 import {
   createEncryptedBackup,
   listBackups,
+  listRestoreCheckpoints,
   verifyBackupRecovery,
   restoreFromBackup,
   exportDatabaseData,
@@ -50,6 +51,20 @@ backupRouter.get("/", authorize("backup:view"), async (_req, res) => {
     res.json({ backups });
   } catch (e) {
     res.status(500).json({ error: "Failed to list backups" });
+  }
+});
+
+backupRouter.get("/restore/checkpoints", authorize("backup:view"), async (req, res) => {
+  const rawLimit = req.query.limit;
+  const limit = rawLimit === undefined ? 25 : Number(rawLimit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    return res.status(400).json({ error: "limit must be an integer between 1 and 100" });
+  }
+  try {
+    const checkpoints = await listRestoreCheckpoints(limit);
+    res.json({ checkpoints });
+  } catch {
+    res.status(500).json({ error: "Failed to list restore checkpoints" });
   }
 });
 
