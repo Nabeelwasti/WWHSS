@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import { createRequire } from "node:module";
-import { rateLimit } from "express-rate-limit";
+import { ipKeyGenerator, rateLimit } from "express-rate-limit";
 import crypto from "node:crypto";
 import "./middleware/express-async-errors.js";
 import { env } from "./config/env.js";
@@ -140,7 +140,7 @@ const authAccountLimiter = rateLimit({
   store: authAccountStore,
   keyGenerator: (req) => {
     const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
-    const ip = req.ip || "unknown";
+    const ip = req.ip ? ipKeyGenerator(req.ip) : "unknown";
     return email ? `${email}:${ip}` : ip;
   },
   message: { error: "Too many login attempts for this account from your address. Please try again later." },
