@@ -92,11 +92,11 @@ export default function App() {
 
   if (booting) {
     return (
-      <div className="boot-screen" role="status" aria-label="Loading your school workspace">
+      <div className="boot-screen" role="status" aria-label={t("app.loadingWorkspace")}>
         <div className="boot-mark">W</div>
         <div className="boot-copy">
-          <strong>WWHSS Digital Campus</strong>
-          <span>Preparing your secure workspace…</span>
+          <strong>WWHSS {t("app.digitalCampus")}</strong>
+          <span>{t("app.preparingWorkspace")}</span>
         </div>
         <div className="boot-progress"><span /></div>
       </div>
@@ -200,7 +200,7 @@ export default function App() {
 
         <div className="topbar-actions">
           <LanguageToggle />
-          <button className="topbar-avatar" title={user.fullName} aria-label={`Signed in as ${user.fullName}`}>{initials || "U"}</button>
+          <button className="topbar-avatar" title={user.fullName} aria-label={`${t("app.signedInAs")} ${user.fullName}`}>{initials || "U"}</button>
           <button className="topbar-signout" onClick={() => void logout()}>{t("common.signOut")}</button>
         </div>
       </header>
