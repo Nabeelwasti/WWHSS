@@ -222,6 +222,16 @@ export type InvoiceSummary = {
   payments: { amount: number; method: string; paidAt: string }[];
 };
 
+export type RestoreCheckpointSummary = {
+  id: string;
+  backupId: string;
+  mode: string;
+  status: string;
+  startedAt: string;
+  completedAt: string | null;
+  hasError: boolean;
+};
+
 export const api = {
   login: (email: string, password: string) =>
     request<{ accessToken: string; user: { id: string; email: string; fullName: string } }>("/auth/login", {
@@ -640,16 +650,6 @@ export const api = {
   createPtmMeeting: (input: Record<string, unknown>) => request("/operations/ptm", { method: "POST", body: JSON.stringify(input) }),
   updatePtmMeeting: (id: string, input: Record<string, unknown>) => request("/operations/ptm/" + id, { method: "PATCH", body: JSON.stringify(input) }),
   createPaymentIntent: (input: Record<string, unknown>) => request("/payments/intents", { method: "POST", body: JSON.stringify(input) }),
-
-export type RestoreCheckpointSummary = {
-  id: string;
-  backupId: string;
-  mode: string;
-  status: string;
-  startedAt: string;
-  completedAt: string | null;
-  hasError: boolean;
-};
 
   // ---- Backups ----
   listBackups: () => request<{ backups: unknown[] }>("/backup"),
