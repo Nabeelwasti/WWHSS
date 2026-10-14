@@ -3,8 +3,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("../../../db/client.js", () => ({
   prisma: {
     feeStructure: { create: vi.fn(), findUnique: vi.fn() },
-    feeInvoice: { findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn(), upsert: vi.fn() },
-    payment: { create: vi.fn(), findMany: vi.fn() },
+    feeInvoice: { findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn(), count: vi.fn(), upsert: vi.fn() },
+    payment: { create: vi.fn(), findMany: vi.fn(), findUnique: vi.fn() },
     feeWaiver: { create: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
     fundingCategory: { findMany: vi.fn(), findUnique: vi.fn() },
     studentProfile: { findUnique: vi.fn(), update: vi.fn() },
@@ -25,7 +25,7 @@ vi.mock("../../../db/client.js", () => ({
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../../db/client.js";
-import { recordPayment, createFeeStructure, calculateOutstandingBalance, generateInvoicesForClass, getFinancialSummaryReport, assignStudentFundingRecord, refreshInvoiceStatus, getStudentFeeStatement, FinanceValidationError } from "../finance.service.js";
+import { recordPayment, createFeeStructure, calculateOutstandingBalance, generateInvoicesForClass, getFinancialSummaryReport, assignStudentFundingRecord, refreshInvoiceStatus, getStudentFeeStatement, listFinanceInvoices, getPaymentReceipt, FinanceValidationError } from "../finance.service.js";
 
 describe("Finance Hardening and Validation", () => {
   beforeEach(() => {
@@ -355,6 +355,40 @@ describe("Finance Hardening and Validation", () => {
         section: { select: { id: true, name: true } },
         fundingCategory: { select: { id: true, name: true, code: true } },
       },
+    });
+  });
+
+  it("limits student fields in finance invoice listings and payment receipts", async () => {
+    vi.mocked(prisma.feeInvoice.findMany).mockResolvedValue([] as never);
+    vi.mocked(prisma.feeInvoice.count).mockResolvedValue(0 as never);
+    vi.mocked(prisma.payment.findUnique).mockResolvedValue({ id: "payment-1" } as never);
+
+    await listFinanceInvoices();
+    const invoiceQuery = vi.mocked(prisma.feeInvoice.findMany).mock.calls[0]?.[0] as {
+      include?: { student?: { select?: Record<string, unknown> } };
+    };
+    expect(invoiceQuery.include?.student?.select).toMatchObject({
+      id: true,
+      admissionNo: true,
+      rollNumber: true,
+      status: true,
+      user: { select: { id: true, fullName: true } },
+      class: { select: { id: true, name: true } },
+      section: { select: { id: true, name: true } },
+    });
+
+    await getPaymentReceipt("payment-1");
+    const receiptQuery = vi.mocked(prisma.payment.findUnique).mock.calls[0]?.[0] as {
+      include?: { invoice?: { include?: { student?: { select?: Record<string, unknown> } } } };
+    };
+    expect(receiptQuery.include?.invoice?.include?.student?.select).toMatchObject({
+      id: true,
+      admissionNo: true,
+      rollNumber: true,
+      status: true,
+      user: { select: { fullName: true, email: true, phone: true } },
+      class: { select: { id: true, name: true } },
+      section: { select: { id: true, name: true } },
     });
   });
 
