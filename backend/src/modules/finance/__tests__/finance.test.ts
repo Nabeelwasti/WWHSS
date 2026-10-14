@@ -25,7 +25,7 @@ vi.mock("../../../db/client.js", () => ({
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../../db/client.js";
-import { recordPayment, createFeeStructure, calculateOutstandingBalance, generateInvoicesForClass, getFinancialSummaryReport, assignStudentFundingRecord, FinanceValidationError } from "../finance.service.js";
+import { recordPayment, createFeeStructure, calculateOutstandingBalance, generateInvoicesForClass, getFinancialSummaryReport, assignStudentFundingRecord, refreshInvoiceStatus, FinanceValidationError } from "../finance.service.js";
 
 describe("Finance Hardening and Validation", () => {
   beforeEach(() => {
@@ -319,6 +319,39 @@ describe("Finance Hardening and Validation", () => {
     );
     expect(mockWaiverDeleteMany).toHaveBeenCalledWith({
       where: { id: { in: ["w-duplicate"] } },
+    });
+  });
+
+  it("audits invoice status refreshes when the effective status changes", async () => {
+    const updateInvoice = vi.fn().mockResolvedValue({ id: "inv-1", status: "issued" });
+    const createAudit = vi.fn().mockResolvedValue({});
+    const tx = {
+      feeInvoice: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "inv-1",
+          status: "pending",
+          dueDate: new Date("2099-01-01T00:00:00.000Z"),
+          amountDue: new Prisma.Decimal(1000),
+          payments: [],
+          feeWaivers: [],
+        }),
+        update: updateInvoice,
+      },
+      auditLog: { create: createAudit },
+    };
+    (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementationOnce((cb) => cb(tx));
+
+    const result = await refreshInvoiceStatus("inv-1", "admin-1");
+
+    expect(result).toMatchObject({ id: "inv-1", status: "issued" });
+    expect(updateInvoice).toHaveBeenCalledWith({ where: { id: "inv-1" }, data: { status: "issued" } });
+    expect(createAudit).toHaveBeenCalledWith({
+      data: {
+        userId: "admin-1",
+        action: "finance:refresh_invoice_status",
+        resource: "invoice:inv-1",
+        metadata: { previousStatus: "pending", nextStatus: "issued" },
+      },
     });
   });
 
