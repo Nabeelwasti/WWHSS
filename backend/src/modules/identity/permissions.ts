@@ -42,7 +42,9 @@ export async function userHasPermission(
       const roleIsUnscoped = !ur.classId && !ur.sectionId && !ur.subjectId && !ur.departmentId;
       const permissionRequiresScope = permissionKey.endsWith(":scoped");
       if (roleIsUnscoped) {
-        if (permissionRequiresScope) continue;
+        // Teaching roles are never implicitly school-wide. Legacy unscoped
+        // teacher assignments must fail closed until an administrator scopes them.
+        if (permissionRequiresScope || ur.role.key === "teacher" || ur.role.key === "class_teacher") continue;
         return true;
       }
       if (requestedScopeIsEmpty) continue;
@@ -77,7 +79,9 @@ export async function userHasPermission(
         const roleIsUnscoped = !ur.classId && !ur.sectionId && !ur.subjectId && !ur.departmentId;
         const permissionRequiresScope = permissionKey.endsWith(":scoped");
         if (roleIsUnscoped) {
-          if (permissionRequiresScope) continue;
+          // Keep object-level student checks subject to the same fail-closed
+          // rule as ordinary permission checks.
+          if (permissionRequiresScope || ur.role.key === "teacher" || ur.role.key === "class_teacher") continue;
           return true;
         }
 

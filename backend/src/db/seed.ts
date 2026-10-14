@@ -186,14 +186,26 @@ async function main() {
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail) ||
     (isProduction && (!configuredAdminEmail || adminEmail.toLowerCase() === "admin@wwhs.local")) ||
     !adminPassword ||
-    (isProduction && adminPassword.length < 12)
+    (isProduction && (
+      adminPassword.length < 16 ||
+      /changeme|your-secure|password123|admin123/i.test(adminPassword)
+    ))
   ) {
     throw new Error(
-      "Refusing to seed an admin: production requires an explicit non-default ADMIN_EMAIL and ADMIN_PASSWORD of at least 12 characters."
+      "Refusing to seed an admin: production requires an explicit non-default ADMIN_EMAIL and a unique ADMIN_PASSWORD of at least 16 characters that does not contain a known development/default pattern."
     );
   }
 
-  console.log(`Seeding the first admin account (${adminEmail})...`);
+  console.log(`Ensuring the administrator account exists (${adminEmail})...`);
+  const existingAdmin = await prisma.user.findUnique({
+    where: { email: adminEmail },
+    select: { id: true },
+  });
+  if (existingAdmin) {
+    console.warn(
+      "Administrator already exists; seed is idempotent and will not rotate its password. Use the authorized password-reset/rotation procedure."
+    );
+  }
   const passwordHash = await argon2.hash(adminPassword);
   const admin = await prisma.user.upsert({
     where: { email: adminEmail },

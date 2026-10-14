@@ -386,4 +386,24 @@ describe("userHasPermission", () => {
     })).resolves.toBe(true);
   });
 
+
+  it("denies an unscoped teacher assignment rather than treating it as school-wide", async () => {
+    mockedFindMany.mockResolvedValue([{
+      classId: null, sectionId: null, subjectId: null, departmentId: null,
+      role: { key: "teacher", rolePermissions: [{ permission: { key: "attendance:mark" } }] },
+    }]);
+    await expect(userHasPermission("unscoped-teacher", "attendance:mark", { classId: "grade-9" })).resolves.toBe(false);
+    await expect(userHasPermission("unscoped-teacher", "attendance:mark", {})).resolves.toBe(false);
+  });
+
+  it("denies an unscoped class_teacher assignment for student-scoped object access", async () => {
+    mockedFindMany.mockResolvedValue([{
+      classId: null, sectionId: null, subjectId: null, departmentId: null,
+      role: { key: "class_teacher", rolePermissions: [{ permission: { key: "student:view:basic" } }] },
+    }]);
+    mockedStudentFind.mockResolvedValue({ id: "student-profile", userId: "student-user" });
+    mockedGuardianFind.mockResolvedValue(null);
+    await expect(userHasPermission("unscoped-class-teacher", "student:view:basic", { studentId: "student-profile" })).resolves.toBe(false);
+  });
+
 });

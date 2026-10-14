@@ -126,6 +126,17 @@ export async function assignRole(input: {
   const role = await prisma.role.findUnique({ where: { key: input.roleKey } });
   if (!role) throw new UserValidationError(`Unknown role: ${input.roleKey}`);
 
+  // Teaching permissions can affect attendance, grades and student records;
+  // require an explicit object scope when assigning either teaching role.
+  if (
+    (input.roleKey === "teacher" || input.roleKey === "class_teacher") &&
+    !input.classId && !input.sectionId && !input.subjectId && !input.departmentId
+  ) {
+    throw new UserValidationError(
+      "Teacher and class_teacher roles require at least one class, section, subject, or department scope."
+    );
+  }
+
   if (input.classId) {
     const cls = await prisma.class.findUnique({ where: { id: input.classId }, select: { id: true } });
     if (!cls) throw new UserValidationError(`Class not found: ${input.classId}`);
