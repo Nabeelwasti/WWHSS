@@ -132,6 +132,7 @@ export type Me = {
   email: string;
   fullName: string;
   photoUrl: string | null;
+  mustChangePassword: boolean;
   studentProfile: { id: string; classId: string | null; sectionId: string | null } | null;
   aiPersonalizationConsent: boolean;
   userRoles: {

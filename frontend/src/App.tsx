@@ -13,6 +13,7 @@ import { useLanguage, LanguageToggle } from "./i18n";
 import { AssistantLauncher } from "./components/AssistantLauncher";
 import { DocumentEngineSection } from "./components/DocumentEngineSection";
 import { UpdateToast } from "./components/UpdateToast";
+import { ChangePasswordSection } from "./components/ChangePasswordSection";
 
 type View =
   | "dashboard" | "teacher" | "admin" | "attendance" | "timetable" | "quizzes" | "parent"
@@ -104,6 +105,18 @@ export default function App() {
   }
 
   if (!user) return showLogin ? <LoginPage /> : <PublicHomePage onLoginClick={() => setShowLogin(true)} />;
+
+  if (user.mustChangePassword) {
+    return (
+      <main className="page page-narrow" style={{ marginTop: "8vh" }}>
+        <section className="card">
+          <h1 className="card-title">Change your temporary password</h1>
+          <p className="text-muted">For your security, you must set a new password before using the campus system.</p>
+          <ChangePasswordSection forceOpen />
+        </section>
+      </main>
+    );
+  }
 
   const roleKeys = user.userRoles.map((assignment) => assignment.role.key);
   const isAdmin = hasAdminRole(roleKeys);

@@ -44,6 +44,7 @@
 - [x] Student-profile audit metadata now records changed field names only; sensitive field values are not copied into immutable audit history.
 - [x] HTTP 5xx and AI provider logs now emit request/error type metadata rather than serializing raw exception objects that may contain database/provider details.
 
+- [x] Temporary credentials now have a persisted password-change requirement, protected API routes enforce it, and the UI displays a mandatory password-change screen until the user changes it.
 ## Required before production can be certified
 
 These items require real environment access, school-owner decisions, or dedicated test fixtures; repository edits alone cannot truthfully mark them complete.

@@ -3,10 +3,10 @@ import { api, ApiError } from "../api";
 import { useAuth } from "../AuthContext";
 import { useLanguage } from "../i18n.js";
 
-export function ChangePasswordSection() {
+export function ChangePasswordSection({ forceOpen = false }: { forceOpen?: boolean }) {
   const { logout } = useAuth();
   const { t } = useLanguage();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(forceOpen);
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -32,7 +32,7 @@ export function ChangePasswordSection() {
     }
   }
 
-  if (!open) {
+  if (!open && !forceOpen) {
     return (
       <p className="mt-4 text-sm">
         <button onClick={() => setOpen(true)} className="btn btn-ghost btn-sm">
@@ -86,9 +86,11 @@ export function ChangePasswordSection() {
           <button type="submit" disabled={saving} className="btn btn-primary">
             {saving ? "…" : t("password.change")}
           </button>
-          <button type="button" onClick={() => setOpen(false)} className="btn btn-secondary">
-            {t("password.cancel")}
-          </button>
+          {!forceOpen && (
+            <button type="button" onClick={() => setOpen(false)} className="btn btn-secondary">
+              {t("password.cancel")}
+            </button>
+          )}
         </div>
       </form>
     </section>
