@@ -1,7 +1,7 @@
 # WWHSS Digital Campus — Production Remediation Register
 
-**Baseline audited:** `main@f7576007f18441858b339fb4f3cd805e30b61434`  
-**Audit branch:** `audit/production-readiness-2026-10-14`  
+**Baseline audited:** `main@6101c20ddcd951704ee989ccb38225e525a82cb0`  
+**Current implementation branch:** `main`  
 **Last updated:** 2026-10-14  
 **Purpose:** track code changes separately from release evidence and school policy decisions. A green CI run is not a blanket production-readiness certificate.
 
@@ -27,9 +27,9 @@
 ## Audit notes for this pass
 
 - The Vercel backend project is not the documented production topology. The supported topology is static Vercel frontend calling Cloud Run directly; production API origin, database migration owner, and live deployment state must be confirmed before release. The backend build must remain compile-only and must not apply migrations.
-- Account-specific login throttling previously keyed custom IP values without IPv6 subnet normalization. The audit branch corrects this with a local normalizer backed by the explicitly declared `ipaddr.js` dependency and adds a regression test.
-- CORS origin validation previously checked only an HTTPS prefix and had a malformed loopback regex in the `PUBLIC_APP_ORIGIN` check. The audit branch now requires canonical origins and rejects loopback hosts.
-- No CI result is claimed for this audit branch until its checks complete.
+- Account-specific login throttling previously keyed custom IP values without IPv6 subnet normalization. The merged `main` implementation corrects this with a local normalizer backed by the explicitly declared `ipaddr.js` dependency and adds a regression test.
+- CORS origin validation previously checked only an HTTPS prefix and had a malformed loopback regex in the `PUBLIC_APP_ORIGIN` check. The merged `main` implementation now requires canonical public HTTPS origins and rejects loopback hosts.
+- Pull request #32 passed the backend test, frontend build, Docker build, browser E2E, and CodeQL checks before merge. The merge commit has successful Vercel status checks; this does not replace the exact-commit GitHub Actions and live release evidence required below.
 
 ## Required before production can be certified
 
