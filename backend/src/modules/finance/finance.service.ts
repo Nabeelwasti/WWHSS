@@ -655,7 +655,20 @@ export async function refreshInvoiceStatus(invoiceId: string, actorId?: string) 
     if (nextStatus === "issued" && invoice.dueDate < new Date()) {
       nextStatus = "overdue";
     }
-    return tx.feeInvoice.update({ where: { id: invoiceId }, data: { status: nextStatus } });
+    if (nextStatus === invoice.status) return invoice;
+
+    const updated = await tx.feeInvoice.update({ where: { id: invoiceId }, data: { status: nextStatus } });
+    if (actorId) {
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: "finance:refresh_invoice_status",
+          resource: `invoice:${invoiceId}`,
+          metadata: { previousStatus: invoice.status, nextStatus },
+        },
+      });
+    }
+    return updated;
   });
 }
 
