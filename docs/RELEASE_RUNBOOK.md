@@ -12,7 +12,7 @@ Preview and Production must use isolated databases, storage locations and secret
 2. Build the immutable backend image.
 3. Run `npx prisma migrate deploy` exactly once against the target database.
 4. Deploy the immutable Cloud Run revision with the injected `PORT`.
-5. Verify `/health` and `/ready`.
+5. Verify `/health` (liveness), `/ready` (database and required schema readiness), and `/api/health` (database dependency health).
 6. Verify the deployed Vercel build has `VITE_API_BASE_URL` set to the intended Cloud Run HTTPS origin, then verify browser requests reach that API with credentialed CORS and refresh-cookie behavior. The supported hosted topology does not use a Vercel `/api/*` proxy.
 7. Run authenticated login/refresh/logout, authorization denial, private upload/download, document, finance and representative E2E smoke tests.
 8. Verify backup integrity and complete the isolated disaster-recovery drill before asserting recovery readiness.
