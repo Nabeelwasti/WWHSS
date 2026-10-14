@@ -70,7 +70,7 @@ const envSchema = z.object({
   if (data.S3_ENDPOINT && !/^https:\/\//i.test(data.S3_ENDPOINT)) issue("S3_ENDPOINT", "must use HTTPS in production/preview");
   const origins = [...(data.CORS_ORIGIN ?? "").split(","), data.PUBLIC_APP_ORIGIN ?? ""].map((value) => value.trim()).filter(Boolean);
   if (origins.length === 0) issue("CORS_ORIGIN", "must contain at least one HTTPS origin via CORS_ORIGIN or PUBLIC_APP_ORIGIN");
-  else if (origins.some((origin) => !/^https:\/\//i.test(origin) || /localhost|127\.0\.0\.1/i.test(origin))) issue("CORS_ORIGIN", "must contain only non-local HTTPS origins in production/preview");
+  else if (origins.some((origin) => !isValidPublicHttpsOrigin(origin))) issue("CORS_ORIGIN", "must contain only canonical public HTTPS origins without paths, credentials, or loopback hosts in production/preview");
   if (!["true", "1"].includes(data.TRUST_PROXY)) issue("TRUST_PROXY", "must be true or 1 behind Vercel/another trusted proxy");
   if (data.WEB_RESEARCH_ENABLED && !data.WEB_RESEARCH_API_KEY) issue("WEB_RESEARCH_API_KEY", "is required when WEB_RESEARCH_ENABLED=true");
 });
