@@ -373,7 +373,9 @@ export async function gradeAiAnswerSheet(
 
   return prisma.$transaction(async (tx) => {
     const status = await lockAssessmentForTransition(tx, initialSheet.testId);
-    if (status === "LOCKED") throw new AiAssessmentError("Locked assessments cannot be graded or changed.");
+    if (status !== "PUBLISHED") {
+      throw new AiAssessmentError("Only published assessments can be graded before they are locked.");
+    }
 
     const sheet = await tx.aiAnswerSheet.findUnique({ where: { id: sheetId }, include: { test: true } });
     if (!sheet) throw new AiAssessmentError(`Answer sheet ${sheetId} not found`);
