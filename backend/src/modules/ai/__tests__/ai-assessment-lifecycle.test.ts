@@ -24,7 +24,7 @@ describe("AI assessment lifecycle concurrency guards", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.initialSheetFindUnique.mockResolvedValue({ id: "sheet-1", testId: "test-1" });
-    mocks.transaction.mockImplementation((callback: (tx: unknown) => unknown) => callback({
+    mocks.transaction.mockImplementation((callback: (tx: any) => any) => callback({
       $queryRaw: mocks.lockQuery,
       aiAnswerSheet: {
         findUnique: mocks.transactionSheetFindUnique,
