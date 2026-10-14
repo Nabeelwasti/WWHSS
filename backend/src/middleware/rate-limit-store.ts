@@ -86,12 +86,15 @@ export class PostgresRateLimitStore implements Store {
   private windowMs = 60_000;
   private cleanupCounter = 0;
   readonly namespacePrefix: string;
+  /** Exposed for express-rate-limit duplicate-count validation across independent namespaces. */
+  readonly prefix: string;
 
   constructor(namespace: string) {
     if (!/^[a-z0-9-]{1,64}$/i.test(namespace)) {
       throw new Error("Rate-limit namespace must be 1-64 alphanumeric or hyphen characters");
     }
     this.namespacePrefix = `${namespace}:`;
+    this.prefix = this.namespacePrefix;
   }
 
   init(options: Options): void {
