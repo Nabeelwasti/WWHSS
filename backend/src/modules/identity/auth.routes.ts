@@ -91,6 +91,7 @@ authRouter.get("/me", authenticate, async (req, res) => {
       email: true,
       fullName: true,
       photoUrl: true,
+      mustChangePassword: true,
       studentProfile: { select: { id: true, classId: true, sectionId: true } },
       aiPersonalizationConsent: true,
       userRoles: {

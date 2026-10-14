@@ -27,7 +27,7 @@ export async function login(email: string, password: string) {
   return {
     accessToken,
     refreshToken,
-    user: { id: user.id, email: user.email, fullName: user.fullName },
+    user: { id: user.id, email: user.email, fullName: user.fullName, mustChangePassword: user.mustChangePassword },
   };
 }
 
@@ -150,7 +150,7 @@ export async function changePassword(userId: string, currentPassword: string, ne
   await prisma.$transaction(async (tx) => {
     await tx.user.update({
       where: { id: userId },
-      data: { passwordHash, tokenVersion: { increment: 1 } },
+      data: { passwordHash, mustChangePassword: false, tokenVersion: { increment: 1 } },
     });
 
     // Sign out every other session

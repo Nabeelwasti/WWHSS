@@ -92,12 +92,18 @@ export async function listUsers() {
 }
 
 export async function createUser(input: { email: string; fullName: string; phone?: string; password?: string; actorId?: string }) {
-  const rawPassword = input.password ?? crypto.randomBytes(9).toString("base64url");
+  const rawPassword = input.password ?? crypto.randomBytes(18).toString("base64url");
   const passwordHash = await argon2.hash(rawPassword);
 
   const user = await prisma.$transaction(async (tx) => {
     const created = await tx.user.create({
-      data: { email: input.email, fullName: input.fullName, phone: input.phone, passwordHash },
+      data: {
+        email: input.email,
+        fullName: input.fullName,
+        phone: input.phone,
+        passwordHash,
+        mustChangePassword: !input.password,
+      },
     });
     if (input.actorId) {
       await tx.auditLog.create({
@@ -227,13 +233,13 @@ export async function listRoles() {
 
 export async function resetPassword(userId: string, actorId?: string) {
   if (actorId) await assertCanManageUser(actorId, userId);
-  const temporaryPassword = crypto.randomBytes(9).toString("base64url");
+  const temporaryPassword = crypto.randomBytes(18).toString("base64url");
   const passwordHash = await argon2.hash(temporaryPassword);
 
   await prisma.$transaction(async (tx) => {
     await tx.user.update({
       where: { id: userId },
-      data: { passwordHash, tokenVersion: { increment: 1 } },
+      data: { passwordHash, mustChangePassword: true, tokenVersion: { increment: 1 } },
     });
     await tx.refreshToken.updateMany({ where: { userId, revoked: false }, data: { revoked: true } });
     if (actorId) {

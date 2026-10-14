@@ -20,13 +20,23 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
     const payload = verifyAccessToken(header.slice("Bearer ".length));
     const user = await prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { id: true, isActive: true, tokenVersion: true },
+      select: { id: true, isActive: true, tokenVersion: true, mustChangePassword: true },
     });
     if (!user || !user.isActive) {
       return res.status(401).json({ error: "Account is inactive or disabled" });
     }
     if (typeof payload.tokenVersion === "number" && user.tokenVersion !== payload.tokenVersion) {
       return res.status(401).json({ error: "Session revoked due to security changes" });
+    }
+    if (user.mustChangePassword) {
+      const requestPath = req.originalUrl.split("?")[0].replace(/\\/+$/, "");
+      const passwordRecoveryRoute = requestPath.endsWith("/auth/change-password") || requestPath.endsWith("/auth/me");
+      if (!passwordRecoveryRoute) {
+        return res.status(403).json({
+          error: "You must change your temporary password before using the campus system.",
+          code: "PASSWORD_CHANGE_REQUIRED",
+        });
+      }
     }
     req.userId = payload.sub;
     next();
