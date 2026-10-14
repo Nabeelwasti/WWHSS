@@ -3,7 +3,7 @@ import http from "node:http";
 import express from "express";
 import { ipKeyGenerator, rateLimit } from "express-rate-limit";
 import { normalizeRateLimitIp } from "../middleware/rate-limit-ip.js";
-import { SharedRateLimitStore } from "../middleware/rate-limit-store.js";
+import { PostgresRateLimitStore, SharedRateLimitStore } from "../middleware/rate-limit-store.js";
 
 describe("Rate Limiting, Proxy Trust & Forwarded-IP Isolation", () => {
   it("normalizes IPv6 clients to a stable subnet key for account rate limits", () => {
@@ -62,6 +62,14 @@ describe("Rate Limiting, Proxy Trust & Forwarded-IP Isolation", () => {
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  });
+
+  it("exposes a unique namespace prefix for each PostgreSQL rate-limit store", () => {
+    const loginStore = new PostgresRateLimitStore("auth-login-ip");
+    const generalStore = new PostgresRateLimitStore("general-api");
+    expect(loginStore.prefix).toBe("auth-login-ip:");
+    expect(generalStore.prefix).toBe("general-api:");
+    expect(loginStore.prefix).not.toBe(generalStore.prefix);
   });
 
   it("shared rate limit store tracks hits across multiple instances", async () => {
