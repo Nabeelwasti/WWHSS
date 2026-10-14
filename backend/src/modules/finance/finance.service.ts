@@ -582,13 +582,20 @@ export async function getStudentInvoices(studentProfileId: string) {
 }
 
 export async function getStudentFeeStatement(studentProfileId: string) {
+  // This statement is available to a student's own account and guardians.
+  // Return only the finance display fields; never serialize the full student
+  // profile (which also contains sensitive demographic/guardian identifiers).
   const student = await prisma.studentProfile.findUnique({
     where: { id: studentProfileId },
-    include: {
+    select: {
+      id: true,
+      admissionNo: true,
+      rollNumber: true,
+      status: true,
       user: { select: { fullName: true, email: true, phone: true } },
-      class: true,
-      section: true,
-      fundingCategory: true,
+      class: { select: { id: true, name: true } },
+      section: { select: { id: true, name: true } },
+      fundingCategory: { select: { id: true, name: true, code: true } },
     },
   });
   if (!student) throw new FinanceValidationError(`Student profile ${studentProfileId} not found`);
