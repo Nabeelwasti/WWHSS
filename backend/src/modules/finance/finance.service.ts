@@ -186,7 +186,18 @@ export async function assignStudentFundingRecord(
         customFeeAmount: input.customFeeAmount !== undefined ? new Prisma.Decimal(input.customFeeAmount) : undefined,
         notes: input.notes,
       },
-      include: { fundingCategory: true, student: true },
+      include: {
+        fundingCategory: true,
+        student: {
+          select: {
+            id: true,
+            admissionNo: true,
+            rollNumber: true,
+            status: true,
+            user: { select: { fullName: true } },
+          },
+        },
+      },
     });
 
     await tx.studentProfile.update({
@@ -687,10 +698,14 @@ export async function getPaymentReceipt(paymentId: string) {
         include: {
           feeStructure: true,
           student: {
-            include: {
+            select: {
+              id: true,
+              admissionNo: true,
+              rollNumber: true,
+              status: true,
               user: { select: { fullName: true, email: true, phone: true } },
-              class: true,
-              section: true,
+              class: { select: { id: true, name: true } },
+              section: { select: { id: true, name: true } },
             },
           },
         },
@@ -726,7 +741,17 @@ export async function listFinanceInvoices(options: {
     prisma.feeInvoice.findMany({
       where,
       include: {
-        student: { include: { user: { select: { id: true, fullName: true } }, class: true, section: true } },
+        student: {
+          select: {
+            id: true,
+            admissionNo: true,
+            rollNumber: true,
+            status: true,
+            user: { select: { id: true, fullName: true } },
+            class: { select: { id: true, name: true } },
+            section: { select: { id: true, name: true } },
+          },
+        },
         feeStructure: true,
         payments: { include: { adjustments: true }, orderBy: { paidAt: "desc" } },
         feeWaivers: true,
