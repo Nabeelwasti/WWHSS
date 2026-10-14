@@ -56,7 +56,8 @@ describe("user administration audit atomicity", () => {
   });
 
   it("commits role assignment and its audit event together", async () => {
-    await assignRole({ userId: "target", roleKey: "teacher", actorId: "actor" });
+    mocks.prisma.class.findUnique.mockResolvedValue({ id: "class-9" });
+    await assignRole({ userId: "target", roleKey: "teacher", classId: "class-9", actorId: "actor" });
     expect(mocks.tx.userRole.create).toHaveBeenCalledOnce();
     expect(mocks.tx.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ userId: "actor", action: "users:assign_role", resource: "user:target" }),
