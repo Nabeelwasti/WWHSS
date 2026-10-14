@@ -1,6 +1,6 @@
 # WWHSS Digital Campus — Production Remediation Register
 
-**Baseline audited:** `main@6101c20ddcd951704ee989ccb38225e525a82cb0`  
+**Baseline audited:** `main@0fe5d4ee2e1aa37659367377758d5b7d54a9124f`  
 **Current implementation branch:** `main`  
 **Last updated:** 2026-10-14  
 **Purpose:** track code changes separately from release evidence and school policy decisions. A green CI run is not a blanket production-readiness certificate.
@@ -23,13 +23,15 @@
 - [x] Normalized IPv6 client addresses in the account-specific login rate-limit key so address rotation within a subnet does not trivially bypass the per-account limiter.
 - [x] Validated configured CORS/public-app origins as canonical HTTPS origins (not URLs with paths, embedded credentials, or loopback hosts), preventing configurations that pass startup validation but cannot match browser Origin headers.
 - [x] Made API readiness verify the PostgreSQL rate-limit table exists, so a database with reachable PostgreSQL but an incomplete migration state is not incorrectly reported as ready; added a missing-table regression test.
+- [x] Applied canonical HTTPS-origin validation to every configured CORS origin, not only `PUBLIC_APP_ORIGIN`, so URL paths, embedded credentials and loopback hosts are rejected consistently.
+- [x] Serialized AI assessment generation, approval, publication, locking and grading against the assessment row to prevent stale pre-transaction state checks from bypassing a committed lock; added regression tests for locked grading and score validation.
 
 ## Audit notes for this pass
 
 - The Vercel backend project is not the documented production topology. The supported topology is static Vercel frontend calling Cloud Run directly; production API origin, database migration owner, and live deployment state must be confirmed before release. The backend build must remain compile-only and must not apply migrations.
 - Account-specific login throttling previously keyed custom IP values without IPv6 subnet normalization. The merged `main` implementation corrects this with a local normalizer backed by the explicitly declared `ipaddr.js` dependency and adds a regression test.
 - CORS origin validation previously checked only an HTTPS prefix and had a malformed loopback regex in the `PUBLIC_APP_ORIGIN` check. The merged `main` implementation now requires canonical public HTTPS origins and rejects loopback hosts.
-- Pull request #32 passed the backend test, frontend build, Docker build, browser E2E, and CodeQL checks before merge. The merge commit has successful Vercel status checks; this does not replace the exact-commit GitHub Actions and live release evidence required below.
+- Pull request #32 passed the backend test, frontend build, Docker build, browser E2E, and CodeQL checks before merge. The latest direct commits to `main` are awaiting exact-commit verification; Vercel status checks were pending at the last status read. This does not replace live release evidence required below.
 
 ## Required before production can be certified
 
