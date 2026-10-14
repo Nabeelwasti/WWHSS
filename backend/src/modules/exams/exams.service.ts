@@ -314,12 +314,18 @@ export async function getClassExamResults(examId: string, classId: string, secti
 }
 
 export async function getStudentReportCard(studentProfileId: string, examId: string) {
+  // Self-service report cards must not expose unrelated sensitive student
+  // profile columns such as identity documents, date of birth, or guardian data.
   const student = await prisma.studentProfile.findUnique({
     where: { id: studentProfileId },
-    include: {
+    select: {
+      id: true,
+      admissionNo: true,
+      rollNumber: true,
+      status: true,
       user: { select: { fullName: true, email: true, phone: true } },
-      class: true,
-      section: true,
+      class: { select: { id: true, name: true } },
+      section: { select: { id: true, name: true } },
     },
   });
   if (!student) throw new ExamValidationError("Student not found");
