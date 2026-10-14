@@ -7,18 +7,22 @@ const mocks = vi.hoisted(() => ({
   transactionSheetFindUnique: vi.fn(),
   sheetUpdate: vi.fn(),
   auditCreate: vi.fn(),
+  assessmentFindUnique: vi.fn(),
+  askCampusAI: vi.fn(),
 }));
 
 vi.mock("../../../db/client.js", () => ({
   prisma: {
     aiAnswerSheet: { findUnique: mocks.initialSheetFindUnique },
+    aiAssessmentTest: { findUnique: mocks.assessmentFindUnique },
     $transaction: mocks.transaction,
   },
 }));
 
-vi.mock("../ai.service.js", () => ({ askCampusAI: vi.fn() }));
+vi.mock("../ai.service.js", () => ({ askCampusAI: mocks.askCampusAI }));
 
-import { gradeAiAnswerSheet, AiAssessmentError } from "../ai-assessment.service.js";
+import { Prisma } from "@prisma/client";
+import { approveAiAssessmentTest, generateTestQuestionsWithAi, gradeAiAnswerSheet, lockAiAssessmentTest, publishAiAssessmentTest, AiAssessmentError } from "../ai-assessment.service.js";
 
 describe("AI assessment lifecycle concurrency guards", () => {
   beforeEach(() => {
@@ -68,6 +72,42 @@ describe("AI assessment lifecycle concurrency guards", () => {
         action: "ai_assessment:grade_answer_sheet",
       }),
     }));
+  });
+
+  it("rejects approval, publication and locking when the row-locked lifecycle state is invalid", async () => {
+    mocks.lockQuery.mockResolvedValue([{ status: "LOCKED" }]);
+    await expect(approveAiAssessmentTest("test-1", "teacher-1")).rejects.toBeInstanceOf(AiAssessmentError);
+
+    mocks.lockQuery.mockResolvedValue([{ status: "DRAFT" }]);
+    await expect(publishAiAssessmentTest("test-1", "teacher-1")).rejects.toBeInstanceOf(AiAssessmentError);
+
+    mocks.lockQuery.mockResolvedValue([{ status: "APPROVED" }]);
+    await expect(lockAiAssessmentTest("test-1", "teacher-1")).rejects.toBeInstanceOf(AiAssessmentError);
+  });
+
+  it("does not overwrite questions if an assessment becomes locked during AI generation", async () => {
+    mocks.assessmentFindUnique.mockResolvedValue({
+      id: "test-1",
+      class: { name: "Class 9" },
+      subject: { name: "Mathematics" },
+      topic: "Fractions",
+      difficulty: "EASY",
+      language: "en",
+      totalMarks: new Prisma.Decimal(5),
+    });
+    mocks.askCampusAI.mockResolvedValue(JSON.stringify(Array.from({ length: 5 }, (_, index) => ({
+      questionType: "SHORT_ANSWER",
+      questionText: `Question ${index + 1} about fractions?`,
+      correctAnswer: "A valid answer",
+      marks: 1,
+      orderIndex: index + 1,
+      optionsJson: [],
+    }))));
+    mocks.lockQuery.mockResolvedValue([{ status: "LOCKED" }]);
+
+    await expect(
+      generateTestQuestionsWithAi("test-1", 5, "teacher-1"),
+    ).rejects.toBeInstanceOf(AiAssessmentError);
   });
 
   it("rejects non-finite and negative final scores before opening a transaction", async () => {
