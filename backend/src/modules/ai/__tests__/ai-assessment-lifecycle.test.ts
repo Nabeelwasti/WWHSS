@@ -57,6 +57,18 @@ describe("AI assessment lifecycle concurrency guards", () => {
     expect(mocks.auditCreate).not.toHaveBeenCalled();
   });
 
+  it.each(["DRAFT", "APPROVED"])("rejects grading while the assessment is %s", async (status) => {
+    mocks.lockQuery.mockResolvedValue([{ status }]);
+
+    await expect(
+      gradeAiAnswerSheet("sheet-1", { finalScore: 85 }, "teacher-1"),
+    ).rejects.toBeInstanceOf(AiAssessmentError);
+
+    expect(mocks.transactionSheetFindUnique).not.toHaveBeenCalled();
+    expect(mocks.sheetUpdate).not.toHaveBeenCalled();
+    expect(mocks.auditCreate).not.toHaveBeenCalled();
+  });
+
   it("locks the assessment row before grading and records the audit event", async () => {
     mocks.lockQuery.mockResolvedValue([{ status: "PUBLISHED" }]);
 
