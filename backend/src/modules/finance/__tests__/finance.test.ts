@@ -6,13 +6,17 @@ vi.mock("../../../db/client.js", () => ({
     feeInvoice: { findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn(), upsert: vi.fn() },
     payment: { create: vi.fn(), findMany: vi.fn() },
     feeWaiver: { create: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
-    fundingCategory: { findMany: vi.fn() },
+    fundingCategory: { findMany: vi.fn(), findUnique: vi.fn() },
+    studentProfile: { findUnique: vi.fn(), update: vi.fn() },
+    studentFundingRecord: { findFirst: vi.fn(), create: vi.fn() },
     auditLog: { create: vi.fn() },
     $transaction: vi.fn((cb: (tx: unknown) => unknown) =>
       cb({
         feeInvoice: { findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
         payment: { create: vi.fn(), findMany: vi.fn() },
         feeWaiver: { create: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
+        studentFundingRecord: { findFirst: vi.fn(), create: vi.fn() },
+        studentProfile: { update: vi.fn() },
         auditLog: { create: vi.fn() },
       })
     ),
@@ -21,7 +25,7 @@ vi.mock("../../../db/client.js", () => ({
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../../db/client.js";
-import { recordPayment, createFeeStructure, calculateOutstandingBalance, generateInvoicesForClass, getFinancialSummaryReport, FinanceValidationError } from "../finance.service.js";
+import { recordPayment, createFeeStructure, calculateOutstandingBalance, generateInvoicesForClass, getFinancialSummaryReport, assignStudentFundingRecord, FinanceValidationError } from "../finance.service.js";
 
 describe("Finance Hardening and Validation", () => {
   beforeEach(() => {
@@ -32,6 +36,36 @@ describe("Finance Hardening and Validation", () => {
     await expect(
       createFeeStructure({ classId: "c-1", academicYearId: "ay-1", name: "Tuition", amount: -100 })
     ).rejects.toThrow(FinanceValidationError);
+  });
+
+  it("rejects funding periods that touch on an inclusive boundary", async () => {
+    const startDate = new Date("2026-01-01T00:00:00.000Z");
+    const endDate = new Date("2026-01-31T00:00:00.000Z");
+    vi.mocked(prisma.studentProfile.findUnique).mockResolvedValue({ id: "s-1" } as never);
+    vi.mocked(prisma.fundingCategory.findUnique).mockResolvedValue({ id: "fc-1", name: "Workers Welfare" } as never);
+
+    const findOverlap = vi.fn().mockResolvedValue({ id: "existing-funding-record" });
+    const tx = {
+      studentFundingRecord: { findFirst: findOverlap, create: vi.fn() },
+      studentProfile: { update: vi.fn() },
+      auditLog: { create: vi.fn() },
+    };
+    (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementationOnce((cb) => cb(tx));
+
+    await expect(assignStudentFundingRecord({
+      studentProfileId: "s-1",
+      fundingCategoryId: "fc-1",
+      startDate: "2026-01-01",
+      endDate: "2026-01-31",
+    })).rejects.toThrow("Funding period overlaps an existing effective funding record");
+
+    expect(findOverlap).toHaveBeenCalledWith({
+      where: {
+        studentProfileId: "s-1",
+        startDate: { lte: endDate },
+        OR: [{ endDate: null }, { endDate: { gte: startDate } }],
+      },
+    });
   });
 
   it("REJECTS zero or negative payment amounts", async () => {
