@@ -164,8 +164,11 @@ export async function assignStudentFundingRecord(
     const overlap = await tx.studentFundingRecord.findFirst({
       where: {
         studentProfileId: input.studentProfileId,
-        startDate: { lt: endDate ?? new Date("9999-12-31T23:59:59.999Z") },
-        OR: [{ endDate: null }, { endDate: { gt: startDate } }],
+        // Funding effectiveness is inclusive at both ends (invoice generation
+        // uses startDate <= billingDate <= endDate), so touching boundaries
+        // overlap and must not permit two simultaneous funding records.
+        startDate: { lte: endDate ?? new Date("9999-12-31T23:59:59.999Z") },
+        OR: [{ endDate: null }, { endDate: { gte: startDate } }],
       },
     });
     if (overlap) throw new FinanceValidationError("Funding period overlaps an existing effective funding record");
