@@ -4,6 +4,14 @@ import { askCampusAI } from "./ai.service.js";
 
 export class AiAssessmentError extends Error {}
 
+async function lockAssessmentForTransition(tx: Prisma.TransactionClient, testId: string): Promise<string> {
+  const rows = await tx.$queryRaw<Array<{ status: string }>>`
+    SELECT "status" FROM "ai_assessment_tests" WHERE "id" = ${testId} FOR UPDATE
+  `;
+  if (!rows[0]) throw new AiAssessmentError(`Assessment Test ${testId} not found`);
+  return rows[0].status;
+}
+
 export interface CreateAssessmentTestInput {
   title: string;
   classId: string;
@@ -148,6 +156,10 @@ Allowed types: MCQ, TRUE_FALSE, SHORT_ANSWER, ESSAY, NUMERIC. MCQ needs 2-6 uniq
       try {
         const questionsParsed = parseAndValidateGeneratedQuestions(responseText, numQuestions, test.totalMarks);
         return prisma.$transaction(async (tx) => {
+          const currentStatus = await lockAssessmentForTransition(tx, testId);
+          if (currentStatus !== "DRAFT" && currentStatus !== "GENERATED") {
+            throw new AiAssessmentError("Questions can only be regenerated while the assessment is a draft or generated draft.");
+          }
           await tx.aiAssessmentQuestion.deleteMany({ where: { testId } });
           await Promise.all(questionsParsed.map((q) => tx.aiAssessmentQuestion.create({
             data: {
@@ -177,14 +189,24 @@ Allowed types: MCQ, TRUE_FALSE, SHORT_ANSWER, ESSAY, NUMERIC. MCQ needs 2-6 uniq
 }
 
 export async function approveAiAssessmentTest(testId: string, actorId: string) {
-  const test = await prisma.aiAssessmentTest.findUnique({ where: { id: testId }, include: { questions: true } });
-  if (!test) throw new AiAssessmentError(`Assessment Test ${testId} not found`);
-  if (test.status === "APPROVED") return test;
-  if (test.questions.length === 0) throw new AiAssessmentError("An assessment cannot be approved without questions.");
-  const totalQuestionMarks = test.questions.reduce((sum, q) => sum + q.marks.toNumber(), 0);
-  if (Math.abs(totalQuestionMarks - test.totalMarks.toNumber()) > 0.001) throw new AiAssessmentError("Question marks do not equal the assessment total marks.");
-
   return prisma.$transaction(async (tx) => {
+    const status = await lockAssessmentForTransition(tx, testId);
+    if (status === "APPROVED") {
+      const existing = await tx.aiAssessmentTest.findUnique({ where: { id: testId }, include: { questions: { orderBy: { orderIndex: "asc" } } } });
+      if (!existing) throw new AiAssessmentError(`Assessment Test ${testId} not found`);
+      return existing;
+    }
+    if (status !== "GENERATED") throw new AiAssessmentError("Only a generated draft can be approved.");
+
+    const questions = await tx.aiAssessmentQuestion.findMany({ where: { testId } });
+    if (questions.length === 0) throw new AiAssessmentError("An assessment cannot be approved without questions.");
+    const test = await tx.aiAssessmentTest.findUnique({ where: { id: testId }, select: { totalMarks: true } });
+    if (!test) throw new AiAssessmentError(`Assessment Test ${testId} not found`);
+    const totalQuestionMarks = questions.reduce((sum, q) => sum + q.marks.toNumber(), 0);
+    if (Math.abs(totalQuestionMarks - test.totalMarks.toNumber()) > 0.001) {
+      throw new AiAssessmentError("Question marks do not equal the assessment total marks.");
+    }
+
     const updated = await tx.aiAssessmentTest.update({
       where: { id: testId },
       data: { status: "APPROVED" },
@@ -196,25 +218,42 @@ export async function approveAiAssessmentTest(testId: string, actorId: string) {
 }
 
 export async function publishAiAssessmentTest(testId: string, actorId: string) {
-  const test = await prisma.aiAssessmentTest.findUnique({ where: { id: testId }, include: { questions: true } });
-  if (!test) throw new AiAssessmentError(`Assessment Test ${testId} not found`);
-  if (test.status === "PUBLISHED") return test;
-  if (test.status !== "APPROVED") throw new AiAssessmentError("Only an approved assessment can be published.");
-  if (!test.questions.length) throw new AiAssessmentError("An assessment cannot be published without questions.");
   return prisma.$transaction(async (tx) => {
-    const updated = await tx.aiAssessmentTest.update({ where: { id: testId }, data: { status: "PUBLISHED" }, include: { class: true, subject: true, questions: { orderBy: { orderIndex: "asc" } } } });
+    const status = await lockAssessmentForTransition(tx, testId);
+    if (status === "PUBLISHED") {
+      const existing = await tx.aiAssessmentTest.findUnique({ where: { id: testId }, include: { class: true, subject: true, questions: { orderBy: { orderIndex: "asc" } } } });
+      if (!existing) throw new AiAssessmentError(`Assessment Test ${testId} not found`);
+      return existing;
+    }
+    if (status !== "APPROVED") throw new AiAssessmentError("Only an approved assessment can be published.");
+    const questionCount = await tx.aiAssessmentQuestion.count({ where: { testId } });
+    if (questionCount === 0) throw new AiAssessmentError("An assessment cannot be published without questions.");
+
+    const updated = await tx.aiAssessmentTest.update({
+      where: { id: testId },
+      data: { status: "PUBLISHED" },
+      include: { class: true, subject: true, questions: { orderBy: { orderIndex: "asc" } } },
+    });
     await tx.auditLog.create({ data: { userId: actorId, action: "ai_assessment:publish_test", resource: `test:${testId}` } });
     return updated;
   });
 }
 
 export async function lockAiAssessmentTest(testId: string, actorId: string) {
-  const test = await prisma.aiAssessmentTest.findUnique({ where: { id: testId } });
-  if (!test) throw new AiAssessmentError(`Assessment Test ${testId} not found`);
-  if (test.status === "LOCKED") return test;
-  if (test.status !== "PUBLISHED") throw new AiAssessmentError("Only a published assessment can be locked.");
   return prisma.$transaction(async (tx) => {
-    const updated = await tx.aiAssessmentTest.update({ where: { id: testId }, data: { status: "LOCKED" }, include: { class: true, subject: true, questions: { orderBy: { orderIndex: "asc" } } } });
+    const status = await lockAssessmentForTransition(tx, testId);
+    if (status === "LOCKED") {
+      const existing = await tx.aiAssessmentTest.findUnique({ where: { id: testId }, include: { class: true, subject: true, questions: { orderBy: { orderIndex: "asc" } } } });
+      if (!existing) throw new AiAssessmentError(`Assessment Test ${testId} not found`);
+      return existing;
+    }
+    if (status !== "PUBLISHED") throw new AiAssessmentError("Only a published assessment can be locked.");
+
+    const updated = await tx.aiAssessmentTest.update({
+      where: { id: testId },
+      data: { status: "LOCKED" },
+      include: { class: true, subject: true, questions: { orderBy: { orderIndex: "asc" } } },
+    });
     await tx.auditLog.create({ data: { userId: actorId, action: "ai_assessment:lock_test", resource: `test:${testId}` } });
     return updated;
   });
@@ -326,12 +365,22 @@ export async function gradeAiAnswerSheet(
   input: { finalScore: number; teacherFeedback?: string },
   teacherUserId: string
 ) {
-  const sheet = await prisma.aiAnswerSheet.findUnique({ where: { id: sheetId }, include: { test: true } });
-  if (!sheet) throw new AiAssessmentError(`Answer sheet ${sheetId} not found`);
-  if (sheet.test.status === "LOCKED") throw new AiAssessmentError("Locked assessments cannot be graded or changed.");
-  if (input.finalScore > sheet.test.totalMarks.toNumber()) throw new AiAssessmentError(`Final score cannot exceed the assessment total of ${sheet.test.totalMarks.toNumber()}.`);
+  if (!Number.isFinite(input.finalScore) || input.finalScore < 0) {
+    throw new AiAssessmentError("Final score must be a finite non-negative number.");
+  }
+  const initialSheet = await prisma.aiAnswerSheet.findUnique({ where: { id: sheetId }, select: { id: true, testId: true } });
+  if (!initialSheet) throw new AiAssessmentError(`Answer sheet ${sheetId} not found`);
 
   return prisma.$transaction(async (tx) => {
+    const status = await lockAssessmentForTransition(tx, initialSheet.testId);
+    if (status === "LOCKED") throw new AiAssessmentError("Locked assessments cannot be graded or changed.");
+
+    const sheet = await tx.aiAnswerSheet.findUnique({ where: { id: sheetId }, include: { test: true } });
+    if (!sheet) throw new AiAssessmentError(`Answer sheet ${sheetId} not found`);
+    if (input.finalScore > sheet.test.totalMarks.toNumber()) {
+      throw new AiAssessmentError(`Final score cannot exceed the assessment total of ${sheet.test.totalMarks.toNumber()}.`);
+    }
+
     const updated = await tx.aiAnswerSheet.update({
       where: { id: sheetId },
       data: {
@@ -351,7 +400,6 @@ export async function gradeAiAnswerSheet(
         metadata: { finalScore: input.finalScore },
       },
     });
-
     return updated;
   });
 }
