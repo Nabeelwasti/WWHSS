@@ -33,6 +33,13 @@
 - CORS origin validation previously checked only an HTTPS prefix and had a malformed loopback regex in the `PUBLIC_APP_ORIGIN` check. The merged `main` implementation now requires canonical public HTTPS origins and rejects loopback hosts.
 - Pull request #32 passed the backend test, frontend build, Docker build, browser E2E, and CodeQL checks before merge. The latest direct commits to `main` are awaiting exact-commit verification; Vercel status checks were pending at the last status read. This does not replace live release evidence required below.
 
+## Follow-up code changes on 2026-10-14
+
+- [x] Teaching-role permissions fail closed for legacy unscoped assignments; new teacher/class-teacher assignments require an explicit scope.
+- [x] Production/preview startup rejects identical access-token, refresh-token, and backup-encryption secrets.
+- [x] Production administrator seeding rejects short and known default-pattern passwords and warns when an existing admin password is intentionally left unchanged.
+- [x] Cloud Run release workflow now creates the no-traffic candidate revision before running migrations; migrations still require backward-compatible expand/contract changes and a production-like rehearsal.
+
 ## Required before production can be certified
 
 These items require real environment access, school-owner decisions, or dedicated test fixtures; repository edits alone cannot truthfully mark them complete.
