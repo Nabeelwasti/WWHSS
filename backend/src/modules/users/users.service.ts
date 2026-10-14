@@ -501,7 +501,9 @@ export async function updateStudentProfile(
           userId: actorId,
           action: "student:update_profile",
           resource: `student:${studentProfileId}`,
-          metadata: input,
+          // Keep sensitive student values out of immutable audit history.
+          // Record which fields changed, not their medical/address/contact values.
+          metadata: { changedFields: Object.keys(input).sort() },
         },
       });
     }

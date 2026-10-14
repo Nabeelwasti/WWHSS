@@ -238,7 +238,15 @@ app.use((err: unknown, req: express.Request, res: express.Response, _next: expre
   const errorCode = typeof err === "object" && err && "code" in err && typeof (err as { code?: unknown }).code === "string"
     ? (err as { code: string }).code
     : undefined;
-  if (status >= 500) console.error({ requestId, error: err });
+  if (status >= 500) {
+    console.error({
+      event: "http_request_failed",
+      requestId,
+      status,
+      errorCode,
+      errorType: err instanceof Error ? err.name : "UnknownError",
+    });
+  }
   const publicError = status === 403
     ? errorCode === "CORS_ORIGIN_DENIED"
       ? "CORS origin is not allowed"

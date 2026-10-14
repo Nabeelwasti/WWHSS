@@ -18,7 +18,10 @@ aiRouter.post("/ask", authorize("ai:use"), async (req, res) => {
     res.json({ reply });
   } catch (e) {
     if (e instanceof AiConfigError) return res.status(503).json({ error: e.message });
-    console.error(e);
+    console.error({
+      event: "ai_provider_request_failed",
+      errorType: e instanceof Error ? e.name : "UnknownError",
+    });
     res.status(502).json({ error: "The AI assistant is temporarily unavailable." });
   }
 });

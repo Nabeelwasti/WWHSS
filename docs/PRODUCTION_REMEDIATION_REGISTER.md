@@ -40,6 +40,10 @@
 - [x] Production administrator seeding rejects short and known default-pattern passwords and warns when an existing admin password is intentionally left unchanged.
 - [x] Cloud Run release workflow now creates the no-traffic candidate revision before running migrations; migrations still require backward-compatible expand/contract changes and a production-like rehearsal.
 
+- [x] The governed Cloud Run release now runs the idempotent production seed after migrations, using the configured smoke administrator credentials to ensure permission roles and the bootstrap administrator assignment exist before smoke verification.
+- [x] Student-profile audit metadata now records changed field names only; sensitive field values are not copied into immutable audit history.
+- [x] HTTP 5xx and AI provider logs now emit request/error type metadata rather than serializing raw exception objects that may contain database/provider details.
+
 ## Required before production can be certified
 
 These items require real environment access, school-owner decisions, or dedicated test fixtures; repository edits alone cannot truthfully mark them complete.

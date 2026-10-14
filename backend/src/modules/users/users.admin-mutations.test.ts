@@ -3,12 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   tx: {
     user: { create: vi.fn(), update: vi.fn() },
+    studentProfile: { update: vi.fn() },
     userRole: { create: vi.fn(), delete: vi.fn() },
     refreshToken: { updateMany: vi.fn() },
     auditLog: { create: vi.fn() },
   },
   prisma: {
     user: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
+    studentProfile: { findUnique: vi.fn() },
     role: { findUnique: vi.fn() },
     class: { findUnique: vi.fn() },
     section: { findUnique: vi.fn() },
@@ -25,7 +27,7 @@ vi.mock("argon2", () => ({ default: { hash: vi.fn(async () => "hashed-password")
 vi.mock("../../db/client.js", () => ({ prisma: mocks.prisma }));
 
 import { prisma } from "../../db/client.js";
-import { assignRole, createUser, deactivateUser, removeRoleAssignment, resetPassword } from "./users.service.js";
+import { assignRole, createUser, deactivateUser, removeRoleAssignment, resetPassword, updateStudentProfile } from "./users.service.js";
 
 describe("user administration audit atomicity", () => {
   beforeEach(() => {
@@ -36,9 +38,11 @@ describe("user administration audit atomicity", () => {
     ]);
     mocks.prisma.userRole.findUnique.mockResolvedValue({ userId: "target" });
     mocks.prisma.user.findUnique.mockResolvedValue({ id: "target" });
+    mocks.prisma.studentProfile.findUnique.mockResolvedValue({ id: "student-1" });
     mocks.prisma.role.findUnique.mockResolvedValue({ id: "role-teacher" });
     mocks.tx.user.create.mockResolvedValue({ id: "created-user", email: "new@example.com", fullName: "New User" });
     mocks.tx.user.update.mockResolvedValue({ id: "target", isActive: false });
+    mocks.tx.studentProfile.update.mockResolvedValue({ id: "student-1" });
     mocks.tx.userRole.create.mockResolvedValue({ id: "assignment", role: { key: "teacher" } });
     mocks.tx.userRole.delete.mockResolvedValue({ id: "assignment" });
     mocks.tx.refreshToken.updateMany.mockResolvedValue({ count: 1 });
@@ -95,4 +99,30 @@ describe("user administration audit atomicity", () => {
     await expect(createUser({ email: "new@example.com", fullName: "New User", actorId: "actor" }))
       .rejects.toThrow("audit storage unavailable");
   });
+
+  it("rejects an unscoped teacher assignment before opening a transaction", async () => {
+    await expect(assignRole({ userId: "target", roleKey: "teacher", actorId: "actor" }))
+      .rejects.toThrow("require at least one class, section, subject, or department scope");
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("records changed student field names without persisting sensitive values in audit metadata", async () => {
+    await updateStudentProfile("student-1", {
+      medicalNotes: "confidential medical details",
+      address: "private home address",
+    }, "actor");
+
+    expect(mocks.tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: "actor",
+        action: "student:update_profile",
+        resource: "student:student-1",
+        metadata: { changedFields: ["address", "medicalNotes"] },
+      }),
+    });
+    const auditCall = JSON.stringify(mocks.tx.auditLog.create.mock.calls);
+    expect(auditCall).not.toContain("confidential medical details");
+    expect(auditCall).not.toContain("private home address");
+  });
+
 });
