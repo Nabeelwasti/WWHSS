@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   sheetUpdate: vi.fn(),
   auditCreate: vi.fn(),
   assessmentFindUnique: vi.fn(),
+  studentProfileFindUnique: vi.fn(),
+  answerSheetCreate: vi.fn(),
   askCampusAI: vi.fn(),
 }));
 
@@ -15,6 +17,7 @@ vi.mock("../../../db/client.js", () => ({
   prisma: {
     aiAnswerSheet: { findUnique: mocks.initialSheetFindUnique },
     aiAssessmentTest: { findUnique: mocks.assessmentFindUnique },
+    studentProfile: { findUnique: mocks.studentProfileFindUnique },
     $transaction: mocks.transaction,
   },
 }));
@@ -22,7 +25,7 @@ vi.mock("../../../db/client.js", () => ({
 vi.mock("../ai.service.js", () => ({ askCampusAI: mocks.askCampusAI }));
 
 import { Prisma } from "@prisma/client";
-import { approveAiAssessmentTest, generateTestQuestionsWithAi, gradeAiAnswerSheet, lockAiAssessmentTest, publishAiAssessmentTest, AiAssessmentError } from "../ai-assessment.service.js";
+import { approveAiAssessmentTest, generateTestQuestionsWithAi, gradeAiAnswerSheet, lockAiAssessmentTest, publishAiAssessmentTest, submitAiAnswerSheet, AiAssessmentError } from "../ai-assessment.service.js";
 
 describe("AI assessment lifecycle concurrency guards", () => {
   beforeEach(() => {
@@ -33,6 +36,7 @@ describe("AI assessment lifecycle concurrency guards", () => {
       aiAnswerSheet: {
         findUnique: mocks.transactionSheetFindUnique,
         update: mocks.sheetUpdate,
+        create: mocks.answerSheetCreate,
       },
       auditLog: { create: mocks.auditCreate },
     }));
@@ -42,6 +46,8 @@ describe("AI assessment lifecycle concurrency guards", () => {
       test: { totalMarks: { toNumber: () => 100 } },
     });
     mocks.sheetUpdate.mockResolvedValue({ id: "sheet-1", finalScore: 85 });
+    mocks.studentProfileFindUnique.mockResolvedValue({ id: "student-1", userId: "student-user-1", classId: "class-1", sectionId: null });
+    mocks.answerSheetCreate.mockResolvedValue({ id: "sheet-1", autoScore: new Prisma.Decimal(1), suggestedScore: null });
     mocks.auditCreate.mockResolvedValue({});
   });
 
@@ -84,6 +90,37 @@ describe("AI assessment lifecycle concurrency guards", () => {
         action: "ai_assessment:grade_answer_sheet",
       }),
     }));
+  });
+
+  it("keeps AI suggestedScore unset instead of mislabeling the objective subtotal as an AI grade", async () => {
+    mocks.assessmentFindUnique.mockResolvedValue({
+      id: "test-1",
+      status: "PUBLISHED",
+      classId: "class-1",
+      sectionId: null,
+      questions: [
+        { id: "q-mcq", questionType: "MCQ", marks: new Prisma.Decimal(1), correctAnswer: "A" },
+        { id: "q-essay", questionType: "ESSAY", marks: new Prisma.Decimal(9), correctAnswer: "Expected essay" },
+      ],
+    });
+    mocks.studentProfileFindUnique.mockResolvedValue({
+      id: "student-1",
+      userId: "student-user-1",
+      classId: "class-1",
+      sectionId: null,
+    });
+    mocks.lockQuery.mockResolvedValue([{ status: "PUBLISHED" }]);
+
+    await submitAiAnswerSheet({
+      testId: "test-1",
+      studentProfileId: "student-1",
+      studentAnswers: { "q-mcq": "A", "q-essay": "A long answer" },
+    }, "student-user-1");
+
+    const createArgs = mocks.answerSheetCreate.mock.calls[0]?.[0];
+    expect(createArgs.data.autoScore.toString()).toBe("1");
+    expect(createArgs.data.suggestedScore).toBeNull();
+    expect(createArgs.data.finalScore).toBeNull();
   });
 
   it("rejects approval, publication and locking when the row-locked lifecycle state is invalid", async () => {
