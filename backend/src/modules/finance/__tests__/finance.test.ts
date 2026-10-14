@@ -25,7 +25,7 @@ vi.mock("../../../db/client.js", () => ({
 
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../../db/client.js";
-import { recordPayment, createFeeStructure, calculateOutstandingBalance, generateInvoicesForClass, getFinancialSummaryReport, assignStudentFundingRecord, refreshInvoiceStatus, FinanceValidationError } from "../finance.service.js";
+import { recordPayment, createFeeStructure, calculateOutstandingBalance, generateInvoicesForClass, getFinancialSummaryReport, assignStudentFundingRecord, refreshInvoiceStatus, getStudentFeeStatement, FinanceValidationError } from "../finance.service.js";
 
 describe("Finance Hardening and Validation", () => {
   beforeEach(() => {
@@ -319,6 +319,42 @@ describe("Finance Hardening and Validation", () => {
     );
     expect(mockWaiverDeleteMany).toHaveBeenCalledWith({
       where: { id: { in: ["w-duplicate"] } },
+    });
+  });
+
+  it("returns only finance-safe student fields in a self-service fee statement", async () => {
+    vi.mocked(prisma.studentProfile.findUnique).mockResolvedValue({
+      id: "s-1",
+      admissionNo: "ADM-001",
+      rollNumber: "R-001",
+      status: "ACTIVE",
+      user: { fullName: "Student Example", email: "student@example.test", phone: null },
+      class: { id: "class-1", name: "Class 9" },
+      section: { id: "section-1", name: "A" },
+      fundingCategory: { id: "funding-1", name: "Workers Welfare", code: "WWF" },
+    } as never);
+    vi.mocked(prisma.feeInvoice.findMany).mockResolvedValue([] as never);
+
+    const statement = await getStudentFeeStatement("s-1");
+
+    expect(statement.student).toMatchObject({
+      id: "s-1",
+      admissionNo: "ADM-001",
+      rollNumber: "R-001",
+      user: { fullName: "Student Example" },
+    });
+    expect(prisma.studentProfile.findUnique).toHaveBeenCalledWith({
+      where: { id: "s-1" },
+      select: {
+        id: true,
+        admissionNo: true,
+        rollNumber: true,
+        status: true,
+        user: { select: { fullName: true, email: true, phone: true } },
+        class: { select: { id: true, name: true } },
+        section: { select: { id: true, name: true } },
+        fundingCategory: { select: { id: true, name: true, code: true } },
+      },
     });
   });
 
