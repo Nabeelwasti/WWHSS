@@ -29,7 +29,7 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
       return res.status(401).json({ error: "Session revoked due to security changes" });
     }
     if (user.mustChangePassword) {
-      const requestPath = req.originalUrl.split("?")[0].replace(/\\/+$/, "");
+      const requestPath = req.originalUrl.split("?")[0].replace(/\/+$/, "");
       const passwordRecoveryRoute = requestPath.endsWith("/auth/change-password") || requestPath.endsWith("/auth/me");
       if (!passwordRecoveryRoute) {
         return res.status(403).json({

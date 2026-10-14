@@ -61,7 +61,7 @@ describe("changePassword", () => {
 
     expect(prisma.user.update).toHaveBeenCalledWith({
       where: { id: "u1" },
-      data: { passwordHash: "hashed:a-brand-new-password", tokenVersion: { increment: 1 } },
+      data: { passwordHash: "hashed:a-brand-new-password", mustChangePassword: false, tokenVersion: { increment: 1 } },
     });
     expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
       where: { userId: "u1", revoked: false },

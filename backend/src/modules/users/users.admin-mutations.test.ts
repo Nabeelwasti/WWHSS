@@ -53,6 +53,9 @@ describe("user administration audit atomicity", () => {
     await createUser({ email: "new@example.com", fullName: "New User", actorId: "actor" });
     expect(prisma.$transaction).toHaveBeenCalledOnce();
     expect(mocks.tx.user.create).toHaveBeenCalledOnce();
+    expect(mocks.tx.user.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ mustChangePassword: true }),
+    }));
     expect(mocks.tx.auditLog.create).toHaveBeenCalledWith({
       data: { userId: "actor", action: "users:create", resource: "user:created-user" },
     });
@@ -88,6 +91,9 @@ describe("user administration audit atomicity", () => {
   it("commits password reset, session revocation, and audit together", async () => {
     await resetPassword("target", "actor");
     expect(mocks.tx.user.update).toHaveBeenCalledOnce();
+    expect(mocks.tx.user.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ mustChangePassword: true }),
+    }));
     expect(mocks.tx.refreshToken.updateMany).toHaveBeenCalledOnce();
     expect(mocks.tx.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ userId: "actor", action: "users:reset_password", resource: "user:target" }),
