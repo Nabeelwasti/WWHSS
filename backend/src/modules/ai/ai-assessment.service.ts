@@ -279,7 +279,9 @@ export async function listAiAssessmentTests(filters: { classId?: string; subject
 }
 
 /**
- * Ingests an answer sheet for a student and calculates autoScore (MCQ) & AI suggestedScore.
+ * Ingests an answer sheet and calculates objective autoScore (MCQ/true-false).
+ * suggestedScore remains null until a real provider-backed AI grading path exists;
+ * copying the objective subtotal into that field would misrepresent it as an AI score.
  */
 export async function submitAiAnswerSheet(
   input: {
@@ -305,11 +307,9 @@ export async function submitAiAnswerSheet(
   }
 
   let autoScore = new Prisma.Decimal(0);
-  let totalObjectiveMarks = new Prisma.Decimal(0);
 
   for (const q of test.questions) {
     if (q.questionType === "MCQ" || q.questionType === "TRUE_FALSE") {
-      totalObjectiveMarks = totalObjectiveMarks.add(q.marks);
       const given = (input.studentAnswers[q.id] || "").trim().toLowerCase();
       const expected = (q.correctAnswer || "").trim().toLowerCase();
       if (given && given === expected) {
@@ -318,7 +318,7 @@ export async function submitAiAnswerSheet(
     }
   }
 
-  const suggestedScore = autoScore;
+  const suggestedScore: Prisma.Decimal | null = null;
 
   return prisma.$transaction(async (tx) => {
     // Serialize submissions against publishing/locking and validate the
