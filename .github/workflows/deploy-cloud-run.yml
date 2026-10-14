@@ -113,6 +113,20 @@ jobs:
           npm ci
           npx prisma migrate deploy
 
+      - name: Ensure production roles and bootstrap administrator exist
+        working-directory: backend
+        env:
+          NODE_ENV: production
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          ADMIN_EMAIL: ${{ secrets.PRODUCTION_SMOKE_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.PRODUCTION_SMOKE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$DATABASE_URL"
+          test -n "$ADMIN_EMAIL"
+          test -n "$ADMIN_PASSWORD"
+          npm run seed
+
       - name: Resolve deployed revision URL
         id: revision
         run: |
