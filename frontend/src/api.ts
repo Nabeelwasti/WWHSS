@@ -68,20 +68,25 @@ export function restoreSession(): Promise<boolean> {
 // backend returns either a plain string, or zod's structured field errors
 // ({ fieldErrors: { email: ["Invalid email"] } }) for bad input.
 function describeError(body: unknown, status: number): string {
-  const error = (body as { error?: unknown } | null)?.error;
-  if (typeof error === "string") return error;
+  if (body && typeof body === "object") {
+    const errObj = body as Record<string, unknown>;
+    if (typeof errObj.error === "string") return errObj.error;
+    if (typeof errObj.message === "string") return errObj.message;
 
-  const fieldErrors = (error as { fieldErrors?: Record<string, string[] | undefined> } | undefined)?.fieldErrors;
-  if (fieldErrors) {
-    for (const [field, messages] of Object.entries(fieldErrors)) {
-      if (messages && messages.length > 0) return `${field}: ${messages[0]}`;
+    const fieldErrors = (errObj.error as { fieldErrors?: Record<string, string[] | undefined> } | undefined)?.fieldErrors;
+    if (fieldErrors) {
+      for (const [field, messages] of Object.entries(fieldErrors)) {
+        if (messages && messages.length > 0) return `${field}: ${messages[0]}`;
+      }
     }
   }
   return `Something went wrong (error ${status}). Please try again.`;
 }
 
 async function request<T>(path: string, options: RequestInit = {}, isRetry = false): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}/api${path}`, {
+  const cleanPath = path.startsWith("/api") ? path.slice(4) : path;
+  const normalizedPath = cleanPath.startsWith("/") ? cleanPath : `/${cleanPath}`;
+  const res = await fetch(`${API_BASE_URL}/api${normalizedPath}`, {
     ...options,
     credentials: "include", // sends the httpOnly refresh-token cookie
     headers: {

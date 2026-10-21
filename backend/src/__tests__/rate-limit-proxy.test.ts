@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import http from "node:http";
 import express from "express";
-import { ipKeyGenerator, rateLimit } from "express-rate-limit";
+import { rateLimit } from "express-rate-limit";
 import { normalizeRateLimitIp } from "../middleware/rate-limit-ip.js";
 import { PostgresRateLimitStore, SharedRateLimitStore } from "../middleware/rate-limit-store.js";
 
@@ -21,7 +21,7 @@ describe("Rate Limiting, Proxy Trust & Forwarded-IP Isolation", () => {
       store,
       keyGenerator: (req) => {
         const email = typeof req.query.email === "string" ? req.query.email.trim().toLowerCase() : "";
-        const ip = req.ip ? `ip:${ipKeyGenerator(req.ip, 56)}` : "unknown";
+        const ip = req.ip ? `ip:${normalizeRateLimitIp(req.ip)}` : "unknown";
         return email ? `${email}:${ip}` : ip;
       },
       message: { error: "rate limit exceeded" },

@@ -2,7 +2,8 @@
 // Includes Identity, Academics, Staff, Student Profiles, Funding/Fees, LMS, AI Assessment Studio, Documents, Timetable, Library, CMS, Notifications.
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x", "debian-openssl-3.0.x"]
 }
 
 datasource db {

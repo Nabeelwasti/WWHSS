@@ -2,18 +2,26 @@ import { app } from "./app.js";
 import { env } from "./config/env.js";
 import { prisma } from "./db/client.js";
 
-const server = app.listen(env.port, "0.0.0.0", () => {
-  console.log(`WWHS Digital Campus API listening on :${env.port}`);
-});
+let server: ReturnType<typeof app.listen> | undefined;
 
-async function shutdown(signal: string) {
-  console.log(`${signal} received, shutting down gracefully…`);
-  server.close(async () => {
-    await prisma.$disconnect();
-    process.exit(0);
+// When running as a standalone server (Docker, Cloud Run, local development)
+if (!process.env.VERCEL) {
+  server = app.listen(env.port, "0.0.0.0", () => {
+    console.log(`WWHS Digital Campus API listening on :${env.port}`);
   });
-  setTimeout(() => process.exit(1), 10000).unref();
+
+  const shutdown = async (signal: string) => {
+    console.log(`${signal} received, shutting down gracefully…`);
+    server?.close(async () => {
+      await prisma.$disconnect();
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(1), 10000).unref();
+  };
+
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT", () => shutdown("SIGINT"));
+export { app, server };
+export default app;

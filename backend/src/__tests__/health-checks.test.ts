@@ -1,6 +1,15 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import http from "node:http";
 
+vi.mock("argon2", () => ({
+  default: {
+    hash: vi.fn().mockResolvedValue("mocked_hash"),
+    verify: vi.fn().mockResolvedValue(true),
+  },
+  hash: vi.fn().mockResolvedValue("mocked_hash"),
+  verify: vi.fn().mockResolvedValue(true),
+}));
+
 vi.mock("../db/client.js", () => ({
   prisma: {
     $queryRaw: vi.fn(async () => [{ result: 1 }]),

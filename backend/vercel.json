@@ -3,6 +3,12 @@
   "framework": "express",
   "installCommand": "npm ci --include=dev",
   "buildCommand": "npm run build",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api/index"
+    }
+  ],
   "git": {
     "deploymentEnabled": true
   }
